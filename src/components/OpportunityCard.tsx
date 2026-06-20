@@ -1,15 +1,28 @@
 import type { Opportunity } from "../data/marketplace";
+import { useAgentExchange } from "../state/AgentExchangeContext";
 import { accentStyles } from "./accentStyles";
+import { ApplicationStatusBadge } from "./ApplicationStatusBadge";
 import { GlassCard } from "./GlassCard";
 import { PrimaryButton } from "./PrimaryButton";
+import { SavedOpportunityButton } from "./SavedOpportunityButton";
 import { SecondaryButton } from "./SecondaryButton";
 
 type OpportunityCardProps = {
   opportunity: Opportunity;
+  onApply?: (opportunity: Opportunity) => void;
+  onNegotiate?: (opportunity: Opportunity) => void;
 };
 
-export function OpportunityCard({ opportunity }: OpportunityCardProps) {
+export function OpportunityCard({
+  onApply,
+  onNegotiate,
+  opportunity,
+}: OpportunityCardProps) {
   const accent = accentStyles[opportunity.accent];
+  const { getApplicationForOpportunity, getNegotiationForOpportunity } =
+    useAgentExchange();
+  const application = getApplicationForOpportunity(opportunity.id);
+  const negotiation = getNegotiationForOpportunity(opportunity.id);
 
   return (
     <GlassCard
@@ -24,11 +37,20 @@ export function OpportunityCard({ opportunity }: OpportunityCardProps) {
             {opportunity.title}
           </h2>
         </div>
-        <span
-          className={`w-fit rounded-full border px-3 py-1 font-ae-label text-xs font-semibold ${accent.badge}`}
-        >
-          {opportunity.matchScore}% Match
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {application ? (
+            <ApplicationStatusBadge status={application.status} />
+          ) : null}
+          {!application && negotiation ? (
+            <ApplicationStatusBadge status="negotiating" />
+          ) : null}
+          <span
+            className={`w-fit rounded-full border px-3 py-1 font-ae-label text-xs font-semibold ${accent.badge}`}
+          >
+            {opportunity.matchScore}% Match
+          </span>
+          <SavedOpportunityButton opportunityId={opportunity.id} />
+        </div>
       </div>
 
       <p className="max-w-3xl text-sm leading-6 text-ae-text-muted">
@@ -70,8 +92,15 @@ export function OpportunityCard({ opportunity }: OpportunityCardProps) {
           </div>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <PrimaryButton>Apply</PrimaryButton>
-          <SecondaryButton>Negotiate</SecondaryButton>
+          <PrimaryButton
+            disabled={Boolean(application)}
+            onClick={() => onApply?.(opportunity)}
+          >
+            {application ? "Applied" : "Apply"}
+          </PrimaryButton>
+          <SecondaryButton onClick={() => onNegotiate?.(opportunity)}>
+            {negotiation ? "Update Terms" : "Negotiate"}
+          </SecondaryButton>
         </div>
       </div>
     </GlassCard>

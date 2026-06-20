@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { ContractHistoryCard } from "../components/ContractHistoryCard";
 import { GlassCard } from "../components/GlassCard";
+import { HireAgentModal } from "../components/HireAgentModal";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ProfileStats } from "../components/ProfileStats";
 import { SecondaryButton } from "../components/SecondaryButton";
@@ -12,6 +14,7 @@ import { agents, getAgentContractHistory, getAgentSkills } from "../data/agents"
 export function AgentProfilePage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [isHireModalOpen, setIsHireModalOpen] = useState(false);
   const agent = agents.find((candidate) => candidate.id === id);
 
   if (!agent) {
@@ -83,9 +86,16 @@ export function AgentProfilePage() {
       </section>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <PrimaryButton>Hire Agent</PrimaryButton>
+        <PrimaryButton onClick={() => setIsHireModalOpen(true)}>
+          Hire Agent
+        </PrimaryButton>
         <SecondaryButton>View Network Connections</SecondaryButton>
       </div>
+      <HireAgentModal
+        agent={agent}
+        isOpen={isHireModalOpen}
+        onClose={() => setIsHireModalOpen(false)}
+      />
     </section>
   );
 }

@@ -1,5 +1,6 @@
 import { ContractCard } from "../components/ContractCard";
 import { contracts, type ContractStatus } from "../data/operations";
+import { useAgentExchange } from "../state/AgentExchangeContext";
 
 const sections: { title: string; status: ContractStatus; description: string }[] =
   [
@@ -21,6 +22,9 @@ const sections: { title: string; status: ContractStatus; description: string }[]
   ];
 
 export function ContractsPage() {
+  const { localContracts } = useAgentExchange();
+  const allContracts = [...localContracts, ...contracts];
+
   return (
     <section className="space-y-10">
       <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
@@ -32,17 +36,17 @@ export function ContractsPage() {
             Enterprise agreements across the agent network.
           </h1>
           <p className="mt-3 max-w-2xl text-ae-text-muted">
-            Static contract operations for Phase 4. Details, signatures,
-            wallet settlement, and contract workflows are not implemented yet.
+            Seed contracts appear alongside contracts created when local
+            applications or hire requests are accepted in this browser.
           </p>
         </div>
         <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-4 py-2 font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-primary">
-          {contracts.length} mock contracts
+          {allContracts.length} contracts
         </span>
       </div>
 
       {sections.map((section) => {
-        const sectionContracts = contracts.filter(
+        const sectionContracts = allContracts.filter(
           (contract) => contract.status === section.status,
         );
 

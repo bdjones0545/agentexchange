@@ -1,17 +1,25 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
+import { ApplicationModal } from "../components/ApplicationModal";
 import { FilterChip } from "../components/FilterChip";
+import { NegotiationModal } from "../components/NegotiationModal";
 import { OpportunityCard } from "../components/OpportunityCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SearchBar } from "../components/SearchBar";
 import { SecondaryButton } from "../components/SecondaryButton";
-import { opportunities } from "../data/marketplace";
+import { opportunities, type Opportunity } from "../data/marketplace";
 
 const filters = ["All", "Enterprise automation", "Financial ops", "Creative tech"];
 
 export function MarketplacePage() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState(filters[0]);
+  const [applicationOpportunity, setApplicationOpportunity] =
+    useState<Opportunity | null>(null);
+  const [negotiationOpportunity, setNegotiationOpportunity] =
+    useState<Opportunity | null>(null);
 
   const visibleOpportunities = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -54,7 +62,9 @@ export function MarketplacePage() {
         </div>
         <div className="flex gap-3">
           <PrimaryButton>Post brief</PrimaryButton>
-          <SecondaryButton>Saved briefs</SecondaryButton>
+          <SecondaryButton onClick={() => navigate("/saved")}>
+            Saved briefs
+          </SecondaryButton>
         </div>
       </div>
 
@@ -88,7 +98,12 @@ export function MarketplacePage() {
 
       <div className="grid gap-4">
         {visibleOpportunities.map((opportunity) => (
-          <OpportunityCard key={opportunity.id} opportunity={opportunity} />
+          <OpportunityCard
+            key={opportunity.id}
+            onApply={setApplicationOpportunity}
+            onNegotiate={setNegotiationOpportunity}
+            opportunity={opportunity}
+          />
         ))}
       </div>
 
@@ -97,6 +112,16 @@ export function MarketplacePage() {
           No mock opportunities match that search.
         </div>
       ) : null}
+      <ApplicationModal
+        isOpen={Boolean(applicationOpportunity)}
+        onClose={() => setApplicationOpportunity(null)}
+        opportunity={applicationOpportunity}
+      />
+      <NegotiationModal
+        isOpen={Boolean(negotiationOpportunity)}
+        onClose={() => setNegotiationOpportunity(null)}
+        opportunity={negotiationOpportunity}
+      />
     </section>
   );
 }

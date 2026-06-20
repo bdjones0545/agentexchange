@@ -15,12 +15,21 @@ export const navigationItems: NavigationItem[] = [
     shortLabel: "Market",
   },
   {
+    label: "Saved",
+    path: "/saved",
+  },
+  {
     label: "Hub",
     path: "/hub",
   },
   {
     label: "Agents",
     path: "/agents",
+  },
+  {
+    label: "Applications",
+    path: "/applications",
+    shortLabel: "Apps",
   },
   {
     label: "Contracts",

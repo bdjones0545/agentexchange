@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 
 import { BottomNavigation } from "./BottomNavigation";
+import { LocalActionToast } from "./LocalActionToast";
 import { TopNavigation } from "./TopNavigation";
 
 export function AppShell() {
@@ -20,6 +21,7 @@ export function AppShell() {
       </main>
 
       <BottomNavigation />
+      <LocalActionToast />
     </div>
   );
 }

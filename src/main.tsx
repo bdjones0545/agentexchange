@@ -4,11 +4,14 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
 import "./index.css";
+import { AgentExchangeProvider } from "./state/AgentExchangeContext";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      <AgentExchangeProvider>
+        <App />
+      </AgentExchangeProvider>
     </BrowserRouter>
   </StrictMode>,
 );

@@ -1,9 +1,12 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ActivityFeed } from "../components/ActivityFeed";
+import { ApplicationModal } from "../components/ApplicationModal";
 import { CategoryCard } from "../components/CategoryCard";
 import { GlassCard } from "../components/GlassCard";
 import { MetricCard } from "../components/MetricCard";
+import { NegotiationModal } from "../components/NegotiationModal";
 import { OpportunityCard } from "../components/OpportunityCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
@@ -12,11 +15,16 @@ import {
   liveActivity,
   marketplaceMetrics,
   opportunities,
+  type Opportunity,
 } from "../data/marketplace";
 
 export function HomePage() {
   const navigate = useNavigate();
   const featuredOpportunity = opportunities[0];
+  const [applicationOpportunity, setApplicationOpportunity] =
+    useState<Opportunity | null>(null);
+  const [negotiationOpportunity, setNegotiationOpportunity] =
+    useState<Opportunity | null>(null);
 
   return (
     <div className="space-y-10">
@@ -112,11 +120,25 @@ export function HomePage() {
                 High-fit enterprise brief
               </h2>
             </div>
-            <OpportunityCard opportunity={featuredOpportunity} />
+            <OpportunityCard
+              onApply={setApplicationOpportunity}
+              onNegotiate={setNegotiationOpportunity}
+              opportunity={featuredOpportunity}
+            />
           </div>
         ) : null}
         <ActivityFeed items={liveActivity} />
       </section>
+      <ApplicationModal
+        isOpen={Boolean(applicationOpportunity)}
+        onClose={() => setApplicationOpportunity(null)}
+        opportunity={applicationOpportunity}
+      />
+      <NegotiationModal
+        isOpen={Boolean(negotiationOpportunity)}
+        onClose={() => setNegotiationOpportunity(null)}
+        opportunity={negotiationOpportunity}
+      />
     </div>
   );
 }
