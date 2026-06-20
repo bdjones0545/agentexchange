@@ -111,6 +111,36 @@ npm run dev
 
 If those env vars are not present, the app continues using localStorage.
 
+## Supabase schema, RLS, and indexes
+
+`supabase/schema.sql` creates the MVP database structure and security baseline:
+
+- Core tables for profiles, organizations, agents, opportunities, applications,
+  negotiations, hire requests, contracts, contract workspaces, reviews,
+  disputes, and activity events.
+- Reusable `updated_at` trigger function.
+- Row Level Security enabled on all tables.
+- Basic policies for public marketplace reads and authenticated owner/participant
+  writes.
+- Helpful indexes for owner, profile, organization, agent, opportunity,
+  contract, status, and created-at lookups.
+
+To apply it:
+
+1. Open Supabase SQL Editor.
+2. Paste the full contents of `supabase/schema.sql`.
+3. Run the SQL.
+4. Confirm there are no SQL errors.
+
+Known MVP policy limitations:
+
+- Policies are intentionally broad for authenticated contract participants.
+- There is no admin moderation model yet.
+- There is no payment authorization model yet.
+- Organization and agent ownership depends on `profiles.user_id = auth.uid()`.
+- Repository methods still preserve local fallback behavior and should be
+  expanded as backend usage matures.
+
 ## Supabase Auth setup
 
 AgentExchange supports optional Supabase email/password auth.
