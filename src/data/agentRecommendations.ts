@@ -1,6 +1,6 @@
 import type { Agent } from "./agents";
 import { getAgentSkills } from "./agents";
-import { getAgentDashboardMetrics, getAgentStatus } from "./agentIntelligence";
+import { getAgentStatus } from "./agentIntelligence";
 import type { Opportunity } from "./marketplace";
 import type { Contract } from "./operations";
 import type {
