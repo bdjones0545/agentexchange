@@ -11,6 +11,7 @@ import {
 import { deriveWorkspaceStatus } from "../data/contractWorkspace";
 import { agents } from "../data/agents";
 import type { SuggestedAgentAction } from "../data/agentRecommendations";
+import { opportunities } from "../data/marketplace";
 import type {
   AgentActivityEvent,
   AgentReview,
@@ -94,6 +95,7 @@ type AgentExchangeContextValue = PersistedState & {
   toast: LocalActionToastState | null;
   acceptApplication: (applicationId: string) => void;
   acceptHireRequest: (hireRequestId: string) => void;
+  acceptNegotiation: (negotiationId: string) => void;
   approveSuggestedAgentAction: (action: SuggestedAgentAction) => void;
   clearToast: () => void;
   createAgent: (input: CreateAgentInput) => CreatedAgent;
@@ -103,6 +105,8 @@ type AgentExchangeContextValue = PersistedState & {
   getNegotiationForOpportunity: (opportunityId: string) => Negotiation | undefined;
   isOpportunitySaved: (opportunityId: string) => boolean;
   openContractDispute: (contractId: string, reason: string) => void;
+  rejectApplication: (applicationId: string) => void;
+  rejectNegotiation: (negotiationId: string) => void;
   setDeliverableStatus: (
     contractId: string,
     deliverableId: string,
@@ -130,6 +134,12 @@ type AgentExchangeContextValue = PersistedState & {
     disputeId: string,
     status: ContractDisputeStatus,
     resolutionNotes?: string,
+  ) => void;
+  counterNegotiation: (
+    negotiationId: string,
+    counterRate: string,
+    counterTimeline: string,
+    counterNote: string,
   ) => void;
 };
 
@@ -197,6 +207,15 @@ function getSimulatedAgentForOpportunity(opportunityId: string) {
   ) % agents.length;
 
   return agents[index] ?? agents[0];
+}
+
+function getOpportunityForState(
+  current: PersistedState,
+  opportunityId: string,
+) {
+  return [...current.createdOpportunities, ...opportunities].find(
+    (opportunity) => opportunity.id === opportunityId,
+  );
 }
 
 function createEmptyWorkspace(contractId: string): ContractWorkspace {
@@ -1047,15 +1066,21 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           return current;
         }
 
+        const opportunity = getOpportunityForState(
+          current,
+          application.opportunityId,
+        );
         const localContract: LocalContract = {
           id: createId("contract"),
           sourceId: application.id,
           sourceType: "application",
-          organizationId: "local-organization",
-          organization: "Local Organization",
+          organizationId:
+            opportunity?.organization?.toLowerCase().replace(/\s+/g, "-") ??
+            "local-organization",
+          organization: opportunity?.organization ?? "Local Organization",
           agent: application.agentName,
           title: application.opportunityTitle,
-          value: "Custom scope",
+          value: opportunity?.budget ?? "Custom scope",
           status: "Active",
           startDate: formatLocalDate(),
           dueDate: formatLocalDate(21),
@@ -1077,6 +1102,156 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         };
       });
       showToast("Application accepted and contract created.");
+    },
+    [showToast],
+  );
+
+  const rejectApplication = useCallback(
+    (applicationId: string) => {
+      setState((current) => {
+        const application = current.applications.find(
+          (candidate) => candidate.id === applicationId,
+        );
+
+        if (!application || application.status !== "pending") {
+          return current;
+        }
+
+        return {
+          ...current,
+          agentActivities: [
+            createAgentActivity(
+              application.agentId,
+              application.agentName,
+              "status_changed",
+              `${application.agentName}'s application to ${application.opportunityTitle} was rejected.`,
+            ),
+            ...current.agentActivities,
+          ],
+          applications: current.applications.map((candidate) =>
+            candidate.id === applicationId
+              ? {
+                  ...candidate,
+                  status: "rejected",
+                }
+              : candidate,
+          ),
+        };
+      });
+      showToast("Application rejected.");
+    },
+    [showToast],
+  );
+
+  const acceptNegotiation = useCallback(
+    (negotiationId: string) => {
+      setState((current) => {
+        const negotiation = current.negotiations.find(
+          (candidate) => candidate.id === negotiationId,
+        );
+
+        if (!negotiation || negotiation.status === "accepted") {
+          return current;
+        }
+
+        const opportunity = getOpportunityForState(
+          current,
+          negotiation.opportunityId,
+        );
+        const agent =
+          negotiation.agentId && negotiation.agentName
+            ? {
+                id: negotiation.agentId,
+                name: negotiation.agentName,
+              }
+            : getSimulatedAgentForOpportunity(negotiation.opportunityId);
+        const localContract: LocalContract = {
+          id: createId("contract"),
+          sourceId: negotiation.id,
+          sourceType: "negotiation",
+          organizationId:
+            opportunity?.organization?.toLowerCase().replace(/\s+/g, "-") ??
+            "local-organization",
+          organization: opportunity?.organization ?? "Local Organization",
+          agent: agent?.name ?? "Recommended Agent",
+          title: negotiation.opportunityTitle,
+          value: negotiation.counterRate ?? negotiation.rate,
+          status: "Active",
+          startDate: formatLocalDate(),
+          dueDate: formatLocalDate(21),
+          progress: 5,
+          accent: "violet",
+        };
+
+        return {
+          ...current,
+          agentActivities: agent
+            ? [
+                createAgentActivity(
+                  agent.id,
+                  agent.name,
+                  "status_changed",
+                  `${agent.name}'s negotiation for ${negotiation.opportunityTitle} was accepted.`,
+                ),
+                ...current.agentActivities,
+              ]
+            : current.agentActivities,
+          localContracts: [...current.localContracts, localContract],
+          negotiations: current.negotiations.map((candidate) =>
+            candidate.id === negotiationId
+              ? {
+                  ...candidate,
+                  status: "accepted",
+                }
+              : candidate,
+          ),
+        };
+      });
+      showToast("Negotiation accepted and contract created.");
+    },
+    [showToast],
+  );
+
+  const rejectNegotiation = useCallback(
+    (negotiationId: string) => {
+      setState((current) => ({
+        ...current,
+        negotiations: current.negotiations.map((candidate) =>
+          candidate.id === negotiationId
+            ? {
+                ...candidate,
+                status: "rejected",
+              }
+            : candidate,
+        ),
+      }));
+      showToast("Negotiation rejected.");
+    },
+    [showToast],
+  );
+
+  const counterNegotiation = useCallback(
+    (
+      negotiationId: string,
+      counterRate: string,
+      counterTimeline: string,
+      counterNote: string,
+    ) => {
+      setState((current) => ({
+        ...current,
+        negotiations: current.negotiations.map((candidate) =>
+          candidate.id === negotiationId
+            ? {
+                ...candidate,
+                counterNote,
+                counterRate,
+                counterTimeline,
+                status: "countered",
+              }
+            : candidate,
+        ),
+      }));
+      showToast("Counter negotiation saved.");
     },
     [showToast],
   );
@@ -1246,6 +1421,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       toast,
       acceptApplication,
       acceptHireRequest,
+      acceptNegotiation,
       addAgentReview,
       approveSuggestedAgentAction,
       addContractDeliverable,
@@ -1270,6 +1446,8 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           (savedOpportunity) => savedOpportunity.opportunityId === opportunityId,
         ),
       openContractDispute,
+      rejectApplication,
+      rejectNegotiation,
       sendContractMessage,
       setDeliverableStatus,
       submitApplication,
@@ -1277,12 +1455,14 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       submitNegotiation,
       toggleMilestoneComplete,
       toggleSavedOpportunity,
+      counterNegotiation,
       updateContractDispute,
       updateMilestoneNotes,
     }),
     [
       acceptApplication,
       acceptHireRequest,
+      acceptNegotiation,
       addAgentReview,
       approveSuggestedAgentAction,
       addContractDeliverable,
@@ -1291,6 +1471,8 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       createAgent,
       createOpportunity,
       openContractDispute,
+      rejectApplication,
+      rejectNegotiation,
       sendContractMessage,
       setDeliverableStatus,
       state,
@@ -1300,6 +1482,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       toast,
       toggleMilestoneComplete,
       toggleSavedOpportunity,
+      counterNegotiation,
       updateContractDispute,
       updateMilestoneNotes,
     ],

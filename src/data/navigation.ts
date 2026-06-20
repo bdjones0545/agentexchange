@@ -37,6 +37,16 @@ export const navigationItems: NavigationItem[] = [
     shortLabel: "Deals",
   },
   {
+    label: "Organizations",
+    path: "/organizations",
+    shortLabel: "Orgs",
+  },
+  {
+    label: "Org Dashboard",
+    path: "/organization-dashboard",
+    shortLabel: "Org",
+  },
+  {
     label: "Wallet",
     path: "/wallet",
   },

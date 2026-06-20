@@ -2,7 +2,7 @@ import type { Agent, AgentAvailability } from "../data/agents";
 import type { AccentTone, Opportunity } from "../data/marketplace";
 import type { ContractStatus } from "../data/operations";
 
-export type LocalRequestStatus = "pending" | "accepted";
+export type LocalRequestStatus = "pending" | "accepted" | "rejected";
 
 export type SavedOpportunity = {
   opportunityId: string;
@@ -61,7 +61,10 @@ export type Negotiation = {
   rate: string;
   timeline: string;
   milestoneNotes: string;
-  status: "pending";
+  counterNote?: string;
+  counterRate?: string;
+  counterTimeline?: string;
+  status: "pending" | "accepted" | "rejected" | "countered";
   createdAt: string;
 };
 
@@ -79,7 +82,7 @@ export type HireRequest = {
 export type LocalContract = {
   id: string;
   sourceId: string;
-  sourceType: "application" | "hire-request";
+  sourceType: "application" | "hire-request" | "negotiation";
   organizationId: string;
   organization: string;
   agent: string;
