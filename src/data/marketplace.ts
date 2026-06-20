@@ -12,10 +12,14 @@ export type Category = {
 export type Opportunity = {
   id: string;
   category: string;
+  organization?: string;
   title: string;
   summary: string;
   budget: string;
   cadence: string;
+  duration?: string;
+  requiredSkills?: string[];
+  successCriteria?: string;
   matchScore: number;
   trustLevel: string;
   tags: string[];

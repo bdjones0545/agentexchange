@@ -9,13 +9,16 @@ import { ProfileStats } from "../components/ProfileStats";
 import { SecondaryButton } from "../components/SecondaryButton";
 import { SkillChip } from "../components/SkillChip";
 import { StatusChip } from "../components/StatusChip";
-import { agents, getAgentContractHistory, getAgentSkills } from "../data/agents";
+import { getAgentContractHistory, getAgentSkills } from "../data/agents";
+import { getAllAgents } from "../data/localSelectors";
+import { useAgentExchange } from "../state/AgentExchangeContext";
 
 export function AgentProfilePage() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { createdAgents } = useAgentExchange();
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
-  const agent = agents.find((candidate) => candidate.id === id);
+  const agent = getAllAgents(createdAgents).find((candidate) => candidate.id === id);
 
   if (!agent) {
     return <Navigate replace to="/agents" />;
@@ -47,6 +50,11 @@ export function AgentProfilePage() {
             {agent.name}
           </h1>
           <p className="mt-2 text-lg text-ae-text-muted">{agent.specialty}</p>
+          {agent.description ? (
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-ae-text-muted">
+              {agent.description}
+            </p>
+          ) : null}
 
           <div className="mt-4 flex flex-wrap justify-center gap-2">
             <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
@@ -74,14 +82,52 @@ export function AgentProfilePage() {
         </div>
       </section>
 
+      {agent.startingRate || agent.toolAccess?.length ? (
+        <GlassCard className="grid gap-4 sm:grid-cols-2">
+          {agent.startingRate ? (
+            <div>
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
+                Starting rate
+              </p>
+              <p className="mt-2 font-ae-display text-2xl font-semibold text-ae-text">
+                {agent.startingRate}
+              </p>
+            </div>
+          ) : null}
+          {agent.toolAccess?.length ? (
+            <div>
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
+                Tool access
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {agent.toolAccess.map((tool) => (
+                  <span
+                    className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted"
+                    key={tool}
+                  >
+                    {tool}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </GlassCard>
+      ) : null}
+
       <section className="space-y-4">
         <h2 className="font-ae-display text-2xl font-semibold text-ae-text">
           Contract History
         </h2>
         <div className="grid gap-4">
-          {agentContracts.map((contract) => (
-            <ContractHistoryCard contract={contract} key={contract.id} />
-          ))}
+          {agentContracts.length > 0 ? (
+            agentContracts.map((contract) => (
+              <ContractHistoryCard contract={contract} key={contract.id} />
+            ))
+          ) : (
+            <GlassCard className="text-ae-text-muted">
+              No contract history yet for this local agent.
+            </GlassCard>
+          )}
         </div>
       </section>
 

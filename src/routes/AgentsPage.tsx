@@ -1,20 +1,27 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { AgentCard } from "../components/AgentCard";
+import { PrimaryButton } from "../components/PrimaryButton";
 import { SearchBar } from "../components/SearchBar";
-import { agents, getAgentSkills } from "../data/agents";
+import { getAgentSkills } from "../data/agents";
+import { getAllAgents } from "../data/localSelectors";
+import { useAgentExchange } from "../state/AgentExchangeContext";
 
 export function AgentsPage() {
+  const navigate = useNavigate();
+  const { createdAgents } = useAgentExchange();
+  const allAgents = useMemo(() => getAllAgents(createdAgents), [createdAgents]);
   const [searchQuery, setSearchQuery] = useState("");
 
   const visibleAgents = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
     if (!query) {
-      return agents;
+      return allAgents;
     }
 
-    return agents.filter((agent) =>
+    return allAgents.filter((agent) =>
       [
         agent.name,
         agent.specialty,
@@ -26,7 +33,7 @@ export function AgentsPage() {
         .toLowerCase()
         .includes(query),
     );
-  }, [searchQuery]);
+  }, [allAgents, searchQuery]);
 
   return (
     <section className="space-y-8">
@@ -39,14 +46,19 @@ export function AgentsPage() {
             Discover verified autonomous specialists.
           </h1>
           <p className="mt-3 max-w-2xl text-ae-text-muted">
-            Search mock agents by name, specialty, tier, availability, or skill.
-            Profiles are static Phase 3 screens with no contracts or wallet
-            functionality.
+            Search agents by name, specialty, tier, availability, or skill.
+            Locally created agents persist in this browser and get generated
+            profile pages.
           </p>
         </div>
-        <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-4 py-2 font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-primary">
-          {agents.length} agents online
-        </span>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-4 py-2 font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-primary">
+            {allAgents.length} agents online
+          </span>
+          <PrimaryButton onClick={() => navigate("/create-agent")}>
+            Create Agent
+          </PrimaryButton>
+        </div>
       </div>
 
       <div className="rounded-ae-xl border border-white/[0.07] bg-white/[0.03] p-4 backdrop-blur-2xl">

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 
 import type { Agent } from "../data/agents";
-import { opportunities } from "../data/marketplace";
+import { getAllOpportunities } from "../data/localSelectors";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { PrimaryButton } from "./PrimaryButton";
 import { SecondaryButton } from "./SecondaryButton";
@@ -13,7 +13,8 @@ type HireAgentModalProps = {
 };
 
 export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) {
-  const { submitHireRequest } = useAgentExchange();
+  const { createdOpportunities, submitHireRequest } = useAgentExchange();
+  const allOpportunities = getAllOpportunities(createdOpportunities);
   const [opportunityId, setOpportunityId] = useState("");
   const [quickJobTitle, setQuickJobTitle] = useState("");
 
@@ -21,7 +22,7 @@ export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) 
     return null;
   }
 
-  const selectedOpportunity = opportunities.find(
+  const selectedOpportunity = allOpportunities.find(
     (opportunity) => opportunity.id === opportunityId,
   );
   const canSubmit = Boolean(selectedOpportunity || quickJobTitle.trim().length > 3);
@@ -75,7 +76,7 @@ export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) 
             value={opportunityId}
           >
             <option value="">Create quick job title instead</option>
-            {opportunities.map((opportunity) => (
+            {allOpportunities.map((opportunity) => (
               <option key={opportunity.id} value={opportunity.id}>
                 {opportunity.title}
               </option>

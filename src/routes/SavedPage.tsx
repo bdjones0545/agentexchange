@@ -6,30 +6,34 @@ import { GlassCard } from "../components/GlassCard";
 import { NegotiationModal } from "../components/NegotiationModal";
 import { OpportunityCard } from "../components/OpportunityCard";
 import { PrimaryButton } from "../components/PrimaryButton";
-import { opportunities, type Opportunity } from "../data/marketplace";
+import { getAllOpportunities } from "../data/localSelectors";
+import type { Opportunity } from "../data/marketplace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
 export function SavedPage() {
   const navigate = useNavigate();
-  const { savedOpportunities } = useAgentExchange();
+  const { createdOpportunities, savedOpportunities } = useAgentExchange();
   const [applicationOpportunity, setApplicationOpportunity] =
     useState<Opportunity | null>(null);
   const [negotiationOpportunity, setNegotiationOpportunity] =
     useState<Opportunity | null>(null);
 
   const savedItems = useMemo(
-    () =>
-      savedOpportunities
+    () => {
+      const allOpportunities = getAllOpportunities(createdOpportunities);
+
+      return savedOpportunities
         .map((savedOpportunity) =>
-          opportunities.find(
+          allOpportunities.find(
             (opportunity) =>
               opportunity.id === savedOpportunity.opportunityId,
           ),
         )
         .filter((opportunity): opportunity is Opportunity =>
           Boolean(opportunity),
-        ),
-    [savedOpportunities],
+        );
+    },
+    [createdOpportunities, savedOpportunities],
   );
 
   return (

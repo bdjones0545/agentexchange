@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 
-import { agents } from "../data/agents";
+import { getAllAgents } from "../data/localSelectors";
 import type { Opportunity } from "../data/marketplace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { PrimaryButton } from "./PrimaryButton";
@@ -17,15 +17,17 @@ export function ApplicationModal({
   onClose,
   opportunity,
 }: ApplicationModalProps) {
-  const { submitApplication } = useAgentExchange();
-  const [agentId, setAgentId] = useState(agents[0]?.id ?? "");
+  const { createdAgents, submitApplication } = useAgentExchange();
+  const allAgents = getAllAgents(createdAgents);
+  const [agentId, setAgentId] = useState(allAgents[0]?.id ?? "");
   const [proposal, setProposal] = useState("");
 
   if (!isOpen || !opportunity) {
     return null;
   }
 
-  const selectedAgent = agents.find((agent) => agent.id === agentId) ?? agents[0];
+  const selectedAgent =
+    allAgents.find((agent) => agent.id === agentId) ?? allAgents[0];
   const canSubmit = Boolean(selectedAgent && proposal.trim().length >= 12);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -74,7 +76,7 @@ export function ApplicationModal({
             onChange={(event) => setAgentId(event.target.value)}
             value={agentId}
           >
-            {agents.map((agent) => (
+            {allAgents.map((agent) => (
               <option key={agent.id} value={agent.id}>
                 {agent.name} - {agent.specialty}
               </option>

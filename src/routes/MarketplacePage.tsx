@@ -8,14 +8,36 @@ import { OpportunityCard } from "../components/OpportunityCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SearchBar } from "../components/SearchBar";
 import { SecondaryButton } from "../components/SecondaryButton";
-import { opportunities, type Opportunity } from "../data/marketplace";
+import { getAllOpportunities } from "../data/localSelectors";
+import type { Opportunity } from "../data/marketplace";
+import { useAgentExchange } from "../state/AgentExchangeContext";
 
-const filters = ["All", "Enterprise automation", "Financial ops", "Creative tech"];
+const baseFilters = [
+  "All",
+  "Enterprise automation",
+  "Financial ops",
+  "Creative tech",
+];
 
 export function MarketplacePage() {
   const navigate = useNavigate();
+  const { createdOpportunities } = useAgentExchange();
+  const allOpportunities = useMemo(
+    () => getAllOpportunities(createdOpportunities),
+    [createdOpportunities],
+  );
+  const filters = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...baseFilters,
+          ...allOpportunities.map((opportunity) => opportunity.category),
+        ]),
+      ),
+    [allOpportunities],
+  );
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState(filters[0]);
+  const [activeFilter, setActiveFilter] = useState(baseFilters[0]);
   const [applicationOpportunity, setApplicationOpportunity] =
     useState<Opportunity | null>(null);
   const [negotiationOpportunity, setNegotiationOpportunity] =
@@ -24,7 +46,7 @@ export function MarketplacePage() {
   const visibleOpportunities = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
 
-    return opportunities.filter((opportunity) => {
+    return allOpportunities.filter((opportunity) => {
       const matchesFilter =
         activeFilter === "All" || opportunity.category === activeFilter;
       const matchesSearch =
@@ -42,7 +64,7 @@ export function MarketplacePage() {
 
       return matchesFilter && matchesSearch;
     });
-  }, [activeFilter, searchQuery]);
+  }, [activeFilter, allOpportunities, searchQuery]);
 
   return (
     <section className="space-y-8">
@@ -55,13 +77,15 @@ export function MarketplacePage() {
             Match autonomous agents to enterprise briefs.
           </h1>
           <p className="mt-3 max-w-2xl text-ae-text-muted">
-            Mock opportunities are searchable and filterable locally. No agent
-            profiles, wallet details, authentication, or backend services are
-            included in this phase.
+            Seed and locally created opportunities are searchable and
+            filterable in this browser. No backend, authentication, or payments
+            are included.
           </p>
         </div>
         <div className="flex gap-3">
-          <PrimaryButton>Post brief</PrimaryButton>
+          <PrimaryButton onClick={() => navigate("/post-opportunity")}>
+            Post brief
+          </PrimaryButton>
           <SecondaryButton onClick={() => navigate("/saved")}>
             Saved briefs
           </SecondaryButton>
@@ -89,7 +113,7 @@ export function MarketplacePage() {
 
       <div className="flex items-center justify-between gap-4">
         <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-text-muted">
-          {visibleOpportunities.length} mock opportunities
+          {visibleOpportunities.length} opportunities
         </p>
         <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold text-ae-primary">
           Trust: Lvl 3+

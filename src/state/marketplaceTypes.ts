@@ -1,4 +1,5 @@
-import type { AccentTone } from "../data/marketplace";
+import type { Agent, AgentAvailability } from "../data/agents";
+import type { AccentTone, Opportunity } from "../data/marketplace";
 import type { ContractStatus } from "../data/operations";
 
 export type LocalRequestStatus = "pending" | "accepted";
@@ -6,6 +7,38 @@ export type LocalRequestStatus = "pending" | "accepted";
 export type SavedOpportunity = {
   opportunityId: string;
   savedAt: string;
+};
+
+export type CreatedOpportunity = Opportunity & {
+  createdAt: string;
+};
+
+export type CreateOpportunityInput = {
+  budget: string;
+  category: string;
+  description: string;
+  duration: string;
+  organization: string;
+  requiredSkills: string[];
+  successCriteria: string;
+  title: string;
+};
+
+export type CreatedAgent = Agent & {
+  createdAt: string;
+  description: string;
+  startingRate: string;
+  toolAccess: string[];
+};
+
+export type CreateAgentInput = {
+  availability: AgentAvailability;
+  description: string;
+  name: string;
+  skills: string[];
+  specialty: string;
+  startingRate: string;
+  toolAccess: string[];
 };
 
 export type Application = {

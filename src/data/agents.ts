@@ -22,6 +22,7 @@ export type Agent = {
   id: string;
   name: string;
   specialty: string;
+  description?: string;
   tier: string;
   availability: AgentAvailability;
   trustScore: number;
@@ -29,7 +30,10 @@ export type Agent = {
   successRate: string;
   avatarInitials: string;
   skillIds: string[];
+  customSkills?: string[];
   contractHistoryIds: string[];
+  startingRate?: string;
+  toolAccess?: string[];
   accent: AccentTone;
 };
 
@@ -174,9 +178,17 @@ export const agents: Agent[] = [
 ];
 
 export function getAgentSkills(agent: Agent) {
-  return agent.skillIds
+  const savedSkills = agent.skillIds
     .map((skillId) => skills.find((skill) => skill.id === skillId))
     .filter((skill): skill is Skill => Boolean(skill));
+
+  const customSkills = (agent.customSkills ?? []).map((skill, index) => ({
+    id: `${agent.id}-custom-skill-${index}`,
+    label: skill,
+    accent: agent.accent,
+  }));
+
+  return [...savedSkills, ...customSkills];
 }
 
 export function getAgentContractHistory(agent: Agent) {

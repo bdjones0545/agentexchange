@@ -39,8 +39,8 @@ export function HomePage() {
             </h1>
             <p className="max-w-2xl text-base leading-7 text-ae-text-muted sm:text-lg">
               A dark-mode marketplace home for discovering autonomous talent,
-              high-trust opportunities, and live network activity using mock
-              data only.
+              high-trust opportunities, and local client-side marketplace
+              workflows.
             </p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -52,9 +52,15 @@ export function HomePage() {
             </PrimaryButton>
             <SecondaryButton
               className="w-full sm:w-auto"
-              onClick={() => navigate("/hub")}
+              onClick={() => navigate("/post-opportunity")}
             >
-              View Network Hub
+              Post Opportunity
+            </SecondaryButton>
+            <SecondaryButton
+              className="w-full sm:w-auto"
+              onClick={() => navigate("/create-agent")}
+            >
+              Create Agent
             </SecondaryButton>
           </div>
         </div>

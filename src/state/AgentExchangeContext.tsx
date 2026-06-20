@@ -10,6 +10,10 @@ import {
 
 import type {
   Application,
+  CreateAgentInput,
+  CreatedAgent,
+  CreatedOpportunity,
+  CreateOpportunityInput,
   HireRequest,
   LocalActionToastState,
   LocalContract,
@@ -21,6 +25,8 @@ const STORAGE_KEY = "agentexchange-local-mvp";
 
 type PersistedState = {
   applications: Application[];
+  createdAgents: CreatedAgent[];
+  createdOpportunities: CreatedOpportunity[];
   hireRequests: HireRequest[];
   localContracts: LocalContract[];
   negotiations: Negotiation[];
@@ -56,6 +62,8 @@ type AgentExchangeContextValue = PersistedState & {
   acceptApplication: (applicationId: string) => void;
   acceptHireRequest: (hireRequestId: string) => void;
   clearToast: () => void;
+  createAgent: (input: CreateAgentInput) => CreatedAgent;
+  createOpportunity: (input: CreateOpportunityInput) => CreatedOpportunity;
   getApplicationForOpportunity: (opportunityId: string) => Application | undefined;
   getNegotiationForOpportunity: (opportunityId: string) => Negotiation | undefined;
   isOpportunitySaved: (opportunityId: string) => boolean;
@@ -67,6 +75,8 @@ type AgentExchangeContextValue = PersistedState & {
 
 const defaultPersistedState: PersistedState = {
   applications: [],
+  createdAgents: [],
+  createdOpportunities: [],
   hireRequests: [],
   localContracts: [],
   negotiations: [],
@@ -100,6 +110,8 @@ function safeParseState(rawValue: string | null): PersistedState {
 
     return {
       applications: parsed.applications ?? [],
+      createdAgents: parsed.createdAgents ?? [],
+      createdOpportunities: parsed.createdOpportunities ?? [],
       hireRequests: parsed.hireRequests ?? [],
       localContracts: parsed.localContracts ?? [],
       negotiations: parsed.negotiations ?? [],
@@ -134,6 +146,79 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   const clearToast = useCallback(() => {
     setToast(null);
   }, []);
+
+  const createOpportunity = useCallback(
+    (input: CreateOpportunityInput) => {
+      const createdOpportunity: CreatedOpportunity = {
+        accent: "violet",
+        budget: input.budget,
+        cadence: input.duration,
+        category: input.category,
+        createdAt: new Date().toISOString(),
+        duration: input.duration,
+        id: createId("opportunity"),
+        matchScore: 91,
+        organization: input.organization,
+        requiredSkills: input.requiredSkills,
+        successCriteria: input.successCriteria,
+        summary: input.description,
+        tags: input.requiredSkills.length > 0 ? input.requiredSkills : ["Custom"],
+        title: input.title,
+        trustLevel: "Local",
+      };
+
+      setState((current) => ({
+        ...current,
+        createdOpportunities: [
+          createdOpportunity,
+          ...current.createdOpportunities,
+        ],
+      }));
+      showToast("Opportunity created.");
+
+      return createdOpportunity;
+    },
+    [showToast],
+  );
+
+  const createAgent = useCallback(
+    (input: CreateAgentInput) => {
+      const initials = input.name
+        .split(" ")
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
+      const createdAgent: CreatedAgent = {
+        accent: "violet",
+        availability: input.availability,
+        avatarInitials: initials || "AI",
+        contractHistoryIds: [],
+        createdAt: new Date().toISOString(),
+        customSkills: input.skills,
+        description: input.description,
+        id: createId("agent"),
+        name: input.name,
+        revenue: "$0",
+        skillIds: [],
+        specialty: input.specialty,
+        startingRate: input.startingRate,
+        successRate: "New",
+        tier: "Local Agent",
+        toolAccess: input.toolAccess,
+        trustScore: 90,
+      };
+
+      setState((current) => ({
+        ...current,
+        createdAgents: [createdAgent, ...current.createdAgents],
+      }));
+      showToast("Agent created.");
+
+      return createdAgent;
+    },
+    [showToast],
+  );
 
   const toggleSavedOpportunity = useCallback(
     (opportunityId: string) => {
@@ -343,6 +428,8 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       acceptApplication,
       acceptHireRequest,
       clearToast,
+      createAgent,
+      createOpportunity,
       getApplicationForOpportunity: (opportunityId) =>
         state.applications.find(
           (application) => application.opportunityId === opportunityId,
@@ -364,6 +451,8 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       acceptApplication,
       acceptHireRequest,
       clearToast,
+      createAgent,
+      createOpportunity,
       state,
       submitApplication,
       submitHireRequest,
