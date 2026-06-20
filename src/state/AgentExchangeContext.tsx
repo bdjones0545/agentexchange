@@ -460,6 +460,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           const deliverable = {
             id: createId("deliverable"),
             createdAt: now,
+            decisions: [],
             notes,
             status: "draft" as const,
             title,
