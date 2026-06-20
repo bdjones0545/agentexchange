@@ -3,6 +3,11 @@ import { useNavigate } from "react-router-dom";
 import type { Agent } from "../data/agents";
 import { getAgentSkills } from "../data/agents";
 import { getAgentStatus } from "../data/agentIntelligence";
+import {
+  getAgentAverageRating,
+  getAgentCompletedContracts,
+  getVerificationStatus,
+} from "../data/agentTrust";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAllAgents } from "../data/localSelectors";
 import { contracts } from "../data/operations";
@@ -13,6 +18,7 @@ import { PrimaryButton } from "./PrimaryButton";
 import { ProfileStats } from "./ProfileStats";
 import { SkillChip } from "./SkillChip";
 import { StatusChip } from "./StatusChip";
+import { VerificationBadge } from "./VerificationBadge";
 
 type AgentCardProps = {
   agent: Agent;
@@ -22,8 +28,10 @@ export function AgentCard({ agent }: AgentCardProps) {
   const navigate = useNavigate();
   const {
     agentActivities,
+    agentReviews,
     applications,
     contractWorkspaces,
+    contractDisputes,
     createdAgents,
     hireRequests,
     localContracts,
@@ -49,6 +57,14 @@ export function AgentCard({ agent }: AgentCardProps) {
     savedOpportunities,
     workspaces: contractWorkspaces,
   });
+  const verificationStatus = getVerificationStatus({
+    agent,
+    contracts: allContracts,
+    disputes: contractDisputes,
+    reviews: agentReviews,
+  });
+  const averageRating = getAgentAverageRating(agent, agentReviews);
+  const completedContracts = getAgentCompletedContracts(agent, allContracts).length;
 
   return (
     <GlassCard
@@ -69,6 +85,15 @@ export function AgentCard({ agent }: AgentCardProps) {
             <h2 className="mt-2 font-ae-display text-2xl font-semibold tracking-[-0.02em] text-ae-text">
               {agent.name}
             </h2>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <VerificationBadge status={verificationStatus} />
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
+                {averageRating.toFixed(1)} rating
+              </span>
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
+                {completedContracts} completed
+              </span>
+            </div>
           </div>
           <StatusChip status={status} />
         </div>

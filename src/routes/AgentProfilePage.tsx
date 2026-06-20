@@ -18,20 +18,29 @@ import {
   getAgentRecommendations,
   getSuggestedAgentActions,
 } from "../data/agentRecommendations";
+import {
+  getAgentAverageRating,
+  getAgentReviews,
+  getTrustBreakdown,
+  getVerificationStatus,
+} from "../data/agentTrust";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAgentContractHistory, getAgentSkills } from "../data/agents";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
 import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
+import { VerificationBadge } from "../components/VerificationBadge";
 
 export function AgentProfilePage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const {
     agentActivities,
+    agentReviews,
     applications,
     approveSuggestedAgentAction,
     contractWorkspaces,
+    contractDisputes,
     createdAgents,
     createdOpportunities,
     hireRequests,
@@ -70,6 +79,20 @@ export function AgentProfilePage() {
   };
   const status = getAgentStatus(agent, intelligenceInput);
   const reputation = getAgentReputation(agent, intelligenceInput);
+  const verificationStatus = getVerificationStatus({
+    agent,
+    contracts: allContracts,
+    disputes: contractDisputes,
+    reviews: agentReviews,
+  });
+  const trustBreakdown = getTrustBreakdown({
+    agent,
+    contracts: allContracts,
+    disputes: contractDisputes,
+    reviews: agentReviews,
+  });
+  const reviews = getAgentReviews(agent, agentReviews);
+  const averageRating = getAgentAverageRating(agent, agentReviews);
   const dashboardMetrics = getAgentDashboardMetrics(agent, intelligenceInput);
   const recentActivity = agentActivities
     .filter(
@@ -115,6 +138,7 @@ export function AgentProfilePage() {
             <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
               {agent.tier}
             </span>
+            <VerificationBadge status={verificationStatus} />
             <StatusChip status={status} />
           </div>
         </div>
@@ -124,6 +148,42 @@ export function AgentProfilePage() {
           successRate={`${reputation.approvalRate}%`}
           trustScore={reputation.trustScore}
         />
+      </GlassCard>
+
+      <GlassCard className="space-y-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+              Trust Breakdown
+            </p>
+            <h2 className="mt-2 font-ae-display text-2xl font-semibold text-ae-text">
+              {averageRating.toFixed(1)} average rating
+            </h2>
+          </div>
+          <VerificationBadge status={verificationStatus} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            ["Delivery reliability", trustBreakdown.deliveryReliability],
+            ["Approval rate", trustBreakdown.approvalRate],
+            ["Response speed", trustBreakdown.responseSpeed],
+            ["Client satisfaction", trustBreakdown.clientSatisfaction],
+            ["Dispute health", trustBreakdown.disputeRate],
+            ["Repeat contract rate", trustBreakdown.repeatContractRate],
+          ].map(([label, value]) => (
+            <div
+              className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4"
+              key={label}
+            >
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+                {label}
+              </p>
+              <p className="mt-2 font-ae-display text-2xl font-semibold text-ae-text">
+                {value}%
+              </p>
+            </div>
+          ))}
+        </div>
       </GlassCard>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -285,6 +345,45 @@ export function AgentProfilePage() {
           ) : (
             <GlassCard className="text-ae-text-muted">
               No contract history yet for this local agent.
+            </GlassCard>
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="font-ae-display text-2xl font-semibold text-ae-text">
+          Reviews
+        </h2>
+        <div className="grid gap-3">
+          {reviews.length > 0 ? (
+            reviews.map((review) => (
+              <GlassCard className="space-y-3" key={review.id}>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-ae-display text-xl font-semibold text-ae-text">
+                      {review.rating}/5 from {review.organization}
+                    </p>
+                    <p className="text-sm text-ae-text-muted">
+                      {review.contractTitle}
+                    </p>
+                  </div>
+                  <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
+                    {new Date(review.createdAt).toLocaleDateString("en-US", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </span>
+                </div>
+                <p className="text-sm leading-6 text-ae-text-muted">
+                  {review.review}
+                </p>
+              </GlassCard>
+            ))
+          ) : (
+            <GlassCard className="text-ae-text-muted">
+              No organization reviews yet. Completed contracts can receive local
+              reviews from the contract workspace.
             </GlassCard>
           )}
         </div>

@@ -23,23 +23,32 @@ export function ContractDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const {
+    addAgentReview,
     addContractDeliverable,
     addContractMilestone,
+    agentReviews,
+    contractDisputes,
     getContractWorkspace,
     localContracts,
+    openContractDispute,
     sendContractMessage,
     setDeliverableStatus,
     toggleMilestoneComplete,
+    updateContractDispute,
     updateMilestoneNotes,
   } = useAgentExchange();
   const [deliverableNotes, setDeliverableNotes] = useState("");
   const [deliverableTitle, setDeliverableTitle] = useState("");
   const [decisionNotes, setDecisionNotes] = useState<Record<string, string>>({});
+  const [disputeReason, setDisputeReason] = useState("");
   const [messageBody, setMessageBody] = useState("");
   const [messageSender, setMessageSender] =
     useState<ContractMessageSender>("Organization");
   const [milestoneNotes, setMilestoneNotes] = useState("");
   const [milestoneTitle, setMilestoneTitle] = useState("");
+  const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewText, setReviewText] = useState("");
 
   const baseContract = [...localContracts, ...contracts].find(
     (contract) => contract.id === id,
@@ -106,6 +115,43 @@ export function ContractDetailPage() {
     );
     setMessageBody("");
   }
+
+  function handleOpenDispute(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!disputeReason.trim()) {
+      return;
+    }
+
+    openContractDispute(activeContract.id, disputeReason.trim());
+    setDisputeReason("");
+  }
+
+  function handleAddReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!reviewText.trim()) {
+      return;
+    }
+
+    addAgentReview(
+      activeContract.id,
+      activeContract.agent,
+      activeContract.title,
+      activeContract.organization,
+      reviewRating,
+      reviewText.trim(),
+    );
+    setReviewRating(5);
+    setReviewText("");
+  }
+
+  const activeDisputes = contractDisputes.filter(
+    (dispute) => dispute.contractId === activeContract.id,
+  );
+  const hasReview = agentReviews.some(
+    (review) => review.contractId === activeContract.id,
+  );
 
   return (
     <section className="space-y-8">
@@ -449,6 +495,139 @@ export function ContractDetailPage() {
           ) : (
             <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 text-ae-text-muted">
               No messages yet. Send the first organization or agent update.
+            </p>
+          )}
+        </div>
+      </GlassCard>
+
+      <GlassCard className="space-y-5">
+        <div>
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+            Trust & Disputes
+          </p>
+          <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
+            Review and resolution workflow
+          </h2>
+        </div>
+
+        {contract.status === "Completed" && !hasReview ? (
+          <form className="space-y-3" onSubmit={handleAddReview}>
+            <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
+              <select
+                className="rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+                onChange={(event) => setReviewRating(Number(event.target.value))}
+                value={reviewRating}
+              >
+                {[5, 4, 3, 2, 1].map((rating) => (
+                  <option key={rating} value={rating}>
+                    {rating} / 5
+                  </option>
+                ))}
+              </select>
+              <input
+                className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+                onChange={(event) => setReviewText(event.target.value)}
+                placeholder="Leave an organization review for this agent..."
+                value={reviewText}
+              />
+            </div>
+            <PrimaryButton disabled={!reviewText.trim()} type="submit">
+              Save Review
+            </PrimaryButton>
+          </form>
+        ) : contract.status === "Completed" ? (
+          <p className="rounded-ae-md border border-ae-emerald/20 bg-ae-emerald/10 p-4 text-ae-emerald">
+            Review submitted for this completed contract.
+          </p>
+        ) : (
+          <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 text-ae-text-muted">
+            Reviews unlock when this contract is completed.
+          </p>
+        )}
+
+        <form className="space-y-3 border-t border-white/[0.06] pt-4" onSubmit={handleOpenDispute}>
+          <textarea
+            className="min-h-20 w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
+            onChange={(event) => setDisputeReason(event.target.value)}
+            placeholder="Open a dispute with a short reason..."
+            value={disputeReason}
+          />
+          <SecondaryButton disabled={!disputeReason.trim()} type="submit">
+            Open Dispute
+          </SecondaryButton>
+        </form>
+
+        <div className="space-y-3">
+          {activeDisputes.length > 0 ? (
+            activeDisputes.map((dispute) => (
+              <article
+                className="space-y-3 rounded-ae-lg border border-white/[0.06] bg-white/[0.04] p-4"
+                key={dispute.id}
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="font-ae-display text-xl font-semibold text-ae-text">
+                      {dispute.status}
+                    </p>
+                    <p className="mt-1 text-sm leading-6 text-ae-text-muted">
+                      {dispute.reason}
+                    </p>
+                    {dispute.resolutionNotes ? (
+                      <p className="mt-2 text-sm text-ae-primary">
+                        Resolution: {dispute.resolutionNotes}
+                      </p>
+                    ) : null}
+                  </div>
+                  <span className="rounded-full border border-ae-amber/20 bg-ae-amber/10 px-3 py-1 font-ae-label text-xs font-semibold text-ae-amber">
+                    Dispute
+                  </span>
+                </div>
+                {dispute.status !== "Resolved" ? (
+                  <div className="space-y-3">
+                    <input
+                      className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+                      onChange={(event) =>
+                        setResolutionNotes((current) => ({
+                          ...current,
+                          [dispute.id]: event.target.value,
+                        }))
+                      }
+                      placeholder="Resolution notes"
+                      value={resolutionNotes[dispute.id] ?? ""}
+                    />
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <SecondaryButton
+                        onClick={() =>
+                          updateContractDispute(
+                            activeContract.id,
+                            dispute.id,
+                            "Under Review",
+                            resolutionNotes[dispute.id],
+                          )
+                        }
+                      >
+                        Mark Under Review
+                      </SecondaryButton>
+                      <PrimaryButton
+                        onClick={() =>
+                          updateContractDispute(
+                            activeContract.id,
+                            dispute.id,
+                            "Resolved",
+                            resolutionNotes[dispute.id],
+                          )
+                        }
+                      >
+                        Resolve
+                      </PrimaryButton>
+                    </div>
+                  </div>
+                ) : null}
+              </article>
+            ))
+          ) : (
+            <p className="text-sm text-ae-text-muted">
+              No disputes opened for this contract.
             </p>
           )}
         </div>

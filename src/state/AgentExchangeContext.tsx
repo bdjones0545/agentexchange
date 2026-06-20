@@ -13,8 +13,11 @@ import { agents } from "../data/agents";
 import type { SuggestedAgentAction } from "../data/agentRecommendations";
 import type {
   AgentActivityEvent,
+  AgentReview,
   Application,
   ContractMessageSender,
+  ContractDispute,
+  ContractDisputeStatus,
   ContractWorkspace,
   CreateAgentInput,
   CreatedAgent,
@@ -31,8 +34,10 @@ const STORAGE_KEY = "agentexchange-local-mvp";
 
 type PersistedState = {
   agentActivities: AgentActivityEvent[];
+  agentReviews: AgentReview[];
   applications: Application[];
   contractWorkspaces: ContractWorkspace[];
+  contractDisputes: ContractDispute[];
   createdAgents: CreatedAgent[];
   createdOpportunities: CreatedOpportunity[];
   hireRequests: HireRequest[];
@@ -78,6 +83,14 @@ type AgentExchangeContextValue = PersistedState & {
     title: string,
     notes: string,
   ) => void;
+  addAgentReview: (
+    contractId: string,
+    agentName: string,
+    contractTitle: string,
+    organization: string,
+    rating: number,
+    review: string,
+  ) => void;
   toast: LocalActionToastState | null;
   acceptApplication: (applicationId: string) => void;
   acceptHireRequest: (hireRequestId: string) => void;
@@ -89,6 +102,7 @@ type AgentExchangeContextValue = PersistedState & {
   getContractWorkspace: (contractId: string) => ContractWorkspace;
   getNegotiationForOpportunity: (opportunityId: string) => Negotiation | undefined;
   isOpportunitySaved: (opportunityId: string) => boolean;
+  openContractDispute: (contractId: string, reason: string) => void;
   setDeliverableStatus: (
     contractId: string,
     deliverableId: string,
@@ -111,12 +125,20 @@ type AgentExchangeContextValue = PersistedState & {
     milestoneId: string,
     notes: string,
   ) => void;
+  updateContractDispute: (
+    contractId: string,
+    disputeId: string,
+    status: ContractDisputeStatus,
+    resolutionNotes?: string,
+  ) => void;
 };
 
 const defaultPersistedState: PersistedState = {
   agentActivities: [],
+  agentReviews: [],
   applications: [],
   contractWorkspaces: [],
+  contractDisputes: [],
   createdAgents: [],
   createdOpportunities: [],
   hireRequests: [],
@@ -300,10 +322,12 @@ function safeParseState(rawValue: string | null): PersistedState {
 
     return {
       agentActivities: parsed.agentActivities ?? [],
+      agentReviews: parsed.agentReviews ?? [],
       applications: parsed.applications ?? [],
       contractWorkspaces: (parsed.contractWorkspaces ?? []).map(
         normalizeWorkspace,
       ),
+      contractDisputes: parsed.contractDisputes ?? [],
       createdAgents: parsed.createdAgents ?? [],
       createdOpportunities: parsed.createdOpportunities ?? [],
       hireRequests: parsed.hireRequests ?? [],
@@ -720,6 +744,152 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     [showToast],
   );
 
+  const addAgentReview = useCallback(
+    (
+      contractId: string,
+      agentName: string,
+      contractTitle: string,
+      organization: string,
+      rating: number,
+      review: string,
+    ) => {
+      setState((current) => {
+        const relatedApplication = current.applications.find(
+          (application) =>
+            current.localContracts.some(
+              (contract) =>
+                contract.id === contractId &&
+                contract.sourceId === application.id &&
+                contract.sourceType === "application",
+            ),
+        );
+        const relatedHireRequest = current.hireRequests.find((hireRequest) =>
+          current.localContracts.some(
+            (contract) =>
+              contract.id === contractId &&
+              contract.sourceId === hireRequest.id &&
+              contract.sourceType === "hire-request",
+          ),
+        );
+        const now = new Date().toISOString();
+        const nextState = withWorkspace(current, contractId, (workspace) => ({
+          ...workspace,
+          activity: [
+            {
+              id: createId("activity"),
+              type: "review_added",
+              createdAt: now,
+              message: `${organization} left a ${rating}/5 review for ${agentName}.`,
+            },
+            ...workspace.activity,
+          ],
+          updatedAt: now,
+        }));
+
+        return {
+          ...nextState,
+          agentReviews: [
+            {
+              id: createId("review"),
+              agentId: relatedApplication?.agentId ?? relatedHireRequest?.agentId,
+              agentName,
+              contractId,
+              contractTitle,
+              createdAt: now,
+              organization,
+              rating,
+              review,
+            },
+            ...nextState.agentReviews,
+          ],
+        };
+      });
+      showToast("Review saved.");
+    },
+    [showToast],
+  );
+
+  const openContractDispute = useCallback(
+    (contractId: string, reason: string) => {
+      setState((current) => {
+        const now = new Date().toISOString();
+        const nextState = withWorkspace(current, contractId, (workspace) => ({
+          ...workspace,
+          activity: [
+            {
+              id: createId("activity"),
+              type: "dispute_opened",
+              createdAt: now,
+              message: `Dispute opened: ${reason}.`,
+            },
+            ...workspace.activity,
+          ],
+          updatedAt: now,
+        }));
+
+        return {
+          ...nextState,
+          contractDisputes: [
+            {
+              id: createId("dispute"),
+              contractId,
+              createdAt: now,
+              reason,
+              status: "Open",
+              updatedAt: now,
+            },
+            ...nextState.contractDisputes,
+          ],
+        };
+      });
+      showToast("Dispute opened.");
+    },
+    [showToast],
+  );
+
+  const updateContractDispute = useCallback(
+    (
+      contractId: string,
+      disputeId: string,
+      status: ContractDisputeStatus,
+      resolutionNotes = "",
+    ) => {
+      setState((current) => {
+        const now = new Date().toISOString();
+        const nextState = withWorkspace(current, contractId, (workspace) => ({
+          ...workspace,
+          activity: [
+            {
+              id: createId("activity"),
+              type: "dispute_updated",
+              createdAt: now,
+              message: `Dispute moved to ${status}.`,
+            },
+            ...workspace.activity,
+          ],
+          updatedAt: now,
+        }));
+
+        return {
+          ...nextState,
+          contractDisputes: nextState.contractDisputes.map((dispute) =>
+            dispute.id === disputeId
+              ? {
+                  ...dispute,
+                  resolutionNotes:
+                    resolutionNotes || dispute.resolutionNotes,
+                  status,
+                  updatedAt: now,
+                }
+              : dispute,
+          ),
+        };
+      });
+      showToast("Dispute updated.");
+    },
+    [showToast],
+  );
+
   const toggleSavedOpportunity = useCallback(
     (opportunityId: string) => {
       setState((current) => {
@@ -1076,6 +1246,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       toast,
       acceptApplication,
       acceptHireRequest,
+      addAgentReview,
       approveSuggestedAgentAction,
       addContractDeliverable,
       addContractMilestone,
@@ -1098,6 +1269,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         state.savedOpportunities.some(
           (savedOpportunity) => savedOpportunity.opportunityId === opportunityId,
         ),
+      openContractDispute,
       sendContractMessage,
       setDeliverableStatus,
       submitApplication,
@@ -1105,17 +1277,20 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       submitNegotiation,
       toggleMilestoneComplete,
       toggleSavedOpportunity,
+      updateContractDispute,
       updateMilestoneNotes,
     }),
     [
       acceptApplication,
       acceptHireRequest,
+      addAgentReview,
       approveSuggestedAgentAction,
       addContractDeliverable,
       addContractMilestone,
       clearToast,
       createAgent,
       createOpportunity,
+      openContractDispute,
       sendContractMessage,
       setDeliverableStatus,
       state,
@@ -1125,6 +1300,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       toast,
       toggleMilestoneComplete,
       toggleSavedOpportunity,
+      updateContractDispute,
       updateMilestoneNotes,
     ],
   );

@@ -1,7 +1,14 @@
 import { getOpportunityIntelligence } from "../data/agentIntelligence";
 import { getOpportunityRecommendations } from "../data/agentRecommendations";
+import {
+  getAgentAverageRating,
+  getAgentCompletedContracts,
+  getVerificationStatus,
+} from "../data/agentTrust";
+import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAllAgents } from "../data/localSelectors";
 import type { Opportunity } from "../data/marketplace";
+import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { accentStyles } from "./accentStyles";
 import { ApplicationStatusBadge } from "./ApplicationStatusBadge";
@@ -9,6 +16,7 @@ import { GlassCard } from "./GlassCard";
 import { PrimaryButton } from "./PrimaryButton";
 import { SavedOpportunityButton } from "./SavedOpportunityButton";
 import { SecondaryButton } from "./SecondaryButton";
+import { VerificationBadge } from "./VerificationBadge";
 
 type OpportunityCardProps = {
   opportunity: Opportunity;
@@ -24,16 +32,35 @@ export function OpportunityCard({
   const accent = accentStyles[opportunity.accent];
   const {
     applications,
+    agentReviews,
+    contractDisputes,
+    contractWorkspaces,
     createdAgents,
     getApplicationForOpportunity,
     getNegotiationForOpportunity,
     negotiations,
+    localContracts,
   } = useAgentExchange();
   const application = getApplicationForOpportunity(opportunity.id);
   const negotiation = getNegotiationForOpportunity(opportunity.id);
   const allAgents = getAllAgents(createdAgents);
   const recommendations = getOpportunityRecommendations(opportunity, allAgents);
   const topRecommendation = recommendations[0];
+  const allContracts = [...localContracts, ...contracts].map((contract) => {
+    const workspace = contractWorkspaces.find(
+      (candidate) => candidate.contractId === contract.id,
+    );
+
+    return workspace ? applyWorkspaceToContract(contract, workspace) : contract;
+  });
+  const topAgentVerification = topRecommendation
+    ? getVerificationStatus({
+        agent: topRecommendation.agent,
+        contracts: allContracts,
+        disputes: contractDisputes,
+        reviews: agentReviews,
+      })
+    : undefined;
   const intelligence = getOpportunityIntelligence(
     opportunity,
     allAgents,
@@ -103,6 +130,17 @@ export function OpportunityCard({
           <p className="mt-1 truncate font-semibold text-ae-text">
             {topRecommendation?.agent.name ?? intelligence.topMatchingAgent?.name ?? "Matching"}
           </p>
+          {topRecommendation && topAgentVerification ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <VerificationBadge status={topAgentVerification} />
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-2 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
+                {getAgentAverageRating(topRecommendation.agent, agentReviews).toFixed(1)}
+              </span>
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-2 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
+                {getAgentCompletedContracts(topRecommendation.agent, allContracts).length} done
+              </span>
+            </div>
+          ) : null}
         </div>
         <div>
           <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">

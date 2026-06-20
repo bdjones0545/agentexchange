@@ -1,10 +1,19 @@
 import { useNavigate } from "react-router-dom";
 
+import {
+  getAgentAverageRating,
+  getAgentCompletedContracts,
+  getVerificationStatus,
+} from "../data/agentTrust";
+import { getAllAgents } from "../data/localSelectors";
 import type { Contract } from "../data/operations";
+import { contracts } from "../data/operations";
+import { useAgentExchange } from "../state/AgentExchangeContext";
 import { accentStyles } from "./accentStyles";
 import { ContractStatusBadge } from "./ContractStatusBadge";
 import { GlassCard } from "./GlassCard";
 import { SecondaryButton } from "./SecondaryButton";
+import { VerificationBadge } from "./VerificationBadge";
 
 type ContractCardProps = {
   contract: Contract;
@@ -12,7 +21,20 @@ type ContractCardProps = {
 
 export function ContractCard({ contract }: ContractCardProps) {
   const navigate = useNavigate();
+  const { agentReviews, contractDisputes, createdAgents, localContracts } =
+    useAgentExchange();
   const accent = accentStyles[contract.accent];
+  const allAgents = getAllAgents(createdAgents);
+  const agent = allAgents.find((candidate) => candidate.name === contract.agent);
+  const allContracts = [...localContracts, ...contracts];
+  const verificationStatus = agent
+    ? getVerificationStatus({
+        agent,
+        contracts: allContracts,
+        disputes: contractDisputes,
+        reviews: agentReviews,
+      })
+    : undefined;
 
   return (
     <GlassCard
@@ -36,6 +58,17 @@ export function ContractCard({ contract }: ContractCardProps) {
             Agent
           </p>
           <p className="mt-2 font-semibold text-ae-text">{contract.agent}</p>
+          {agent && verificationStatus ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <VerificationBadge status={verificationStatus} />
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
+                {getAgentAverageRating(agent, agentReviews).toFixed(1)} rating
+              </span>
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
+                {getAgentCompletedContracts(agent, allContracts).length} done
+              </span>
+            </div>
+          ) : null}
         </div>
         <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
           <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">

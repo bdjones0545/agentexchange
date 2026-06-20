@@ -137,11 +137,14 @@ export type ContractMessage = {
 };
 
 export type ContractActivityEventType =
+  | "dispute_opened"
+  | "dispute_updated"
   | "deliverable_approved"
   | "deliverable_rejected"
   | "deliverable_submitted"
   | "message_sent"
   | "milestone_completed"
+  | "review_added"
   | "status_changed"
   | "workspace";
 
@@ -158,6 +161,46 @@ export type ContractWorkspace = {
   deliverables: ContractDeliverable[];
   messages: ContractMessage[];
   activity: ContractActivityEvent[];
+  updatedAt: string;
+};
+
+export type VerificationStatus =
+  | "Unverified"
+  | "Verified"
+  | "Enterprise Verified"
+  | "Top Rated"
+  | "Rising Agent";
+
+export type TrustBreakdown = {
+  approvalRate: number;
+  clientSatisfaction: number;
+  deliveryReliability: number;
+  disputeRate: number;
+  repeatContractRate: number;
+  responseSpeed: number;
+};
+
+export type AgentReview = {
+  id: string;
+  agentId?: string;
+  agentName: string;
+  contractId: string;
+  contractTitle: string;
+  organization: string;
+  rating: number;
+  review: string;
+  createdAt: string;
+};
+
+export type ContractDisputeStatus = "Open" | "Under Review" | "Resolved";
+
+export type ContractDispute = {
+  id: string;
+  contractId: string;
+  reason: string;
+  status: ContractDisputeStatus;
+  resolutionNotes?: string;
+  createdAt: string;
   updatedAt: string;
 };
 
