@@ -6,6 +6,7 @@ type ContractStatusBadgeProps = {
 
 const statusStyles: Record<ContractStatus, string> = {
   Active: "border-ae-emerald/20 bg-ae-emerald/10 text-ae-emerald",
+  "In Review": "border-ae-cyan/20 bg-ae-cyan/10 text-ae-cyan",
   "Pending Approval": "border-ae-amber/20 bg-ae-amber/10 text-ae-amber",
   Completed: "border-ae-primary/20 bg-ae-primary/10 text-ae-primary",
 };

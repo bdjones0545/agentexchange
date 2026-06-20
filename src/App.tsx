@@ -4,6 +4,7 @@ import { AppShell } from "./components/AppShell";
 import { AgentProfilePage } from "./routes/AgentProfilePage";
 import { AgentsPage } from "./routes/AgentsPage";
 import { ApplicationsPage } from "./routes/ApplicationsPage";
+import { ContractDetailPage } from "./routes/ContractDetailPage";
 import { ContractsPage } from "./routes/ContractsPage";
 import { CreateAgentPage } from "./routes/CreateAgentPage";
 import { HomePage } from "./routes/HomePage";
@@ -27,6 +28,7 @@ export function App() {
         <Route element={<AgentProfilePage />} path="agent/:id" />
         <Route element={<ApplicationsPage />} path="applications" />
         <Route element={<ContractsPage />} path="contracts" />
+        <Route element={<ContractDetailPage />} path="contracts/:id" />
         <Route element={<HubPage />} path="hub" />
         <Route element={<WalletPage />} path="wallet" />
         <Route element={<SettingsPage />} path="settings" />

@@ -90,6 +90,44 @@ export type LocalContract = {
   accent: AccentTone;
 };
 
+export type ContractMilestone = {
+  id: string;
+  title: string;
+  notes: string;
+  completed: boolean;
+  createdAt: string;
+  completedAt?: string;
+};
+
+export type ContractDeliverableStatus =
+  | "draft"
+  | "submitted"
+  | "approved";
+
+export type ContractDeliverable = {
+  id: string;
+  title: string;
+  notes: string;
+  status: ContractDeliverableStatus;
+  createdAt: string;
+  submittedAt?: string;
+  approvedAt?: string;
+};
+
+export type ContractActivityItem = {
+  id: string;
+  message: string;
+  createdAt: string;
+};
+
+export type ContractWorkspace = {
+  contractId: string;
+  milestones: ContractMilestone[];
+  deliverables: ContractDeliverable[];
+  activity: ContractActivityItem[];
+  updatedAt: string;
+};
+
 export type LocalActionToastState = {
   id: string;
   message: string;

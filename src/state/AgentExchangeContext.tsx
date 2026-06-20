@@ -10,6 +10,7 @@ import {
 
 import type {
   Application,
+  ContractWorkspace,
   CreateAgentInput,
   CreatedAgent,
   CreatedOpportunity,
@@ -25,6 +26,7 @@ const STORAGE_KEY = "agentexchange-local-mvp";
 
 type PersistedState = {
   applications: Application[];
+  contractWorkspaces: ContractWorkspace[];
   createdAgents: CreatedAgent[];
   createdOpportunities: CreatedOpportunity[];
   hireRequests: HireRequest[];
@@ -58,6 +60,16 @@ type SubmitHireRequestInput = {
 };
 
 type AgentExchangeContextValue = PersistedState & {
+  addContractDeliverable: (
+    contractId: string,
+    title: string,
+    notes: string,
+  ) => void;
+  addContractMilestone: (
+    contractId: string,
+    title: string,
+    notes: string,
+  ) => void;
   toast: LocalActionToastState | null;
   acceptApplication: (applicationId: string) => void;
   acceptHireRequest: (hireRequestId: string) => void;
@@ -65,16 +77,29 @@ type AgentExchangeContextValue = PersistedState & {
   createAgent: (input: CreateAgentInput) => CreatedAgent;
   createOpportunity: (input: CreateOpportunityInput) => CreatedOpportunity;
   getApplicationForOpportunity: (opportunityId: string) => Application | undefined;
+  getContractWorkspace: (contractId: string) => ContractWorkspace;
   getNegotiationForOpportunity: (opportunityId: string) => Negotiation | undefined;
   isOpportunitySaved: (opportunityId: string) => boolean;
+  setDeliverableStatus: (
+    contractId: string,
+    deliverableId: string,
+    status: "submitted" | "approved",
+  ) => void;
   submitApplication: (input: SubmitApplicationInput) => void;
   submitHireRequest: (input: SubmitHireRequestInput) => void;
   submitNegotiation: (input: SubmitNegotiationInput) => void;
+  toggleMilestoneComplete: (contractId: string, milestoneId: string) => void;
   toggleSavedOpportunity: (opportunityId: string) => void;
+  updateMilestoneNotes: (
+    contractId: string,
+    milestoneId: string,
+    notes: string,
+  ) => void;
 };
 
 const defaultPersistedState: PersistedState = {
   applications: [],
+  contractWorkspaces: [],
   createdAgents: [],
   createdOpportunities: [],
   hireRequests: [],
@@ -100,6 +125,54 @@ function formatLocalDate(offsetDays = 0) {
   });
 }
 
+function formatActivityTimestamp() {
+  return new Date().toLocaleString("en-US", {
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+  });
+}
+
+function createEmptyWorkspace(contractId: string): ContractWorkspace {
+  const createdAt = new Date().toISOString();
+
+  return {
+    activity: [
+      {
+        id: createId("activity"),
+        createdAt,
+        message: `Workspace opened ${formatActivityTimestamp()}.`,
+      },
+    ],
+    contractId,
+    deliverables: [],
+    milestones: [],
+    updatedAt: createdAt,
+  };
+}
+
+function withWorkspace(
+  current: PersistedState,
+  contractId: string,
+  updater: (workspace: ContractWorkspace) => ContractWorkspace,
+) {
+  const existingWorkspace = current.contractWorkspaces.find(
+    (workspace) => workspace.contractId === contractId,
+  );
+  const baseWorkspace = existingWorkspace ?? createEmptyWorkspace(contractId);
+  const nextWorkspace = updater(baseWorkspace);
+
+  return {
+    ...current,
+    contractWorkspaces: existingWorkspace
+      ? current.contractWorkspaces.map((workspace) =>
+          workspace.contractId === contractId ? nextWorkspace : workspace,
+        )
+      : [...current.contractWorkspaces, nextWorkspace],
+  };
+}
+
 function safeParseState(rawValue: string | null): PersistedState {
   if (!rawValue) {
     return defaultPersistedState;
@@ -110,6 +183,7 @@ function safeParseState(rawValue: string | null): PersistedState {
 
     return {
       applications: parsed.applications ?? [],
+      contractWorkspaces: parsed.contractWorkspaces ?? [],
       createdAgents: parsed.createdAgents ?? [],
       createdOpportunities: parsed.createdOpportunities ?? [],
       hireRequests: parsed.hireRequests ?? [],
@@ -216,6 +290,195 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       showToast("Agent created.");
 
       return createdAgent;
+    },
+    [showToast],
+  );
+
+  const addContractMilestone = useCallback(
+    (contractId: string, title: string, notes: string) => {
+      setState((current) =>
+        withWorkspace(current, contractId, (workspace) => {
+          const now = new Date().toISOString();
+          const milestone = {
+            id: createId("milestone"),
+            completed: false,
+            createdAt: now,
+            notes,
+            title,
+          };
+
+          return {
+            ...workspace,
+            activity: [
+              {
+                id: createId("activity"),
+                createdAt: now,
+                message: `Milestone added: ${title}.`,
+              },
+              ...workspace.activity,
+            ],
+            milestones: [...workspace.milestones, milestone],
+            updatedAt: now,
+          };
+        }),
+      );
+      showToast("Milestone added.");
+    },
+    [showToast],
+  );
+
+  const toggleMilestoneComplete = useCallback(
+    (contractId: string, milestoneId: string) => {
+      setState((current) =>
+        withWorkspace(current, contractId, (workspace) => {
+          const now = new Date().toISOString();
+          const milestone = workspace.milestones.find(
+            (candidate) => candidate.id === milestoneId,
+          );
+
+          return {
+            ...workspace,
+            activity: milestone
+              ? [
+                  {
+                    id: createId("activity"),
+                    createdAt: now,
+                    message: `${milestone.completed ? "Reopened" : "Completed"} milestone: ${milestone.title}.`,
+                  },
+                  ...workspace.activity,
+                ]
+              : workspace.activity,
+            milestones: workspace.milestones.map((candidate) =>
+              candidate.id === milestoneId
+                ? {
+                    ...candidate,
+                    completed: !candidate.completed,
+                    completedAt: candidate.completed ? undefined : now,
+                  }
+                : candidate,
+            ),
+            updatedAt: now,
+          };
+        }),
+      );
+      showToast("Milestone updated.");
+    },
+    [showToast],
+  );
+
+  const updateMilestoneNotes = useCallback(
+    (contractId: string, milestoneId: string, notes: string) => {
+      setState((current) =>
+        withWorkspace(current, contractId, (workspace) => {
+          const now = new Date().toISOString();
+
+          return {
+            ...workspace,
+            activity: [
+              {
+                id: createId("activity"),
+                createdAt: now,
+                message: "Milestone notes updated.",
+              },
+              ...workspace.activity,
+            ],
+            milestones: workspace.milestones.map((candidate) =>
+              candidate.id === milestoneId
+                ? {
+                    ...candidate,
+                    notes,
+                  }
+                : candidate,
+            ),
+            updatedAt: now,
+          };
+        }),
+      );
+      showToast("Milestone notes saved.");
+    },
+    [showToast],
+  );
+
+  const addContractDeliverable = useCallback(
+    (contractId: string, title: string, notes: string) => {
+      setState((current) =>
+        withWorkspace(current, contractId, (workspace) => {
+          const now = new Date().toISOString();
+          const deliverable = {
+            id: createId("deliverable"),
+            createdAt: now,
+            notes,
+            status: "draft" as const,
+            title,
+          };
+
+          return {
+            ...workspace,
+            activity: [
+              {
+                id: createId("activity"),
+                createdAt: now,
+                message: `Deliverable added: ${title}.`,
+              },
+              ...workspace.activity,
+            ],
+            deliverables: [...workspace.deliverables, deliverable],
+            updatedAt: now,
+          };
+        }),
+      );
+      showToast("Deliverable added.");
+    },
+    [showToast],
+  );
+
+  const setDeliverableStatus = useCallback(
+    (
+      contractId: string,
+      deliverableId: string,
+      status: "submitted" | "approved",
+    ) => {
+      setState((current) =>
+        withWorkspace(current, contractId, (workspace) => {
+          const now = new Date().toISOString();
+          const deliverable = workspace.deliverables.find(
+            (candidate) => candidate.id === deliverableId,
+          );
+
+          return {
+            ...workspace,
+            activity: deliverable
+              ? [
+                  {
+                    id: createId("activity"),
+                    createdAt: now,
+                    message: `Deliverable ${status}: ${deliverable.title}.`,
+                  },
+                  ...workspace.activity,
+                ]
+              : workspace.activity,
+            deliverables: workspace.deliverables.map((candidate) =>
+              candidate.id === deliverableId
+                ? {
+                    ...candidate,
+                    approvedAt: status === "approved" ? now : candidate.approvedAt,
+                    status,
+                    submittedAt:
+                      status === "submitted" || status === "approved"
+                        ? candidate.submittedAt ?? now
+                        : candidate.submittedAt,
+                  }
+                : candidate,
+            ),
+            updatedAt: now,
+          };
+        }),
+      );
+      showToast(
+        status === "approved"
+          ? "Deliverable approved."
+          : "Deliverable submitted.",
+      );
     },
     [showToast],
   );
@@ -427,6 +690,8 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       toast,
       acceptApplication,
       acceptHireRequest,
+      addContractDeliverable,
+      addContractMilestone,
       clearToast,
       createAgent,
       createOpportunity,
@@ -434,6 +699,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         state.applications.find(
           (application) => application.opportunityId === opportunityId,
         ),
+      getContractWorkspace: (contractId) =>
+        state.contractWorkspaces.find(
+          (workspace) => workspace.contractId === contractId,
+        ) ?? createEmptyWorkspace(contractId),
       getNegotiationForOpportunity: (opportunityId) =>
         state.negotiations.find(
           (negotiation) => negotiation.opportunityId === opportunityId,
@@ -442,23 +711,31 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         state.savedOpportunities.some(
           (savedOpportunity) => savedOpportunity.opportunityId === opportunityId,
         ),
+      setDeliverableStatus,
       submitApplication,
       submitHireRequest,
       submitNegotiation,
+      toggleMilestoneComplete,
       toggleSavedOpportunity,
+      updateMilestoneNotes,
     }),
     [
       acceptApplication,
       acceptHireRequest,
+      addContractDeliverable,
+      addContractMilestone,
       clearToast,
       createAgent,
       createOpportunity,
+      setDeliverableStatus,
       state,
       submitApplication,
       submitHireRequest,
       submitNegotiation,
       toast,
+      toggleMilestoneComplete,
       toggleSavedOpportunity,
+      updateMilestoneNotes,
     ],
   );
 

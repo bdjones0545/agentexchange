@@ -1,4 +1,5 @@
 import { ContractCard } from "../components/ContractCard";
+import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { contracts, type ContractStatus } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
@@ -8,6 +9,11 @@ const sections: { title: string; status: ContractStatus; description: string }[]
       title: "Active Contracts",
       status: "Active",
       description: "In-flight operational contracts with active milestones.",
+    },
+    {
+      title: "In Review",
+      status: "In Review",
+      description: "Contracts with submitted deliverables awaiting approval.",
     },
     {
       title: "Pending Approval",
@@ -22,8 +28,10 @@ const sections: { title: string; status: ContractStatus; description: string }[]
   ];
 
 export function ContractsPage() {
-  const { localContracts } = useAgentExchange();
-  const allContracts = [...localContracts, ...contracts];
+  const { getContractWorkspace, localContracts } = useAgentExchange();
+  const allContracts = [...localContracts, ...contracts].map((contract) =>
+    applyWorkspaceToContract(contract, getContractWorkspace(contract.id)),
+  );
 
   return (
     <section className="space-y-10">

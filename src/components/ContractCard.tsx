@@ -1,3 +1,5 @@
+import { useNavigate } from "react-router-dom";
+
 import type { Contract } from "../data/operations";
 import { accentStyles } from "./accentStyles";
 import { ContractStatusBadge } from "./ContractStatusBadge";
@@ -9,6 +11,7 @@ type ContractCardProps = {
 };
 
 export function ContractCard({ contract }: ContractCardProps) {
+  const navigate = useNavigate();
   const accent = accentStyles[contract.accent];
 
   return (
@@ -71,7 +74,12 @@ export function ContractCard({ contract }: ContractCardProps) {
         </div>
       </div>
 
-      <SecondaryButton className="w-full sm:w-auto">View Details</SecondaryButton>
+      <SecondaryButton
+        className="w-full sm:w-auto"
+        onClick={() => navigate(`/contracts/${contract.id}`)}
+      >
+        View Details
+      </SecondaryButton>
     </GlassCard>
   );
 }

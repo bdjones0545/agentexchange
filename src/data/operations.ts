@@ -1,6 +1,10 @@
 import type { AccentTone } from "./marketplace";
 
-export type ContractStatus = "Active" | "Pending Approval" | "Completed";
+export type ContractStatus =
+  | "Active"
+  | "In Review"
+  | "Pending Approval"
+  | "Completed";
 
 export type Organization = {
   id: string;
