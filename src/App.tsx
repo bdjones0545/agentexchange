@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
+import { AccountPage } from "./routes/AccountPage";
 import { AgentProfilePage } from "./routes/AgentProfilePage";
 import { AgentsPage } from "./routes/AgentsPage";
 import { ApplicationsPage } from "./routes/ApplicationsPage";
@@ -16,6 +17,8 @@ import { OrganizationsPage } from "./routes/OrganizationsPage";
 import { PostOpportunityPage } from "./routes/PostOpportunityPage";
 import { SavedPage } from "./routes/SavedPage";
 import { SettingsPage } from "./routes/SettingsPage";
+import { SignInPage } from "./routes/SignInPage";
+import { SignUpPage } from "./routes/SignUpPage";
 import { WalletPage } from "./routes/WalletPage";
 
 export function App() {
@@ -41,6 +44,9 @@ export function App() {
         />
         <Route element={<WalletPage />} path="wallet" />
         <Route element={<SettingsPage />} path="settings" />
+        <Route element={<SignInPage />} path="sign-in" />
+        <Route element={<SignUpPage />} path="sign-up" />
+        <Route element={<AccountPage />} path="account" />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Route>
     </Routes>

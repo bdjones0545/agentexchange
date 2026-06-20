@@ -1,9 +1,11 @@
 import { NavLink, useLocation } from "react-router-dom";
 
 import { navigationItems } from "../data/navigation";
+import { useAuth } from "../state/AuthContext";
 
 export function TopNavigation() {
   const location = useLocation();
+  const { isAuthenticated } = useAuth();
 
   return (
     <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-ae-background/80 backdrop-blur-2xl">
@@ -53,12 +55,19 @@ export function TopNavigation() {
           ))}
         </div>
 
-        <div
-          aria-label="Demo account status"
-          className="grid size-10 place-items-center rounded-full border border-ae-cyan/30 bg-ae-cyan/10 text-ae-cyan shadow-[0_0_24px_rgb(103_232_249_/_0.14)]"
+        <NavLink
+          className={({ isActive }) =>
+            [
+              "hidden rounded-full border px-4 py-2 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] transition sm:inline-flex",
+              isActive
+                ? "border-ae-primary/40 bg-ae-primary/15 text-ae-primary shadow-ae-glow"
+                : "border-ae-cyan/30 bg-ae-cyan/10 text-ae-cyan hover:border-ae-primary/40 hover:text-ae-primary",
+            ].join(" ")
+          }
+          to={isAuthenticated ? "/account" : "/sign-in"}
         >
-          <span className="size-2 rounded-full bg-ae-emerald" />
-        </div>
+          {isAuthenticated ? "Account" : "Sign In"}
+        </NavLink>
       </nav>
     </header>
   );

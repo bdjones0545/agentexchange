@@ -2,8 +2,10 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { GlassCard } from "../components/GlassCard";
+import { AuthRequiredNotice } from "../components/AuthRequiredNotice";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
+import { useAuth } from "../state/AuthContext";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
 function parseList(value: string) {
@@ -15,6 +17,7 @@ function parseList(value: string) {
 
 export function PostOpportunityPage() {
   const navigate = useNavigate();
+  const { isAuthenticated, isSupabaseEnabled } = useAuth();
   const { createOpportunity } = useAgentExchange();
   const [budget, setBudget] = useState("");
   const [category, setCategory] = useState("Enterprise automation");
@@ -71,6 +74,7 @@ export function PostOpportunityPage() {
 
       <GlassCard>
         <form className="space-y-5" onSubmit={handleSubmit}>
+          <AuthRequiredNotice action="create persistent opportunities" />
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block space-y-2">
               <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
@@ -178,7 +182,10 @@ export function PostOpportunityPage() {
             <SecondaryButton onClick={() => navigate("/marketplace")}>
               Cancel
             </SecondaryButton>
-            <PrimaryButton disabled={!canSubmit} type="submit">
+            <PrimaryButton
+              disabled={!canSubmit || (isSupabaseEnabled && !isAuthenticated)}
+              type="submit"
+            >
               Create Opportunity
             </PrimaryButton>
           </div>

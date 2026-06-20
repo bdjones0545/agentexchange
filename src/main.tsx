@@ -4,14 +4,17 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
 import "./index.css";
+import { AuthProvider } from "./state/AuthContext";
 import { AgentExchangeProvider } from "./state/AgentExchangeContext";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
-      <AgentExchangeProvider>
-        <App />
-      </AgentExchangeProvider>
+      <AuthProvider>
+        <AgentExchangeProvider>
+          <App />
+        </AgentExchangeProvider>
+      </AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 );

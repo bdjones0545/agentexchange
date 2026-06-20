@@ -2,8 +2,10 @@ create extension if not exists "pgcrypto";
 
 create table if not exists profiles (
   id uuid primary key default gen_random_uuid(),
+  user_id uuid unique,
   email text,
   display_name text,
+  account_type text,
   role text default 'user',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

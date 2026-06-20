@@ -1,4 +1,7 @@
+import { useNavigate } from "react-router-dom";
+
 import { IntegrationStatusCard } from "../components/IntegrationStatusCard";
+import { SecondaryButton } from "../components/SecondaryButton";
 import { NotificationPreferenceCard } from "../components/NotificationPreferenceCard";
 import { SettingsSection } from "../components/SettingsSection";
 import { StatusChip } from "../components/StatusChip";
@@ -13,6 +16,8 @@ import {
 } from "../data/settings";
 
 export function SettingsPage() {
+  const navigate = useNavigate();
+
   return (
     <section className="space-y-8">
       <div>
@@ -45,7 +50,12 @@ export function SettingsPage() {
               {profileIdentity.tier}
             </p>
           </div>
-          <StatusChip status={profileIdentity.status} />
+          <div className="flex flex-col gap-2">
+            <StatusChip status={profileIdentity.status} />
+            <SecondaryButton onClick={() => navigate("/account")}>
+              Account
+            </SecondaryButton>
+          </div>
         </div>
       </SettingsSection>
 

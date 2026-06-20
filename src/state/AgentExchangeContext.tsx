@@ -16,6 +16,8 @@ import {
   loadAgentExchangeState,
   saveAgentExchangeState,
 } from "../lib/repositories/activityRepository";
+import { isSupabaseConfigured } from "../lib/supabase";
+import { useAuth } from "./AuthContext";
 import type {
   AgentActivityEvent,
   AgentExchangePersistedState,
@@ -322,6 +324,7 @@ function withWorkspace(
 }
 
 export function AgentExchangeProvider({ children }: PropsWithChildren) {
+  const { isAuthenticated } = useAuth();
   const [state, setState] = useState<PersistedState>(defaultPersistedState);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -384,8 +387,39 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     setToast(null);
   }, []);
 
+  const requireAuthForPersistentWrite = useCallback(
+    (action: string) => {
+      if (isSupabaseConfigured && !isAuthenticated) {
+        showToast(`Sign in required to ${action}.`);
+        return false;
+      }
+
+      return true;
+    },
+    [isAuthenticated, showToast],
+  );
+
   const createOpportunity = useCallback(
     (input: CreateOpportunityInput) => {
+      if (!requireAuthForPersistentWrite("create opportunities")) {
+        const authRequiredOpportunity: CreatedOpportunity = {
+          accent: "violet",
+          budget: input.budget,
+          cadence: input.duration,
+          category: input.category,
+          createdAt: new Date().toISOString(),
+          id: "auth-required-opportunity",
+          matchScore: 0,
+          organization: input.organization,
+          summary: input.description,
+          tags: input.requiredSkills,
+          title: input.title,
+          trustLevel: "Auth Required",
+        };
+
+        return authRequiredOpportunity;
+      }
+
       const createdOpportunity: CreatedOpportunity = {
         accent: "violet",
         budget: input.budget,
@@ -415,11 +449,35 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
 
       return createdOpportunity;
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const createAgent = useCallback(
     (input: CreateAgentInput) => {
+      if (!requireAuthForPersistentWrite("create agents")) {
+        const authRequiredAgent: CreatedAgent = {
+          accent: "violet",
+          availability: input.availability,
+          avatarInitials: "AI",
+          contractHistoryIds: [],
+          createdAt: new Date().toISOString(),
+          customSkills: input.skills,
+          description: input.description,
+          id: "auth-required-agent",
+          name: input.name,
+          revenue: "$0",
+          skillIds: [],
+          specialty: input.specialty,
+          startingRate: input.startingRate,
+          successRate: "New",
+          tier: "Auth Required",
+          toolAccess: input.toolAccess,
+          trustScore: 0,
+        };
+
+        return authRequiredAgent;
+      }
+
       const initials = input.name
         .split(" ")
         .map((part) => part[0])
@@ -454,11 +512,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
 
       return createdAgent;
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const addContractMilestone = useCallback(
     (contractId: string, title: string, notes: string) => {
+      if (!requireAuthForPersistentWrite("update contracts")) {
+        return;
+      }
+
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
           const now = new Date().toISOString();
@@ -488,11 +550,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       );
       showToast("Milestone added.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const toggleMilestoneComplete = useCallback(
     (contractId: string, milestoneId: string) => {
+      if (!requireAuthForPersistentWrite("update contracts")) {
+        return;
+      }
+
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
           const now = new Date().toISOString();
@@ -530,11 +596,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       );
       showToast("Milestone updated.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const updateMilestoneNotes = useCallback(
     (contractId: string, milestoneId: string, notes: string) => {
+      if (!requireAuthForPersistentWrite("update contracts")) {
+        return;
+      }
+
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
           const now = new Date().toISOString();
@@ -564,11 +634,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       );
       showToast("Milestone notes saved.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const addContractDeliverable = useCallback(
     (contractId: string, title: string, notes: string) => {
+      if (!requireAuthForPersistentWrite("update contracts")) {
+        return;
+      }
+
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
           const now = new Date().toISOString();
@@ -599,7 +673,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       );
       showToast("Deliverable added.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const setDeliverableStatus = useCallback(
@@ -609,6 +683,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       status: "submitted" | "approved" | "rejected",
       note = "",
     ) => {
+      if (!requireAuthForPersistentWrite("update deliverables")) {
+        return;
+      }
+
       setState((current) =>
         {
           const relatedContract = current.localContracts.find(
@@ -721,7 +799,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
             : "Deliverable submitted.",
       );
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const sendContractMessage = useCallback(
@@ -731,6 +809,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       author: string,
       body: string,
     ) => {
+      if (!requireAuthForPersistentWrite("send messages")) {
+        return;
+      }
+
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
           const now = new Date().toISOString();
@@ -760,7 +842,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       );
       showToast("Message sent.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const addAgentReview = useCallback(
@@ -772,6 +854,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       rating: number,
       review: string,
     ) => {
+      if (!requireAuthForPersistentWrite("create reviews")) {
+        return;
+      }
+
       setState((current) => {
         const relatedApplication = current.applications.find(
           (application) =>
@@ -825,11 +911,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Review saved.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const openContractDispute = useCallback(
     (contractId: string, reason: string) => {
+      if (!requireAuthForPersistentWrite("open disputes")) {
+        return;
+      }
+
       setState((current) => {
         const now = new Date().toISOString();
         const nextState = withWorkspace(current, contractId, (workspace) => ({
@@ -863,7 +953,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Dispute opened.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const updateContractDispute = useCallback(
@@ -873,6 +963,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       status: ContractDisputeStatus,
       resolutionNotes = "",
     ) => {
+      if (!requireAuthForPersistentWrite("update disputes")) {
+        return;
+      }
+
       setState((current) => {
         const now = new Date().toISOString();
         const nextState = withWorkspace(current, contractId, (workspace) => ({
@@ -906,7 +1000,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Dispute updated.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const toggleSavedOpportunity = useCallback(
@@ -945,6 +1039,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
 
   const submitApplication = useCallback(
     (input: SubmitApplicationInput) => {
+      if (!requireAuthForPersistentWrite("apply to opportunities")) {
+        return;
+      }
+
       setState((current) => {
         const existingApplication = current.applications.find(
           (application) => application.opportunityId === input.opportunityId,
@@ -978,11 +1076,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Application submitted.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const submitNegotiation = useCallback(
     (input: SubmitNegotiationInput) => {
+      if (!requireAuthForPersistentWrite("negotiate opportunities")) {
+        return;
+      }
+
       setState((current) => {
         const simulatedAgent = getSimulatedAgentForOpportunity(input.opportunityId);
         const existingNegotiation = current.negotiations.find(
@@ -1024,11 +1126,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Negotiation submitted.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const submitHireRequest = useCallback(
     (input: SubmitHireRequestInput) => {
+      if (!requireAuthForPersistentWrite("hire agents")) {
+        return;
+      }
+
       setState((current) => ({
         ...current,
         agentActivities: [
@@ -1052,11 +1158,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       }));
       showToast("Hire request submitted.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const acceptApplication = useCallback(
     (applicationId: string) => {
+      if (!requireAuthForPersistentWrite("accept applications")) {
+        return;
+      }
+
       setState((current) => {
         const application = current.applications.find(
           (candidate) => candidate.id === applicationId,
@@ -1111,11 +1221,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Application accepted and contract created.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const rejectApplication = useCallback(
     (applicationId: string) => {
+      if (!requireAuthForPersistentWrite("reject applications")) {
+        return;
+      }
+
       setState((current) => {
         const application = current.applications.find(
           (candidate) => candidate.id === applicationId,
@@ -1148,11 +1262,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Application rejected.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const acceptNegotiation = useCallback(
     (negotiationId: string) => {
+      if (!requireAuthForPersistentWrite("accept negotiations")) {
+        return;
+      }
+
       setState((current) => {
         const negotiation = current.negotiations.find(
           (candidate) => candidate.id === negotiationId,
@@ -1226,11 +1344,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Negotiation accepted and contract created.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const rejectNegotiation = useCallback(
     (negotiationId: string) => {
+      if (!requireAuthForPersistentWrite("reject negotiations")) {
+        return;
+      }
+
       setState((current) => ({
         ...current,
         negotiations: current.negotiations.map((candidate) =>
@@ -1244,7 +1366,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       }));
       showToast("Negotiation rejected.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const counterNegotiation = useCallback(
@@ -1254,6 +1376,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       counterTimeline: string,
       counterNote: string,
     ) => {
+      if (!requireAuthForPersistentWrite("counter negotiations")) {
+        return;
+      }
+
       setState((current) => ({
         ...current,
         negotiations: current.negotiations.map((candidate) =>
@@ -1270,11 +1396,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       }));
       showToast("Counter negotiation saved.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const acceptHireRequest = useCallback(
     (hireRequestId: string) => {
+      if (!requireAuthForPersistentWrite("accept hire requests")) {
+        return;
+      }
+
       setState((current) => {
         const hireRequest = current.hireRequests.find(
           (candidate) => candidate.id === hireRequestId,
@@ -1323,11 +1453,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Hire request accepted and contract created.");
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const approveSuggestedAgentAction = useCallback(
     (action: SuggestedAgentAction) => {
+      if (!requireAuthForPersistentWrite("approve suggested actions")) {
+        return;
+      }
+
       if (action.type === "apply_to_opportunity" && action.opportunityId) {
         submitApplication({
           agentId: action.agentId,
@@ -1437,6 +1571,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       submitApplication,
       submitNegotiation,
       toggleMilestoneComplete,
+      requireAuthForPersistentWrite,
     ],
   );
 

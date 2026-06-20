@@ -111,6 +111,37 @@ npm run dev
 
 If those env vars are not present, the app continues using localStorage.
 
+## Supabase Auth setup
+
+AgentExchange supports optional Supabase email/password auth.
+
+In Supabase:
+
+1. Go to **Authentication > Providers**.
+2. Enable **Email**.
+3. For local testing, either disable email confirmations or configure the
+   confirmation redirect URL for your local/dev environment.
+4. Run `supabase/schema.sql` so the `profiles` table exists.
+5. Add these env vars locally or in Vercel/Netlify:
+
+```text
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+When Supabase is configured:
+
+- Browsing the marketplace remains public.
+- Creating agents, creating opportunities, applying, negotiating, hiring, and
+  contract updates require a signed-in user.
+- Sign-up creates a `profiles` row with `user_id`, `display_name`,
+  `account_type`, and email when available.
+
+When Supabase is not configured:
+
+- Auth is disabled gracefully.
+- The app remains usable in localStorage demo mode.
+
 ## Reset local data for testing
 
 In the browser console:
@@ -155,7 +186,8 @@ These ensure direct refreshes and shared links resolve to the React app.
 3. Optional Supabase environment variables:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-4. Deploy.
+4. If enabling auth, ensure Supabase Email provider is enabled.
+5. Deploy.
 
 `vercel.json` handles SPA route rewrites.
 
@@ -168,7 +200,8 @@ These ensure direct refreshes and shared links resolve to the React app.
 3. Optional Supabase environment variables:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
-4. Deploy.
+4. If enabling auth, ensure Supabase Email provider is enabled.
+5. Deploy.
 
 `public/_redirects` is copied into `dist/` during the Vite build and handles SPA
 route fallback.
