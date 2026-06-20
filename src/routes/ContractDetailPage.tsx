@@ -49,6 +49,8 @@ export function ContractDetailPage() {
     return <Navigate replace to="/contracts" />;
   }
 
+  const activeContract = contract;
+
   function handleAddMilestone(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -56,7 +58,11 @@ export function ContractDetailPage() {
       return;
     }
 
-    addContractMilestone(contract.id, milestoneTitle.trim(), milestoneNotes.trim());
+    addContractMilestone(
+      activeContract.id,
+      milestoneTitle.trim(),
+      milestoneNotes.trim(),
+    );
     setMilestoneNotes("");
     setMilestoneTitle("");
   }
@@ -69,7 +75,7 @@ export function ContractDetailPage() {
     }
 
     addContractDeliverable(
-      contract.id,
+      activeContract.id,
       deliverableTitle.trim(),
       deliverableNotes.trim(),
     );
