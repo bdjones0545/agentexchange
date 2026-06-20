@@ -1062,7 +1062,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           (candidate) => candidate.id === applicationId,
         );
 
-        if (!application || application.status === "accepted") {
+        if (
+          !application ||
+          application.status !== "pending" ||
+          current.localContracts.some(
+            (contract) =>
+              contract.sourceType === "application" &&
+              contract.sourceId === application.id,
+          )
+        ) {
           return current;
         }
 
@@ -1150,7 +1158,16 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           (candidate) => candidate.id === negotiationId,
         );
 
-        if (!negotiation || negotiation.status === "accepted") {
+        if (
+          !negotiation ||
+          (negotiation.status !== "pending" &&
+            negotiation.status !== "countered") ||
+          current.localContracts.some(
+            (contract) =>
+              contract.sourceType === "negotiation" &&
+              contract.sourceId === negotiation.id,
+          )
+        ) {
           return current;
         }
 
@@ -1263,7 +1280,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           (candidate) => candidate.id === hireRequestId,
         );
 
-        if (!hireRequest || hireRequest.status === "accepted") {
+        if (
+          !hireRequest ||
+          hireRequest.status !== "pending" ||
+          current.localContracts.some(
+            (contract) =>
+              contract.sourceType === "hire-request" &&
+              contract.sourceId === hireRequest.id,
+          )
+        ) {
           return current;
         }
 

@@ -43,6 +43,8 @@ export function OpportunityCard({
   } = useAgentExchange();
   const application = getApplicationForOpportunity(opportunity.id);
   const negotiation = getNegotiationForOpportunity(opportunity.id);
+  const hasLockedApplication =
+    application?.status === "accepted" || application?.status === "pending";
   const allAgents = getAllAgents(createdAgents);
   const recommendations = getOpportunityRecommendations(opportunity, allAgents);
   const topRecommendation = recommendations[0];
@@ -202,10 +204,14 @@ export function OpportunityCard({
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <PrimaryButton
-            disabled={Boolean(application)}
+            disabled={hasLockedApplication}
             onClick={() => onApply?.(opportunity)}
           >
-            {application ? "Applied" : "Apply"}
+            {application?.status === "rejected"
+              ? "Reapply"
+              : application
+                ? "Applied"
+                : "Apply"}
           </PrimaryButton>
           <SecondaryButton onClick={() => onNegotiate?.(opportunity)}>
             {negotiation ? "Update Terms" : "Negotiate"}

@@ -80,7 +80,9 @@ export function OrganizationProfilePage() {
       </button>
 
       <OrganizationProfileHeader
-        onOpenDashboard={() => navigate("/organization-dashboard")}
+        onOpenDashboard={() =>
+          navigate(`/organization-dashboard?organization=${summary.id}`)
+        }
         organization={summary}
       />
       <OrganizationStats stats={summary} />

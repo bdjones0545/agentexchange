@@ -32,7 +32,9 @@ export function TopNavigation() {
                   const isRouteActive =
                     isActive ||
                     (item.path === "/agents" &&
-                      location.pathname.startsWith("/agent/"));
+                      location.pathname.startsWith("/agent/")) ||
+                    (item.path === "/organizations" &&
+                      location.pathname.startsWith("/organization/"));
 
                   return [
                     "whitespace-nowrap rounded-full px-3 py-2 font-ae-label text-[11px] font-semibold uppercase tracking-[0.08em] transition xl:px-4 xl:text-xs",

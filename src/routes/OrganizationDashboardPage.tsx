@@ -1,3 +1,5 @@
+import { useSearchParams } from "react-router-dom";
+
 import { ContractCard } from "../components/ContractCard";
 import { ApplicantReviewCard } from "../components/ApplicantReviewCard";
 import { OrganizationStats } from "../components/OrganizationStats";
@@ -13,11 +15,13 @@ import {
   getOrganizationNegotiations,
   getOrganizationOpportunities,
   getOrganizationSummary,
+  slugifyOrganization,
 } from "../data/organizations";
 import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
 export function OrganizationDashboardPage() {
+  const [searchParams] = useSearchParams();
   const {
     agentReviews,
     applications,
@@ -45,7 +49,17 @@ export function OrganizationDashboardPage() {
     opportunities,
     reviews: agentReviews,
   };
-  const organization = getAllOrganizations(opportunities)[0];
+  const organizations = getAllOrganizations(opportunities);
+  const requestedOrganizationId = searchParams.get("organization");
+  const latestCreatedOrganizationId = createdOpportunities[0]?.organization
+    ? slugifyOrganization(createdOpportunities[0].organization)
+    : undefined;
+  const organization =
+    organizations.find(
+      (candidate) =>
+        candidate.id === requestedOrganizationId ||
+        candidate.id === latestCreatedOrganizationId,
+    ) ?? organizations[0];
   const summary = getOrganizationSummary(organization, context);
   const postedOpportunities = getOrganizationOpportunities(
     organization,

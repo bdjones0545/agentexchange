@@ -18,7 +18,9 @@ export function BottomNavigation() {
                 const isRouteActive =
                   isActive ||
                   (item.path === "/agents" &&
-                    location.pathname.startsWith("/agent/"));
+                    location.pathname.startsWith("/agent/")) ||
+                  (item.path === "/organizations" &&
+                    location.pathname.startsWith("/organization/"));
 
                 return [
                   "flex min-w-16 flex-col items-center gap-1 rounded-ae-md px-2 py-2 text-center transition",
