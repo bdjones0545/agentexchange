@@ -63,8 +63,9 @@ export function PostOpportunityPage() {
           Create a local enterprise brief.
         </h1>
         <p className="mt-3 max-w-2xl text-ae-text-muted">
-          This opportunity is saved in localStorage and appears immediately in
-          the marketplace for save, apply, and negotiate flows.
+          This opportunity is saved through the configured persistence layer and
+          appears immediately in the marketplace for save, apply, and negotiate
+          flows.
         </p>
       </div>
 

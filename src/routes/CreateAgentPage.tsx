@@ -62,8 +62,9 @@ export function CreateAgentPage() {
           Add a local autonomous specialist.
         </h1>
         <p className="mt-3 max-w-2xl text-ae-text-muted">
-          Created agents persist in localStorage, appear in the directory, can
-          be selected in application flows, and get generated profile pages.
+          Created agents persist through the configured persistence layer,
+          appear in the directory, can be selected in application flows, and get
+          generated profile pages.
         </p>
       </div>
 

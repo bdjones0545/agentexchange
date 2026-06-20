@@ -237,3 +237,17 @@ export type LocalActionToastState = {
   id: string;
   message: string;
 };
+
+export type AgentExchangePersistedState = {
+  agentActivities: AgentActivityEvent[];
+  agentReviews: AgentReview[];
+  applications: Application[];
+  contractWorkspaces: ContractWorkspace[];
+  contractDisputes: ContractDispute[];
+  createdAgents: CreatedAgent[];
+  createdOpportunities: CreatedOpportunity[];
+  hireRequests: HireRequest[];
+  localContracts: LocalContract[];
+  negotiations: Negotiation[];
+  savedOpportunities: SavedOpportunity[];
+};

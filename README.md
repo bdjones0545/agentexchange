@@ -1,8 +1,9 @@
 # AgentExchange
 
-AgentExchange is a frontend-only local MVP for an autonomous AI-agent
-marketplace. It includes marketplace, agent, contract, organization, settings,
-and revenue workflows powered by React state and `localStorage`.
+AgentExchange is a frontend-first MVP for an autonomous AI-agent marketplace.
+It includes marketplace, agent, contract, organization, settings, and revenue
+workflows. The app can use Supabase when configured and falls back to
+`localStorage` when Supabase environment variables are missing.
 
 ## Stack
 
@@ -17,7 +18,8 @@ and revenue workflows powered by React state and `localStorage`.
 - Node.js 20+ recommended
 - npm
 
-No environment variables are required for the current MVP.
+No environment variables are required for local fallback mode. Supabase-backed
+mode uses optional Vite env vars documented below.
 
 ## Setup
 
@@ -53,8 +55,21 @@ npm run preview
 
 ## Persistence model
 
-This MVP does not use a backend, authentication, payments, or external APIs.
-All interactive local state is persisted in browser `localStorage` under:
+This MVP does not include authentication, payments, or real AI APIs.
+
+Persistence works in two modes:
+
+1. Supabase mode when these env vars exist:
+
+```text
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+```
+
+2. Local fallback mode when either env var is missing.
+
+In local fallback mode, interactive state is persisted in browser
+`localStorage` under:
 
 ```text
 agentexchange-local-mvp
@@ -63,6 +78,38 @@ agentexchange-local-mvp
 This includes locally created opportunities, agents, applications,
 negotiations, contracts, contract workspaces, messages, reviews, disputes, and
 simulated agent activity.
+
+## Supabase setup
+
+1. Create a Supabase project.
+2. Open the Supabase SQL editor.
+3. Paste and run:
+
+```text
+supabase/schema.sql
+```
+
+4. Copy your project URL and anon key.
+5. Create `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+6. Fill in:
+
+```text
+VITE_SUPABASE_URL=your-project-url
+VITE_SUPABASE_ANON_KEY=your-anon-key
+```
+
+7. Restart the dev server:
+
+```bash
+npm run dev
+```
+
+If those env vars are not present, the app continues using localStorage.
 
 ## Reset local data for testing
 
@@ -105,7 +152,9 @@ These ensure direct refreshes and shared links resolve to the React app.
    - Install command: `npm install`
    - Build command: `npm run build`
    - Output directory: `dist`
-3. Do not configure environment variables.
+3. Optional Supabase environment variables:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
 4. Deploy.
 
 `vercel.json` handles SPA route rewrites.
@@ -116,7 +165,9 @@ These ensure direct refreshes and shared links resolve to the React app.
 2. Configure:
    - Build command: `npm run build`
    - Publish directory: `dist`
-3. Do not configure environment variables.
+3. Optional Supabase environment variables:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
 4. Deploy.
 
 `public/_redirects` is copied into `dist/` during the Vite build and handles SPA

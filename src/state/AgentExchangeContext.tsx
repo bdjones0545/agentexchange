@@ -12,40 +12,27 @@ import { deriveWorkspaceStatus } from "../data/contractWorkspace";
 import { agents } from "../data/agents";
 import type { SuggestedAgentAction } from "../data/agentRecommendations";
 import { opportunities } from "../data/marketplace";
+import {
+  loadAgentExchangeState,
+  saveAgentExchangeState,
+} from "../lib/repositories/activityRepository";
 import type {
   AgentActivityEvent,
-  AgentReview,
+  AgentExchangePersistedState,
   Application,
   ContractMessageSender,
-  ContractDispute,
   ContractDisputeStatus,
   ContractWorkspace,
   CreateAgentInput,
   CreatedAgent,
   CreatedOpportunity,
   CreateOpportunityInput,
-  HireRequest,
   LocalActionToastState,
   LocalContract,
   Negotiation,
-  SavedOpportunity,
 } from "./marketplaceTypes";
 
-const STORAGE_KEY = "agentexchange-local-mvp";
-
-type PersistedState = {
-  agentActivities: AgentActivityEvent[];
-  agentReviews: AgentReview[];
-  applications: Application[];
-  contractWorkspaces: ContractWorkspace[];
-  contractDisputes: ContractDispute[];
-  createdAgents: CreatedAgent[];
-  createdOpportunities: CreatedOpportunity[];
-  hireRequests: HireRequest[];
-  localContracts: LocalContract[];
-  negotiations: Negotiation[];
-  savedOpportunities: SavedOpportunity[];
-};
+type PersistedState = AgentExchangePersistedState;
 
 type SubmitApplicationInput = {
   opportunityId: string;
@@ -141,6 +128,9 @@ type AgentExchangeContextValue = PersistedState & {
     counterTimeline: string,
     counterNote: string,
   ) => void;
+  error: string | null;
+  loading: boolean;
+  saving: boolean;
 };
 
 const defaultPersistedState: PersistedState = {
@@ -331,47 +321,57 @@ function withWorkspace(
   };
 }
 
-function safeParseState(rawValue: string | null): PersistedState {
-  if (!rawValue) {
-    return defaultPersistedState;
-  }
-
-  try {
-    const parsed = JSON.parse(rawValue) as Partial<PersistedState>;
-
-    return {
-      agentActivities: parsed.agentActivities ?? [],
-      agentReviews: parsed.agentReviews ?? [],
-      applications: parsed.applications ?? [],
-      contractWorkspaces: (parsed.contractWorkspaces ?? []).map(
-        normalizeWorkspace,
-      ),
-      contractDisputes: parsed.contractDisputes ?? [],
-      createdAgents: parsed.createdAgents ?? [],
-      createdOpportunities: parsed.createdOpportunities ?? [],
-      hireRequests: parsed.hireRequests ?? [],
-      localContracts: parsed.localContracts ?? [],
-      negotiations: parsed.negotiations ?? [],
-      savedOpportunities: parsed.savedOpportunities ?? [],
-    };
-  } catch {
-    return defaultPersistedState;
-  }
-}
-
 export function AgentExchangeProvider({ children }: PropsWithChildren) {
-  const [state, setState] = useState<PersistedState>(() => {
-    if (typeof window === "undefined") {
-      return defaultPersistedState;
-    }
-
-    return safeParseState(window.localStorage.getItem(STORAGE_KEY));
-  });
+  const [state, setState] = useState<PersistedState>(defaultPersistedState);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<LocalActionToastState | null>(null);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+    let isMounted = true;
+
+    loadAgentExchangeState()
+      .then((nextState) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setState({
+          ...nextState,
+          contractWorkspaces: nextState.contractWorkspaces.map(
+            normalizeWorkspace,
+          ),
+        });
+        setError(null);
+      })
+      .catch(() => {
+        if (isMounted) {
+          setError("Unable to load AgentExchange data.");
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    setSaving(true);
+    saveAgentExchangeState(state)
+      .then(() => setError(null))
+      .catch(() => setError("Unable to save AgentExchange data."))
+      .finally(() => setSaving(false));
+  }, [loading, state]);
 
   const showToast = useCallback((message: string) => {
     setToast({
@@ -1443,6 +1443,9 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   const value = useMemo<AgentExchangeContextValue>(
     () => ({
       ...state,
+      error,
+      loading,
+      saving,
       toast,
       acceptApplication,
       acceptHireRequest,
@@ -1452,6 +1455,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       addContractDeliverable,
       addContractMilestone,
       clearToast,
+      counterNegotiation,
       createAgent,
       createOpportunity,
       getApplicationForOpportunity: (opportunityId) =>
@@ -1480,7 +1484,6 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       submitNegotiation,
       toggleMilestoneComplete,
       toggleSavedOpportunity,
-      counterNegotiation,
       updateContractDispute,
       updateMilestoneNotes,
     }),
@@ -1493,11 +1496,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       addContractDeliverable,
       addContractMilestone,
       clearToast,
+      counterNegotiation,
       createAgent,
       createOpportunity,
+      error,
+      loading,
       openContractDispute,
       rejectApplication,
       rejectNegotiation,
+      saving,
       sendContractMessage,
       setDeliverableStatus,
       state,
@@ -1507,7 +1514,6 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       toast,
       toggleMilestoneComplete,
       toggleSavedOpportunity,
-      counterNegotiation,
       updateContractDispute,
       updateMilestoneNotes,
     ],
