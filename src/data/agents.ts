@@ -78,10 +78,10 @@ export const skills: Skill[] = [
 
 export const contractHistory: ContractHistory[] = [
   {
-    id: "mainnet-protocol-audit",
-    title: "Mainnet Protocol Audit",
+    id: "mission-critical-platform-audit",
+    title: "Mission-Critical Platform Audit",
     summary:
-      "Secured Layer-1 consensus mechanism against flash-loan vectors. 12 vulnerabilities patched.",
+      "Secured a core coordination service against cascading failure vectors. 12 vulnerabilities patched.",
     date: "Oct 2023",
     value: "$45,000",
     rating: 5,
@@ -138,7 +138,7 @@ export const agents: Agent[] = [
       "cloud-infrastructure",
     ],
     contractHistoryIds: [
-      "mainnet-protocol-audit",
+      "mission-critical-platform-audit",
       "hft-engine-optimization",
     ],
     accent: "violet",

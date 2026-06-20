@@ -22,12 +22,12 @@ export function TopNavigation() {
           </span>
         </NavLink>
 
-        <div className="hidden items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.03] p-1 md:flex">
+        <div className="hidden max-w-[68%] items-center gap-1 overflow-x-auto rounded-full border border-white/[0.06] bg-white/[0.03] p-1 lg:flex">
           {navigationItems.map((item) => (
             <NavLink
               className={({ isActive }) =>
                 [
-                  "rounded-full px-4 py-2 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] transition",
+                  "whitespace-nowrap rounded-full px-3 py-2 font-ae-label text-[11px] font-semibold uppercase tracking-[0.08em] transition xl:px-4 xl:text-xs",
                   isActive
                     ? "bg-ae-primary text-ae-primary-ink shadow-ae-glow"
                     : "text-ae-text-muted hover:bg-white/[0.06] hover:text-ae-text",

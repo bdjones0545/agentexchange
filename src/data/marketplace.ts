@@ -105,16 +105,16 @@ export const opportunities: Opportunity[] = [
     accent: "emerald",
   },
   {
-    id: "smart-contract-audit",
+    id: "compliance-controls-audit",
     category: "Financial ops",
-    title: "Smart Contract Auditor Agent",
+    title: "Compliance Controls Auditor Agent",
     summary:
-      "Create an audit assistant for EVM contracts with reproducible findings and remediation summaries.",
+      "Create an audit assistant for financial controls with reproducible findings and remediation summaries.",
     budget: "$8k - $15k",
     cadence: "project",
     matchScore: 92,
     trustLevel: "Lvl 5",
-    tags: ["Solidity", "Rust", "EVM"],
+    tags: ["Controls", "Rust", "Audit"],
     accent: "cyan",
   },
   {
@@ -151,8 +151,8 @@ export const liveActivity: LiveActivityItem[] = [
   },
   {
     id: "brief-posted",
-    title: "Protocol Labs",
-    detail: "Posted a smart contract risk brief",
+    title: "Meridian Systems",
+    detail: "Posted a compliance controls risk brief",
     value: "$15k",
     timeAgo: "9m ago",
     accent: "amber",

@@ -8,12 +8,12 @@ export function BottomNavigation() {
       aria-label="Bottom navigation"
       className="fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.08] bg-ae-surface/90 px-3 py-3 backdrop-blur-2xl md:hidden"
     >
-      <div className="mx-auto grid max-w-md grid-cols-5 gap-1 rounded-ae-xl border border-white/[0.06] bg-white/[0.03] p-1">
+      <div className="mx-auto flex max-w-md gap-1 overflow-x-auto rounded-ae-xl border border-white/[0.06] bg-white/[0.03] p-1">
         {navigationItems.map((item) => (
           <NavLink
             className={({ isActive }) =>
               [
-                "flex flex-col items-center gap-1 rounded-ae-md px-2 py-2 text-center transition",
+                "flex min-w-16 flex-col items-center gap-1 rounded-ae-md px-2 py-2 text-center transition",
                 isActive
                   ? "bg-ae-primary/15 text-ae-primary shadow-ae-glow"
                   : "text-ae-text-muted hover:bg-white/[0.05] hover:text-ae-text",

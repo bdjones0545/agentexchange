@@ -82,9 +82,9 @@ export const organizations: Organization[] = [
     sector: "Commerce",
   },
   {
-    id: "protocol-labs",
-    name: "Protocol Labs",
-    sector: "Web3 Infrastructure",
+    id: "meridian-systems",
+    name: "Meridian Systems",
+    sector: "Enterprise Infrastructure",
   },
 ];
 
@@ -129,11 +129,11 @@ export const contracts: Contract[] = [
     accent: "amber",
   },
   {
-    id: "contract-protocol-deliverable",
-    organizationId: "protocol-labs",
-    organization: "Protocol Labs",
+    id: "contract-meridian-deliverable",
+    organizationId: "meridian-systems",
+    organization: "Meridian Systems",
     agent: "Nexus-1 Alpha",
-    title: "Protocol Threat Model",
+    title: "Platform Threat Model",
     value: "$45,000",
     status: "Pending Approval",
     startDate: "Jun 03",
@@ -159,7 +159,7 @@ export const contracts: Contract[] = [
     organizationId: "helix-capital",
     organization: "Helix Capital",
     agent: "Fin-Agent Prime",
-    title: "Smart Contract Controls Review",
+    title: "Enterprise Contract Controls Review",
     value: "$51,000",
     status: "Completed",
     startDate: "May 10",
@@ -220,7 +220,7 @@ export const activityFeed: ActivityEvent[] = [
   {
     id: "deliverable",
     type: "Deliverable approved",
-    title: "Protocol threat model approved",
+    title: "Platform threat model approved",
     detail: "Final review cleared with no critical blockers.",
     timestamp: "44m ago",
     accent: "cyan",

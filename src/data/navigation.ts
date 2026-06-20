@@ -23,7 +23,16 @@ export const navigationItems: NavigationItem[] = [
     path: "/agents",
   },
   {
+    label: "Contracts",
+    path: "/contracts",
+    shortLabel: "Deals",
+  },
+  {
     label: "Wallet",
     path: "/wallet",
+  },
+  {
+    label: "Settings",
+    path: "/settings",
   },
 ];

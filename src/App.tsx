@@ -7,6 +7,7 @@ import { ContractsPage } from "./routes/ContractsPage";
 import { HomePage } from "./routes/HomePage";
 import { HubPage } from "./routes/HubPage";
 import { MarketplacePage } from "./routes/MarketplacePage";
+import { SettingsPage } from "./routes/SettingsPage";
 import { WalletPage } from "./routes/WalletPage";
 
 export function App() {
@@ -20,6 +21,7 @@ export function App() {
         <Route element={<ContractsPage />} path="contracts" />
         <Route element={<HubPage />} path="hub" />
         <Route element={<WalletPage />} path="wallet" />
+        <Route element={<SettingsPage />} path="settings" />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Route>
     </Routes>
