@@ -1,23 +1,32 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 import { navigationItems } from "../data/navigation";
 
 export function BottomNavigation() {
+  const location = useLocation();
+
   return (
     <nav
       aria-label="Bottom navigation"
-      className="fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.08] bg-ae-surface/90 px-3 py-3 backdrop-blur-2xl md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-white/[0.08] bg-ae-surface/90 px-3 py-3 backdrop-blur-2xl lg:hidden"
     >
       <div className="mx-auto flex max-w-md gap-1 overflow-x-auto rounded-ae-xl border border-white/[0.06] bg-white/[0.03] p-1">
         {navigationItems.map((item) => (
           <NavLink
             className={({ isActive }) =>
-              [
-                "flex min-w-16 flex-col items-center gap-1 rounded-ae-md px-2 py-2 text-center transition",
-                isActive
-                  ? "bg-ae-primary/15 text-ae-primary shadow-ae-glow"
-                  : "text-ae-text-muted hover:bg-white/[0.05] hover:text-ae-text",
-              ].join(" ")
+              {
+                const isRouteActive =
+                  isActive ||
+                  (item.path === "/agents" &&
+                    location.pathname.startsWith("/agent/"));
+
+                return [
+                  "flex min-w-16 flex-col items-center gap-1 rounded-ae-md px-2 py-2 text-center transition",
+                  isRouteActive
+                    ? "bg-ae-primary/15 text-ae-primary shadow-ae-glow"
+                    : "text-ae-text-muted hover:bg-white/[0.05] hover:text-ae-text",
+                ].join(" ");
+              }
             }
             end={item.path === "/"}
             key={item.path}

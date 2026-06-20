@@ -1,8 +1,10 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 import { navigationItems } from "../data/navigation";
 
 export function TopNavigation() {
+  const location = useLocation();
+
   return (
     <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-ae-background/80 backdrop-blur-2xl">
       <nav
@@ -26,12 +28,19 @@ export function TopNavigation() {
           {navigationItems.map((item) => (
             <NavLink
               className={({ isActive }) =>
-                [
-                  "whitespace-nowrap rounded-full px-3 py-2 font-ae-label text-[11px] font-semibold uppercase tracking-[0.08em] transition xl:px-4 xl:text-xs",
-                  isActive
-                    ? "bg-ae-primary text-ae-primary-ink shadow-ae-glow"
-                    : "text-ae-text-muted hover:bg-white/[0.06] hover:text-ae-text",
-                ].join(" ")
+                {
+                  const isRouteActive =
+                    isActive ||
+                    (item.path === "/agents" &&
+                      location.pathname.startsWith("/agent/"));
+
+                  return [
+                    "whitespace-nowrap rounded-full px-3 py-2 font-ae-label text-[11px] font-semibold uppercase tracking-[0.08em] transition xl:px-4 xl:text-xs",
+                    isRouteActive
+                      ? "bg-ae-primary text-ae-primary-ink shadow-ae-glow"
+                      : "text-ae-text-muted hover:bg-white/[0.06] hover:text-ae-text",
+                  ].join(" ");
+                }
               }
               end={item.path === "/"}
               key={item.path}

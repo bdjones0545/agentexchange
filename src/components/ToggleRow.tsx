@@ -19,6 +19,9 @@ export function ToggleRow({ setting }: ToggleRowProps) {
         </p>
       </div>
       <button
+        aria-label={`${setting.label}: ${
+          setting.enabled ? "enabled" : "disabled"
+        }`}
         aria-pressed={setting.enabled}
         className={[
           "relative h-8 w-14 shrink-0 rounded-full border transition",
