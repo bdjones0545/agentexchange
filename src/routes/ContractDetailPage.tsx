@@ -56,7 +56,7 @@ export function ContractDetailPage() {
       return;
     }
 
-    addContractMilestone(id, milestoneTitle.trim(), milestoneNotes.trim());
+    addContractMilestone(contract.id, milestoneTitle.trim(), milestoneNotes.trim());
     setMilestoneNotes("");
     setMilestoneTitle("");
   }
@@ -68,7 +68,11 @@ export function ContractDetailPage() {
       return;
     }
 
-    addContractDeliverable(id, deliverableTitle.trim(), deliverableNotes.trim());
+    addContractDeliverable(
+      contract.id,
+      deliverableTitle.trim(),
+      deliverableNotes.trim(),
+    );
     setDeliverableNotes("");
     setDeliverableTitle("");
   }
