@@ -14,7 +14,7 @@ export function AgentNetworkGraph({ nodes }: AgentNetworkGraphProps) {
           Agent Network
         </p>
         <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
-          Collaboration chain
+          Collaboration flow
         </h2>
       </div>
 
