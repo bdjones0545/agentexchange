@@ -8,6 +8,7 @@ import { SecondaryButton } from "../components/SecondaryButton";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
+import type { ContractMessageSender } from "../state/marketplaceTypes";
 
 function formatActivityDate(value: string) {
   return new Date(value).toLocaleString("en-US", {
@@ -26,12 +27,17 @@ export function ContractDetailPage() {
     addContractMilestone,
     getContractWorkspace,
     localContracts,
+    sendContractMessage,
     setDeliverableStatus,
     toggleMilestoneComplete,
     updateMilestoneNotes,
   } = useAgentExchange();
   const [deliverableNotes, setDeliverableNotes] = useState("");
   const [deliverableTitle, setDeliverableTitle] = useState("");
+  const [decisionNotes, setDecisionNotes] = useState<Record<string, string>>({});
+  const [messageBody, setMessageBody] = useState("");
+  const [messageSender, setMessageSender] =
+    useState<ContractMessageSender>("Organization");
   const [milestoneNotes, setMilestoneNotes] = useState("");
   const [milestoneTitle, setMilestoneTitle] = useState("");
 
@@ -83,6 +89,24 @@ export function ContractDetailPage() {
     setDeliverableTitle("");
   }
 
+  function handleSendMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!messageBody.trim()) {
+      return;
+    }
+
+    sendContractMessage(
+      activeContract.id,
+      messageSender,
+      messageSender === "Organization"
+        ? activeContract.organization
+        : activeContract.agent,
+      messageBody.trim(),
+    );
+    setMessageBody("");
+  }
+
   return (
     <section className="space-y-8">
       <button
@@ -97,7 +121,7 @@ export function ContractDetailPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-              Contract Workspace
+              Overview
             </p>
             <h1 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text sm:text-5xl">
               {contract.title}
@@ -279,24 +303,81 @@ export function ContractDetailPage() {
                           Mark Submitted
                         </SecondaryButton>
                       ) : null}
-                      {deliverable.status !== "approved" ? (
-                        <PrimaryButton
-                          onClick={() =>
-                            setDeliverableStatus(
-                              contract.id,
-                              deliverable.id,
-                              "approved",
-                            )
-                          }
-                        >
-                          Mark Approved
-                        </PrimaryButton>
-                      ) : null}
                     </div>
                   </div>
                   <p className="text-sm leading-6 text-ae-text-muted">
                     {deliverable.notes || "No notes added."}
                   </p>
+                  {deliverable.status !== "approved" ? (
+                    <div className="space-y-3 border-t border-white/[0.06] pt-3">
+                      <textarea
+                        className="min-h-20 w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-sm text-ae-text outline-none placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
+                        onChange={(event) =>
+                          setDecisionNotes((current) => ({
+                            ...current,
+                            [deliverable.id]: event.target.value,
+                          }))
+                        }
+                        placeholder="Approval or rejection note"
+                        value={decisionNotes[deliverable.id] ?? ""}
+                      />
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <PrimaryButton
+                          onClick={() => {
+                            setDeliverableStatus(
+                              contract.id,
+                              deliverable.id,
+                              "approved",
+                              decisionNotes[deliverable.id]?.trim() ?? "",
+                            );
+                            setDecisionNotes((current) => ({
+                              ...current,
+                              [deliverable.id]: "",
+                            }));
+                          }}
+                        >
+                          Approve
+                        </PrimaryButton>
+                        <SecondaryButton
+                          onClick={() => {
+                            setDeliverableStatus(
+                              contract.id,
+                              deliverable.id,
+                              "rejected",
+                              decisionNotes[deliverable.id]?.trim() ?? "",
+                            );
+                            setDecisionNotes((current) => ({
+                              ...current,
+                              [deliverable.id]: "",
+                            }));
+                          }}
+                        >
+                          Reject
+                        </SecondaryButton>
+                      </div>
+                    </div>
+                  ) : null}
+                  {(deliverable.decisions ?? []).length > 0 ? (
+                    <div className="space-y-2 border-t border-white/[0.06] pt-3">
+                      <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+                        Decision History
+                      </p>
+                      {(deliverable.decisions ?? []).map((decision) => (
+                        <div
+                          className="rounded-ae-md border border-white/[0.06] bg-ae-background-deep/70 p-3 text-sm text-ae-text-muted"
+                          key={decision.id}
+                        >
+                          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
+                            {decision.status} -{" "}
+                            {formatActivityDate(decision.decidedAt)}
+                          </p>
+                          <p className="mt-2">
+                            {decision.note || "No note provided."}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </article>
               ))
             ) : (
@@ -307,6 +388,71 @@ export function ContractDetailPage() {
           </div>
         </GlassCard>
       </section>
+
+      <GlassCard className="space-y-5">
+        <div>
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+            Messages
+          </p>
+          <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
+            Organization and agent communication
+          </h2>
+        </div>
+        <form className="space-y-3" onSubmit={handleSendMessage}>
+          <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
+            <select
+              className="rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+              onChange={(event) =>
+                setMessageSender(event.target.value as ContractMessageSender)
+              }
+              value={messageSender}
+            >
+              <option>Organization</option>
+              <option>Agent</option>
+            </select>
+            <input
+              className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+              onChange={(event) => setMessageBody(event.target.value)}
+              placeholder="Write a contract update..."
+              value={messageBody}
+            />
+          </div>
+          <PrimaryButton disabled={!messageBody.trim()} type="submit">
+            Send Message
+          </PrimaryButton>
+        </form>
+        <div className="space-y-3">
+          {workspace.messages.length > 0 ? (
+            workspace.messages.map((message) => (
+              <article
+                className="rounded-ae-lg border border-white/[0.06] bg-white/[0.04] p-4"
+                key={message.id}
+              >
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-ae-display text-lg font-semibold text-ae-text">
+                      {message.author}
+                    </span>
+                    <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
+                      {message.senderType}
+                    </span>
+                  </div>
+                  <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
+                    {formatActivityDate(message.createdAt)}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-ae-text-muted">
+                  {message.body}
+                </p>
+              </article>
+            ))
+          ) : (
+            <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 text-ae-text-muted">
+              No messages yet. Send the first organization or agent update.
+            </p>
+          )}
+        </div>
+      </GlassCard>
 
       <GlassCard className="space-y-5">
         <div>

@@ -8,8 +8,10 @@ import {
   type PropsWithChildren,
 } from "react";
 
+import { deriveWorkspaceStatus } from "../data/contractWorkspace";
 import type {
   Application,
+  ContractMessageSender,
   ContractWorkspace,
   CreateAgentInput,
   CreatedAgent,
@@ -83,7 +85,14 @@ type AgentExchangeContextValue = PersistedState & {
   setDeliverableStatus: (
     contractId: string,
     deliverableId: string,
-    status: "submitted" | "approved",
+    status: "submitted" | "approved" | "rejected",
+    note?: string,
+  ) => void;
+  sendContractMessage: (
+    contractId: string,
+    senderType: ContractMessageSender,
+    author: string,
+    body: string,
   ) => void;
   submitApplication: (input: SubmitApplicationInput) => void;
   submitHireRequest: (input: SubmitHireRequestInput) => void;
@@ -141,14 +150,32 @@ function createEmptyWorkspace(contractId: string): ContractWorkspace {
     activity: [
       {
         id: createId("activity"),
+        type: "workspace",
         createdAt,
         message: `Workspace opened ${formatActivityTimestamp()}.`,
       },
     ],
     contractId,
     deliverables: [],
+    messages: [],
     milestones: [],
     updatedAt: createdAt,
+  };
+}
+
+function normalizeWorkspace(workspace: ContractWorkspace): ContractWorkspace {
+  return {
+    ...workspace,
+    activity: (workspace.activity ?? []).map((activity) => ({
+      ...activity,
+      type: activity.type ?? "workspace",
+    })),
+    deliverables: (workspace.deliverables ?? []).map((deliverable) => ({
+      ...deliverable,
+      decisions: deliverable.decisions ?? [],
+    })),
+    messages: workspace.messages ?? [],
+    milestones: workspace.milestones ?? [],
   };
 }
 
@@ -160,8 +187,27 @@ function withWorkspace(
   const existingWorkspace = current.contractWorkspaces.find(
     (workspace) => workspace.contractId === contractId,
   );
-  const baseWorkspace = existingWorkspace ?? createEmptyWorkspace(contractId);
-  const nextWorkspace = updater(baseWorkspace);
+  const baseWorkspace = normalizeWorkspace(
+    existingWorkspace ?? createEmptyWorkspace(contractId),
+  );
+  const updatedWorkspace = updater(baseWorkspace);
+  const previousStatus = deriveWorkspaceStatus(baseWorkspace);
+  const nextStatus = deriveWorkspaceStatus(updatedWorkspace);
+  const nextWorkspace =
+    previousStatus !== nextStatus
+      ? {
+          ...updatedWorkspace,
+          activity: [
+            {
+              id: createId("activity"),
+              type: "status_changed" as const,
+              createdAt: new Date().toISOString(),
+              message: `Status changed to ${nextStatus}.`,
+            },
+            ...updatedWorkspace.activity,
+          ],
+        }
+      : updatedWorkspace;
 
   return {
     ...current,
@@ -183,7 +229,9 @@ function safeParseState(rawValue: string | null): PersistedState {
 
     return {
       applications: parsed.applications ?? [],
-      contractWorkspaces: parsed.contractWorkspaces ?? [],
+      contractWorkspaces: (parsed.contractWorkspaces ?? []).map(
+        normalizeWorkspace,
+      ),
       createdAgents: parsed.createdAgents ?? [],
       createdOpportunities: parsed.createdOpportunities ?? [],
       hireRequests: parsed.hireRequests ?? [],
@@ -312,6 +360,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
             activity: [
               {
                 id: createId("activity"),
+                type: "workspace",
                 createdAt: now,
                 message: `Milestone added: ${title}.`,
               },
@@ -342,6 +391,9 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
               ? [
                   {
                     id: createId("activity"),
+                    type: milestone.completed
+                      ? "workspace"
+                      : "milestone_completed",
                     createdAt: now,
                     message: `${milestone.completed ? "Reopened" : "Completed"} milestone: ${milestone.title}.`,
                   },
@@ -377,6 +429,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
             activity: [
               {
                 id: createId("activity"),
+                type: "workspace",
                 createdAt: now,
                 message: "Milestone notes updated.",
               },
@@ -417,6 +470,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
             activity: [
               {
                 id: createId("activity"),
+                type: "workspace",
                 createdAt: now,
                 message: `Deliverable added: ${title}.`,
               },
@@ -436,7 +490,8 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     (
       contractId: string,
       deliverableId: string,
-      status: "submitted" | "approved",
+      status: "submitted" | "approved" | "rejected",
+      note = "",
     ) => {
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
@@ -444,6 +499,8 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           const deliverable = workspace.deliverables.find(
             (candidate) => candidate.id === deliverableId,
           );
+          const nextDeliverableStatus =
+            status === "rejected" ? "draft" : status;
 
           return {
             ...workspace,
@@ -451,6 +508,12 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
               ? [
                   {
                     id: createId("activity"),
+                    type:
+                      status === "approved"
+                        ? "deliverable_approved"
+                        : status === "rejected"
+                          ? "deliverable_rejected"
+                          : "deliverable_submitted",
                     createdAt: now,
                     message: `Deliverable ${status}: ${deliverable.title}.`,
                   },
@@ -462,7 +525,19 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
                 ? {
                     ...candidate,
                     approvedAt: status === "approved" ? now : candidate.approvedAt,
-                    status,
+                    decisions:
+                      status === "approved" || status === "rejected"
+                        ? [
+                            ...(candidate.decisions ?? []),
+                            {
+                              id: createId("decision"),
+                              decidedAt: now,
+                              note,
+                              status,
+                            },
+                          ]
+                        : (candidate.decisions ?? []),
+                    status: nextDeliverableStatus,
                     submittedAt:
                       status === "submitted" || status === "approved"
                         ? candidate.submittedAt ?? now
@@ -477,8 +552,49 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       showToast(
         status === "approved"
           ? "Deliverable approved."
-          : "Deliverable submitted.",
+          : status === "rejected"
+            ? "Deliverable rejected."
+            : "Deliverable submitted.",
       );
+    },
+    [showToast],
+  );
+
+  const sendContractMessage = useCallback(
+    (
+      contractId: string,
+      senderType: ContractMessageSender,
+      author: string,
+      body: string,
+    ) => {
+      setState((current) =>
+        withWorkspace(current, contractId, (workspace) => {
+          const now = new Date().toISOString();
+          const message = {
+            id: createId("message"),
+            author,
+            body,
+            createdAt: now,
+            senderType,
+          };
+
+          return {
+            ...workspace,
+            activity: [
+              {
+                id: createId("activity"),
+                type: "message_sent",
+                createdAt: now,
+                message: `${senderType} message sent by ${author}.`,
+              },
+              ...workspace.activity,
+            ],
+            messages: [...workspace.messages, message],
+            updatedAt: now,
+          };
+        }),
+      );
+      showToast("Message sent.");
     },
     [showToast],
   );
@@ -711,6 +827,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         state.savedOpportunities.some(
           (savedOpportunity) => savedOpportunity.opportunityId === opportunityId,
         ),
+      sendContractMessage,
       setDeliverableStatus,
       submitApplication,
       submitHireRequest,
@@ -727,6 +844,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       clearToast,
       createAgent,
       createOpportunity,
+      sendContractMessage,
       setDeliverableStatus,
       state,
       submitApplication,

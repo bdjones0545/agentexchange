@@ -104,18 +104,48 @@ export type ContractDeliverableStatus =
   | "submitted"
   | "approved";
 
+export type DeliverableDecisionStatus = "approved" | "rejected";
+
+export type DeliverableDecision = {
+  id: string;
+  status: DeliverableDecisionStatus;
+  note: string;
+  decidedAt: string;
+};
+
 export type ContractDeliverable = {
   id: string;
   title: string;
   notes: string;
   status: ContractDeliverableStatus;
+  decisions: DeliverableDecision[];
   createdAt: string;
   submittedAt?: string;
   approvedAt?: string;
 };
 
-export type ContractActivityItem = {
+export type ContractMessageSender = "Organization" | "Agent";
+
+export type ContractMessage = {
   id: string;
+  senderType: ContractMessageSender;
+  author: string;
+  body: string;
+  createdAt: string;
+};
+
+export type ContractActivityEventType =
+  | "deliverable_approved"
+  | "deliverable_rejected"
+  | "deliverable_submitted"
+  | "message_sent"
+  | "milestone_completed"
+  | "status_changed"
+  | "workspace";
+
+export type ContractActivityEvent = {
+  id: string;
+  type: ContractActivityEventType;
   message: string;
   createdAt: string;
 };
@@ -124,7 +154,8 @@ export type ContractWorkspace = {
   contractId: string;
   milestones: ContractMilestone[];
   deliverables: ContractDeliverable[];
-  activity: ContractActivityItem[];
+  messages: ContractMessage[];
+  activity: ContractActivityEvent[];
   updatedAt: string;
 };
 

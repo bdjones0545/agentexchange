@@ -1,4 +1,4 @@
-import type { Contract } from "./operations";
+import type { Contract, ContractStatus } from "./operations";
 import type { ContractWorkspace } from "../state/marketplaceTypes";
 
 export function deriveContractProgress(workspace: ContractWorkspace) {
@@ -26,6 +26,30 @@ export function deriveContractProgress(workspace: ContractWorkspace) {
   return Math.round(((completedMilestones + deliverableProgress) / totalItems) * 100);
 }
 
+export function deriveWorkspaceStatus(workspace: ContractWorkspace): ContractStatus {
+  const workspaceProgress = deriveContractProgress(workspace);
+  const hasWorkspaceItems =
+    workspace.milestones.length > 0 || workspace.deliverables.length > 0;
+
+  if (!hasWorkspaceItems) {
+    return "Active";
+  }
+
+  const hasSubmittedDeliverables = workspace.deliverables.some(
+    (deliverable) => deliverable.status === "submitted",
+  );
+
+  if (workspaceProgress >= 100) {
+    return "Completed";
+  }
+
+  if (hasSubmittedDeliverables || workspaceProgress >= 80) {
+    return "In Review";
+  }
+
+  return "Active";
+}
+
 export function applyWorkspaceToContract(
   contract: Contract,
   workspace: ContractWorkspace,
@@ -38,18 +62,9 @@ export function applyWorkspaceToContract(
     return contract;
   }
 
-  const hasSubmittedDeliverables = workspace.deliverables.some(
-    (deliverable) => deliverable.status === "submitted",
-  );
-
   return {
     ...contract,
     progress: workspaceProgress,
-    status:
-      workspaceProgress >= 100
-        ? "Completed"
-        : hasSubmittedDeliverables || workspaceProgress >= 80
-          ? "In Review"
-          : "Active",
+    status: deriveWorkspaceStatus(workspace),
   };
 }
