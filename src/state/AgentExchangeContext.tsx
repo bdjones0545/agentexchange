@@ -10,6 +10,7 @@ import {
 
 import { deriveWorkspaceStatus } from "../data/contractWorkspace";
 import { agents } from "../data/agents";
+import type { SuggestedAgentAction } from "../data/agentRecommendations";
 import type {
   AgentActivityEvent,
   Application,
@@ -51,6 +52,8 @@ type SubmitApplicationInput = {
 type SubmitNegotiationInput = {
   opportunityId: string;
   opportunityTitle: string;
+  agentId?: string;
+  agentName?: string;
   rate: string;
   timeline: string;
   milestoneNotes: string;
@@ -78,6 +81,7 @@ type AgentExchangeContextValue = PersistedState & {
   toast: LocalActionToastState | null;
   acceptApplication: (applicationId: string) => void;
   acceptHireRequest: (hireRequestId: string) => void;
+  approveSuggestedAgentAction: (action: SuggestedAgentAction) => void;
   clearToast: () => void;
   createAgent: (input: CreateAgentInput) => CreatedAgent;
   createOpportunity: (input: CreateOpportunityInput) => CreatedOpportunity;
@@ -800,8 +804,11 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           createdAt: existingNegotiation?.createdAt ?? new Date().toISOString(),
           status: "pending",
           ...input,
-          agentId: existingNegotiation?.agentId ?? simulatedAgent?.id,
-          agentName: existingNegotiation?.agentName ?? simulatedAgent?.name,
+          agentId: existingNegotiation?.agentId ?? input.agentId ?? simulatedAgent?.id,
+          agentName:
+            existingNegotiation?.agentName ??
+            input.agentName ??
+            simulatedAgent?.name,
         };
 
         return {
@@ -949,12 +956,127 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     [showToast],
   );
 
+  const approveSuggestedAgentAction = useCallback(
+    (action: SuggestedAgentAction) => {
+      if (action.type === "apply_to_opportunity" && action.opportunityId) {
+        submitApplication({
+          agentId: action.agentId,
+          agentName: action.agentName,
+          opportunityId: action.opportunityId,
+          opportunityTitle: action.opportunityTitle ?? "Recommended opportunity",
+          proposal:
+            "Autonomous recommendation approved locally. This agent is a strong fit based on skills, availability, and trust score.",
+        });
+        return;
+      }
+
+      if (action.type === "start_negotiation" && action.opportunityId) {
+        submitNegotiation({
+          agentId: action.agentId,
+          agentName: action.agentName,
+          opportunityId: action.opportunityId,
+          opportunityTitle: action.opportunityTitle ?? "Recommended opportunity",
+          rate: "Recommended premium rate",
+          timeline: "Recommended timeline",
+          milestoneNotes:
+            "Autonomous recommendation approved locally. Start negotiation with milestone-based delivery.",
+        });
+        return;
+      }
+
+      if (action.type === "send_follow_up" && action.contractId) {
+        sendContractMessage(
+          action.contractId,
+          "Agent",
+          action.agentName,
+          "Following up on the submitted deliverable and pending approval.",
+        );
+        return;
+      }
+
+      if (action.type === "submit_deliverable" && action.contractId) {
+        setState((current) => {
+          const nextState = withWorkspace(
+            current,
+            action.contractId ?? "",
+            (workspace) => {
+              const now = new Date().toISOString();
+              const title = `Autonomous progress update - ${action.contractTitle ?? "Contract"}`;
+
+              return {
+                ...workspace,
+                activity: [
+                  {
+                    id: createId("activity"),
+                    type: "deliverable_submitted",
+                    createdAt: now,
+                    message: `Deliverable submitted: ${title}.`,
+                  },
+                  ...workspace.activity,
+                ],
+                deliverables: [
+                  ...workspace.deliverables,
+                  {
+                    id: createId("deliverable"),
+                    approvedAt: undefined,
+                    createdAt: now,
+                    decisions: [],
+                    notes:
+                      "Placeholder deliverable submitted from an approved autonomous suggestion.",
+                    status: "submitted",
+                    submittedAt: now,
+                    title,
+                  },
+                ],
+                updatedAt: now,
+              };
+            },
+          );
+
+          return {
+            ...nextState,
+            agentActivities: [
+              createAgentActivity(
+                action.agentId,
+                action.agentName,
+                "deliverable_submitted",
+                `${action.agentName} submitted a deliverable for ${action.contractTitle ?? "a contract"}.`,
+              ),
+              ...nextState.agentActivities,
+            ],
+          };
+        });
+        showToast("Suggested deliverable submitted.");
+        return;
+      }
+
+      if (
+        action.type === "complete_milestone" &&
+        action.contractId &&
+        action.milestoneId
+      ) {
+        toggleMilestoneComplete(action.contractId, action.milestoneId);
+        return;
+      }
+
+      showToast("Suggested action recorded.");
+    },
+    [
+      sendContractMessage,
+      showToast,
+      submitApplication,
+      submitNegotiation,
+      toggleMilestoneComplete,
+    ],
+  );
+
   const value = useMemo<AgentExchangeContextValue>(
     () => ({
       ...state,
       toast,
       acceptApplication,
       acceptHireRequest,
+      approveSuggestedAgentAction,
       addContractDeliverable,
       addContractMilestone,
       clearToast,
@@ -988,6 +1110,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     [
       acceptApplication,
       acceptHireRequest,
+      approveSuggestedAgentAction,
       addContractDeliverable,
       addContractMilestone,
       clearToast,

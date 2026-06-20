@@ -14,9 +14,13 @@ import {
   getAgentReputation,
   getAgentStatus,
 } from "../data/agentIntelligence";
+import {
+  getAgentRecommendations,
+  getSuggestedAgentActions,
+} from "../data/agentRecommendations";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAgentContractHistory, getAgentSkills } from "../data/agents";
-import { getAllAgents } from "../data/localSelectors";
+import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
 import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
@@ -26,8 +30,10 @@ export function AgentProfilePage() {
   const {
     agentActivities,
     applications,
+    approveSuggestedAgentAction,
     contractWorkspaces,
     createdAgents,
+    createdOpportunities,
     hireRequests,
     localContracts,
     negotiations,
@@ -35,6 +41,7 @@ export function AgentProfilePage() {
   } = useAgentExchange();
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
   const allAgents = getAllAgents(createdAgents);
+  const allOpportunities = getAllOpportunities(createdOpportunities);
   const allContracts = [...localContracts, ...contracts].map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
@@ -57,6 +64,7 @@ export function AgentProfilePage() {
     contracts: allContracts,
     hireRequests,
     negotiations,
+    opportunities: allOpportunities,
     savedOpportunities,
     workspaces: contractWorkspaces,
   };
@@ -68,6 +76,11 @@ export function AgentProfilePage() {
       (activity) => activity.agentId === agent.id || activity.agentName === agent.name,
     )
     .slice(0, 4);
+  const recommendations = getAgentRecommendations(agent, allOpportunities).slice(
+    0,
+    3,
+  );
+  const suggestedActions = getSuggestedAgentActions(agent, intelligenceInput);
 
   return (
     <section className="mx-auto max-w-4xl space-y-8">
@@ -148,6 +161,74 @@ export function AgentProfilePage() {
           </div>
         ))}
       </GlassCard>
+
+      <section className="space-y-4">
+        <h2 className="font-ae-display text-2xl font-semibold text-ae-text">
+          Autonomous Suggestions
+        </h2>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <GlassCard className="space-y-4">
+            <h3 className="font-ae-display text-xl font-semibold text-ae-text">
+              Recommended Opportunities
+            </h3>
+            {recommendations.map((recommendation) => (
+              <div
+                className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4"
+                key={recommendation.opportunity.id}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-ae-text">
+                      {recommendation.opportunity.title}
+                    </p>
+                    <p className="mt-1 text-sm text-ae-text-muted">
+                      {recommendation.reasons[0]?.detail}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold text-ae-primary">
+                    {recommendation.matchPercentage}%
+                  </span>
+                </div>
+                {recommendation.missingSkills.length > 0 ? (
+                  <p className="mt-2 text-xs text-ae-text-muted">
+                    Missing: {recommendation.missingSkills.join(", ")}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </GlassCard>
+          <GlassCard className="space-y-4">
+            <h3 className="font-ae-display text-xl font-semibold text-ae-text">
+              Suggested Actions
+            </h3>
+            {suggestedActions.length > 0 ? (
+              suggestedActions.map((action) => (
+                <div
+                  className="space-y-3 rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4"
+                  key={action.id}
+                >
+                  <div>
+                    <p className="font-semibold text-ae-text">{action.title}</p>
+                    <p className="mt-1 text-sm text-ae-text-muted">
+                      {action.description}
+                    </p>
+                  </div>
+                  <PrimaryButton
+                    className="w-full sm:w-auto"
+                    onClick={() => approveSuggestedAgentAction(action)}
+                  >
+                    Approve Action
+                  </PrimaryButton>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-ae-text-muted">
+                No suggested actions available yet.
+              </p>
+            )}
+          </GlassCard>
+        </div>
+      </section>
 
       <section className="space-y-4">
         <h2 className="font-ae-display text-2xl font-semibold text-ae-text">

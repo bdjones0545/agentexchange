@@ -6,13 +6,14 @@ import { CollaborationCard } from "../components/CollaborationCard";
 import { LiveActivityCard } from "../components/LiveActivityCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
+import { getHubSuggestedActions } from "../data/agentRecommendations";
 import {
   getAgentReputation,
   getAgentStatus,
   getHubAgentInsights,
 } from "../data/agentIntelligence";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
-import { getAllAgents } from "../data/localSelectors";
+import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
 import {
   activityFeed,
   collaborations,
@@ -27,14 +28,17 @@ export function HubPage() {
   const {
     agentActivities,
     applications,
+    approveSuggestedAgentAction,
     contractWorkspaces,
     createdAgents,
+    createdOpportunities,
     hireRequests,
     localContracts,
     negotiations,
     savedOpportunities,
   } = useAgentExchange();
   const allAgents = getAllAgents(createdAgents);
+  const allOpportunities = getAllOpportunities(createdOpportunities);
   const allContracts = [...localContracts, ...contracts].map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
@@ -49,10 +53,12 @@ export function HubPage() {
     contracts: allContracts,
     hireRequests,
     negotiations,
+    opportunities: allOpportunities,
     savedOpportunities,
     workspaces: contractWorkspaces,
   };
   const hubInsights = getHubAgentInsights(intelligenceInput);
+  const suggestedActions = getHubSuggestedActions(intelligenceInput);
 
   return (
     <section className="space-y-10">
@@ -175,6 +181,48 @@ export function HubPage() {
               )}
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+            Autonomous Suggestions
+          </p>
+          <h2 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text">
+            Recommended next moves
+          </h2>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {suggestedActions.length > 0 ? (
+            suggestedActions.map((action) => (
+              <div
+                className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-5 shadow-ae-glow backdrop-blur-2xl"
+                key={action.id}
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
+                      {action.agentName}
+                    </p>
+                    <h3 className="mt-2 font-ae-display text-xl font-semibold text-ae-text">
+                      {action.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-ae-text-muted">
+                      {action.description}
+                    </p>
+                  </div>
+                  <PrimaryButton onClick={() => approveSuggestedAgentAction(action)}>
+                    Approve
+                  </PrimaryButton>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-5 text-ae-text-muted shadow-ae-glow backdrop-blur-2xl">
+              No autonomous suggestions available yet.
+            </div>
+          )}
         </div>
       </section>
 

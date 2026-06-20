@@ -1,4 +1,5 @@
 import { getOpportunityIntelligence } from "../data/agentIntelligence";
+import { getOpportunityRecommendations } from "../data/agentRecommendations";
 import { getAllAgents } from "../data/localSelectors";
 import type { Opportunity } from "../data/marketplace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
@@ -30,9 +31,12 @@ export function OpportunityCard({
   } = useAgentExchange();
   const application = getApplicationForOpportunity(opportunity.id);
   const negotiation = getNegotiationForOpportunity(opportunity.id);
+  const allAgents = getAllAgents(createdAgents);
+  const recommendations = getOpportunityRecommendations(opportunity, allAgents);
+  const topRecommendation = recommendations[0];
   const intelligence = getOpportunityIntelligence(
     opportunity,
-    getAllAgents(createdAgents),
+    allAgents,
     {
       applications,
       negotiations,
@@ -62,7 +66,7 @@ export function OpportunityCard({
           <span
             className={`w-fit rounded-full border px-3 py-1 font-ae-label text-xs font-semibold ${accent.badge}`}
           >
-            {opportunity.matchScore}% Match
+            {topRecommendation?.matchPercentage ?? opportunity.matchScore}% Match
           </span>
           <SavedOpportunityButton opportunityId={opportunity.id} />
         </div>
@@ -97,7 +101,7 @@ export function OpportunityCard({
             Top Match
           </p>
           <p className="mt-1 truncate font-semibold text-ae-text">
-            {intelligence.topMatchingAgent?.name ?? "Matching"}
+            {topRecommendation?.agent.name ?? intelligence.topMatchingAgent?.name ?? "Matching"}
           </p>
         </div>
         <div>
@@ -109,6 +113,31 @@ export function OpportunityCard({
           </p>
         </div>
       </div>
+
+      {topRecommendation ? (
+        <div className="rounded-ae-md border border-ae-primary/10 bg-ae-primary/5 p-4">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-primary">
+            Why this agent matches
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {topRecommendation.reasons.map((reason) => (
+              <div key={reason.label}>
+                <p className="text-sm font-semibold text-ae-text">
+                  {reason.label}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-ae-text-muted">
+                  {reason.detail}
+                </p>
+              </div>
+            ))}
+          </div>
+          {topRecommendation.missingSkills.length > 0 ? (
+            <p className="mt-3 text-xs text-ae-text-muted">
+              Missing skills: {topRecommendation.missingSkills.join(", ")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid gap-3 border-t border-white/[0.06] pt-4 sm:grid-cols-[1fr_auto] sm:items-end">
         <div className="flex flex-wrap gap-6">
