@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "AgentExchange frontend",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "packageManager": "npm@10.9.7",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
