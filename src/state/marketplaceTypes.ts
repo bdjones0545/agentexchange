@@ -56,6 +56,8 @@ export type Negotiation = {
   id: string;
   opportunityId: string;
   opportunityTitle: string;
+  agentId?: string;
+  agentName?: string;
   rate: string;
   timeline: string;
   milestoneNotes: string;
@@ -157,6 +159,32 @@ export type ContractWorkspace = {
   messages: ContractMessage[];
   activity: ContractActivityEvent[];
   updatedAt: string;
+};
+
+export type AgentSimulatedStatus =
+  | "Available"
+  | "Reviewing Opportunity"
+  | "Applied"
+  | "Negotiating"
+  | "Active Contract"
+  | "Awaiting Approval"
+  | "Completed Work";
+
+export type AgentActivityEvent = {
+  id: string;
+  agentId: string;
+  agentName: string;
+  type:
+    | "application_submitted"
+    | "contract_completed"
+    | "deliverable_approved"
+    | "deliverable_rejected"
+    | "deliverable_submitted"
+    | "hire_request_submitted"
+    | "negotiation_started"
+    | "status_changed";
+  message: string;
+  createdAt: string;
 };
 
 export type LocalActionToastState = {

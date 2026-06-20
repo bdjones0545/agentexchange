@@ -9,7 +9,9 @@ import {
 } from "react";
 
 import { deriveWorkspaceStatus } from "../data/contractWorkspace";
+import { agents } from "../data/agents";
 import type {
+  AgentActivityEvent,
   Application,
   ContractMessageSender,
   ContractWorkspace,
@@ -27,6 +29,7 @@ import type {
 const STORAGE_KEY = "agentexchange-local-mvp";
 
 type PersistedState = {
+  agentActivities: AgentActivityEvent[];
   applications: Application[];
   contractWorkspaces: ContractWorkspace[];
   createdAgents: CreatedAgent[];
@@ -107,6 +110,7 @@ type AgentExchangeContextValue = PersistedState & {
 };
 
 const defaultPersistedState: PersistedState = {
+  agentActivities: [],
   applications: [],
   contractWorkspaces: [],
   createdAgents: [],
@@ -141,6 +145,32 @@ function formatActivityTimestamp() {
     minute: "2-digit",
     month: "short",
   });
+}
+
+function createAgentActivity(
+  agentId: string,
+  agentName: string,
+  type: AgentActivityEvent["type"],
+  message: string,
+): AgentActivityEvent {
+  return {
+    id: createId("agent-activity"),
+    agentId,
+    agentName,
+    type,
+    message,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function getSimulatedAgentForOpportunity(opportunityId: string) {
+  const index = Math.abs(
+    opportunityId.split("").reduce((total, character) => {
+      return total + character.charCodeAt(0);
+    }, 0),
+  ) % agents.length;
+
+  return agents[index] ?? agents[0];
 }
 
 function createEmptyWorkspace(contractId: string): ContractWorkspace {
@@ -193,6 +223,28 @@ function withWorkspace(
   const updatedWorkspace = updater(baseWorkspace);
   const previousStatus = deriveWorkspaceStatus(baseWorkspace);
   const nextStatus = deriveWorkspaceStatus(updatedWorkspace);
+  const relatedContract = current.localContracts.find(
+    (contract) => contract.id === contractId,
+  );
+  const relatedApplication =
+    relatedContract?.sourceType === "application"
+      ? current.applications.find(
+          (application) => application.id === relatedContract.sourceId,
+        )
+      : undefined;
+  const relatedHireRequest =
+    relatedContract?.sourceType === "hire-request"
+      ? current.hireRequests.find(
+          (hireRequest) => hireRequest.id === relatedContract.sourceId,
+        )
+      : undefined;
+  const relatedAgentId =
+    relatedApplication?.agentId ?? relatedHireRequest?.agentId ?? "";
+  const relatedAgentName =
+    relatedContract?.agent ??
+    relatedApplication?.agentName ??
+    relatedHireRequest?.agentName ??
+    "";
   const nextWorkspace =
     previousStatus !== nextStatus
       ? {
@@ -208,9 +260,24 @@ function withWorkspace(
           ],
         }
       : updatedWorkspace;
+  const nextAgentActivities =
+    previousStatus !== nextStatus && relatedAgentId && relatedAgentName
+      ? [
+          createAgentActivity(
+            relatedAgentId,
+            relatedAgentName,
+            nextStatus === "Completed"
+              ? "contract_completed"
+              : "status_changed",
+            `${relatedAgentName} moved ${relatedContract?.title ?? "a contract"} to ${nextStatus}.`,
+          ),
+          ...current.agentActivities,
+        ]
+      : current.agentActivities;
 
   return {
     ...current,
+    agentActivities: nextAgentActivities,
     contractWorkspaces: existingWorkspace
       ? current.contractWorkspaces.map((workspace) =>
           workspace.contractId === contractId ? nextWorkspace : workspace,
@@ -228,6 +295,7 @@ function safeParseState(rawValue: string | null): PersistedState {
     const parsed = JSON.parse(rawValue) as Partial<PersistedState>;
 
     return {
+      agentActivities: parsed.agentActivities ?? [],
       applications: parsed.applications ?? [],
       contractWorkspaces: (parsed.contractWorkspaces ?? []).map(
         normalizeWorkspace,
@@ -495,7 +563,30 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       note = "",
     ) => {
       setState((current) =>
-        withWorkspace(current, contractId, (workspace) => {
+        {
+          const relatedContract = current.localContracts.find(
+            (contract) => contract.id === contractId,
+          );
+          const relatedApplication =
+            relatedContract?.sourceType === "application"
+              ? current.applications.find(
+                  (application) => application.id === relatedContract.sourceId,
+                )
+              : undefined;
+          const relatedHireRequest =
+            relatedContract?.sourceType === "hire-request"
+              ? current.hireRequests.find(
+                  (hireRequest) => hireRequest.id === relatedContract.sourceId,
+                )
+              : undefined;
+          const relatedAgentId =
+            relatedApplication?.agentId ?? relatedHireRequest?.agentId;
+          const relatedAgentName =
+            relatedContract?.agent ??
+            relatedApplication?.agentName ??
+            relatedHireRequest?.agentName;
+
+          const nextState = withWorkspace(current, contractId, (workspace) => {
           const now = new Date().toISOString();
           const deliverable = workspace.deliverables.find(
             (candidate) => candidate.id === deliverableId,
@@ -548,7 +639,32 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
             ),
             updatedAt: now,
           };
-        }),
+          });
+
+          if (!relatedAgentId || !relatedAgentName) {
+            return nextState;
+          }
+
+          const activityType =
+            status === "approved"
+              ? "deliverable_approved"
+              : status === "rejected"
+                ? "deliverable_rejected"
+                : "deliverable_submitted";
+
+          return {
+            ...nextState,
+            agentActivities: [
+              createAgentActivity(
+                relatedAgentId,
+                relatedAgentName,
+                activityType,
+                `${relatedAgentName} ${status} deliverable ${deliverableId}.`,
+              ),
+              ...nextState.agentActivities,
+            ],
+          };
+        }
       );
       showToast(
         status === "approved"
@@ -649,6 +765,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
 
         return {
           ...current,
+          agentActivities: [
+            createAgentActivity(
+              input.agentId,
+              input.agentName,
+              "application_submitted",
+              `${input.agentName} applied to ${input.opportunityTitle}.`,
+            ),
+            ...current.agentActivities,
+          ],
           applications: existingApplication
             ? current.applications.map((application) =>
                 application.id === existingApplication.id
@@ -666,6 +791,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   const submitNegotiation = useCallback(
     (input: SubmitNegotiationInput) => {
       setState((current) => {
+        const simulatedAgent = getSimulatedAgentForOpportunity(input.opportunityId);
         const existingNegotiation = current.negotiations.find(
           (negotiation) => negotiation.opportunityId === input.opportunityId,
         );
@@ -674,10 +800,23 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           createdAt: existingNegotiation?.createdAt ?? new Date().toISOString(),
           status: "pending",
           ...input,
+          agentId: existingNegotiation?.agentId ?? simulatedAgent?.id,
+          agentName: existingNegotiation?.agentName ?? simulatedAgent?.name,
         };
 
         return {
           ...current,
+          agentActivities: simulatedAgent
+            ? [
+                createAgentActivity(
+                  simulatedAgent.id,
+                  simulatedAgent.name,
+                  "negotiation_started",
+                  `${simulatedAgent.name} entered negotiation for ${input.opportunityTitle}.`,
+                ),
+                ...current.agentActivities,
+              ]
+            : current.agentActivities,
           negotiations: existingNegotiation
             ? current.negotiations.map((negotiation) =>
                 negotiation.id === existingNegotiation.id
@@ -696,6 +835,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     (input: SubmitHireRequestInput) => {
       setState((current) => ({
         ...current,
+        agentActivities: [
+          createAgentActivity(
+            input.agentId,
+            input.agentName,
+            "hire_request_submitted",
+            `${input.agentName} received a hire request for ${input.opportunityTitle}.`,
+          ),
+          ...current.agentActivities,
+        ],
         hireRequests: [
           ...current.hireRequests,
           {

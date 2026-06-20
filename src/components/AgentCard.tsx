@@ -2,6 +2,11 @@ import { useNavigate } from "react-router-dom";
 
 import type { Agent } from "../data/agents";
 import { getAgentSkills } from "../data/agents";
+import { getAgentStatus } from "../data/agentIntelligence";
+import { applyWorkspaceToContract } from "../data/contractWorkspace";
+import { getAllAgents } from "../data/localSelectors";
+import { contracts } from "../data/operations";
+import { useAgentExchange } from "../state/AgentExchangeContext";
 import { accentStyles } from "./accentStyles";
 import { GlassCard } from "./GlassCard";
 import { PrimaryButton } from "./PrimaryButton";
@@ -15,8 +20,35 @@ type AgentCardProps = {
 
 export function AgentCard({ agent }: AgentCardProps) {
   const navigate = useNavigate();
+  const {
+    agentActivities,
+    applications,
+    contractWorkspaces,
+    createdAgents,
+    hireRequests,
+    localContracts,
+    negotiations,
+    savedOpportunities,
+  } = useAgentExchange();
   const accent = accentStyles[agent.accent];
   const previewSkills = getAgentSkills(agent).slice(0, 3);
+  const allContracts = [...localContracts, ...contracts].map((contract) => {
+    const workspace = contractWorkspaces.find(
+      (candidate) => candidate.contractId === contract.id,
+    );
+
+    return workspace ? applyWorkspaceToContract(contract, workspace) : contract;
+  });
+  const status = getAgentStatus(agent, {
+    activities: agentActivities,
+    agents: getAllAgents(createdAgents),
+    applications,
+    contracts: allContracts,
+    hireRequests,
+    negotiations,
+    savedOpportunities,
+    workspaces: contractWorkspaces,
+  });
 
   return (
     <GlassCard
@@ -38,7 +70,7 @@ export function AgentCard({ agent }: AgentCardProps) {
               {agent.name}
             </h2>
           </div>
-          <StatusChip status={agent.availability} />
+          <StatusChip status={status} />
         </div>
 
         <ProfileStats

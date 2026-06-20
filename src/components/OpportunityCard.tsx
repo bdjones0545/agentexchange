@@ -1,3 +1,5 @@
+import { getOpportunityIntelligence } from "../data/agentIntelligence";
+import { getAllAgents } from "../data/localSelectors";
 import type { Opportunity } from "../data/marketplace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { accentStyles } from "./accentStyles";
@@ -19,10 +21,23 @@ export function OpportunityCard({
   opportunity,
 }: OpportunityCardProps) {
   const accent = accentStyles[opportunity.accent];
-  const { getApplicationForOpportunity, getNegotiationForOpportunity } =
-    useAgentExchange();
+  const {
+    applications,
+    createdAgents,
+    getApplicationForOpportunity,
+    getNegotiationForOpportunity,
+    negotiations,
+  } = useAgentExchange();
   const application = getApplicationForOpportunity(opportunity.id);
   const negotiation = getNegotiationForOpportunity(opportunity.id);
+  const intelligence = getOpportunityIntelligence(
+    opportunity,
+    getAllAgents(createdAgents),
+    {
+      applications,
+      negotiations,
+    },
+  );
 
   return (
     <GlassCard
@@ -66,6 +81,33 @@ export function OpportunityCard({
             {tag}
           </span>
         ))}
+      </div>
+
+      <div className="grid gap-3 rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 sm:grid-cols-3">
+        <div>
+          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+            Applicants
+          </p>
+          <p className="mt-1 font-ae-display text-xl font-semibold text-ae-text">
+            {intelligence.applicants}
+          </p>
+        </div>
+        <div>
+          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+            Top Match
+          </p>
+          <p className="mt-1 truncate font-semibold text-ae-text">
+            {intelligence.topMatchingAgent?.name ?? "Matching"}
+          </p>
+        </div>
+        <div>
+          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+            Activity
+          </p>
+          <p className="mt-1 truncate text-sm text-ae-text-muted">
+            {intelligence.latestActivity}
+          </p>
+        </div>
       </div>
 
       <div className="grid gap-3 border-t border-white/[0.06] pt-4 sm:grid-cols-[1fr_auto] sm:items-end">
