@@ -43,6 +43,19 @@ export function normalizeAgentExchangeState(
 
 export async function loadLocalState(): Promise<AgentExchangePersistedState> {
   if (isSupabaseConfigured && supabase) {
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+
+    if (sessionError) {
+      throw new Error(
+        `Unable to inspect Supabase session: ${getSupabaseErrorMessage(sessionError)}`,
+      );
+    }
+
+    if (!sessionData.session) {
+      return emptyAgentExchangeState;
+    }
+
     const { data, error } = await supabase
       .from("activity_events")
       .select("metadata")
@@ -81,6 +94,19 @@ export async function saveLocalState(
   state: AgentExchangePersistedState,
 ): Promise<void> {
   if (isSupabaseConfigured && supabase) {
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+
+    if (sessionError) {
+      throw new Error(
+        `Unable to inspect Supabase session: ${getSupabaseErrorMessage(sessionError)}`,
+      );
+    }
+
+    if (!sessionData.session) {
+      return;
+    }
+
     const { error } = await supabase.from("activity_events").insert({
       event_type: "agentexchange_state_snapshot",
       message: "AgentExchange local MVP state snapshot",
