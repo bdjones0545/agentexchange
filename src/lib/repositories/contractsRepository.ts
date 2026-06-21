@@ -119,19 +119,26 @@ export async function updateContractWorkspace(workspace: ContractWorkspace) {
 export async function createMilestone(
   contractId: string,
   milestone: ContractMilestone,
-) {
+): Promise<ContractMilestone> {
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("contract_milestones").insert({
+    const { data, error } = await supabase.from("contract_milestones").insert({
       completed: milestone.completed,
       completed_at: milestone.completedAt,
       contract_id: contractId,
       notes: milestone.notes,
       title: milestone.title,
-    });
+    }).select("id, created_at, completed_at").single();
     if (error) {
       throw new Error(`Unable to create milestone: ${getSupabaseErrorMessage(error)}`);
     }
+    return {
+      ...milestone,
+      completedAt: data.completed_at ?? undefined,
+      createdAt: data.created_at,
+      id: data.id,
+    };
   }
+  return milestone;
 }
 
 export async function updateMilestone(
@@ -157,9 +164,9 @@ export async function updateMilestone(
 export async function createDeliverable(
   contractId: string,
   deliverable: ContractDeliverable,
-) {
+): Promise<ContractDeliverable> {
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("contract_deliverables").insert({
+    const { data, error } = await supabase.from("contract_deliverables").insert({
       approved_at: deliverable.approvedAt,
       contract_id: contractId,
       decisions: deliverable.decisions,
@@ -167,11 +174,19 @@ export async function createDeliverable(
       status: deliverable.status,
       submitted_at: deliverable.submittedAt,
       title: deliverable.title,
-    });
+    }).select("id, created_at, submitted_at, approved_at").single();
     if (error) {
       throw new Error(`Unable to create deliverable: ${getSupabaseErrorMessage(error)}`);
     }
+    return {
+      ...deliverable,
+      approvedAt: data.approved_at ?? undefined,
+      createdAt: data.created_at,
+      id: data.id,
+      submittedAt: data.submitted_at ?? undefined,
+    };
   }
+  return deliverable;
 }
 
 export async function updateDeliverable(

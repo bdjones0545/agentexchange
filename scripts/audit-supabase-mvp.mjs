@@ -154,6 +154,17 @@ async function main() {
     .single();
   record("Application persists", application.error ? "fail" : "pass", application.error?.message ?? "Application created.");
 
+  const savedOpportunity = await supabase.from("saved_opportunities").upsert(
+    {
+      opportunity_id: opportunityId,
+      owner_id: profileId,
+    },
+    {
+      onConflict: "owner_id,opportunity_id",
+    },
+  );
+  record("Saved opportunity persists", savedOpportunity.error ? "fail" : "pass", savedOpportunity.error?.message ?? "Saved opportunity created.");
+
   const negotiation = await supabase
     .from("negotiations")
     .insert({
@@ -235,12 +246,22 @@ async function main() {
     agent_id: agentId,
     agent_name: agentName,
     contract_id: contractId,
+    contract_title: `Audit Contract ${suffix}`,
     organization_id: organizationId,
     organization_name: `Audit Organization ${suffix}`,
     rating: 5,
     review: "Audit review",
   });
   record("Review persists", review.error ? "fail" : "pass", review.error?.message ?? "Review created.");
+
+  const dispute = await supabase.from("disputes").insert({
+    contract_id: contractId,
+    metadata: { source: "audit" },
+    owner_id: profileId,
+    reason: "Audit dispute",
+    status: "Open",
+  });
+  record("Dispute persists", dispute.error ? "fail" : "pass", dispute.error?.message ?? "Dispute created.");
 
   printResults();
 

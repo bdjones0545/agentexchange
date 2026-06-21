@@ -29,9 +29,18 @@ import {
   updateDeliverable as updateDeliverableRecord,
   updateMilestone as updateMilestoneRecord,
 } from "../lib/repositories/contractsRepository";
+import {
+  createDispute as createDisputeRecord,
+  updateDispute as updateDisputeRecord,
+} from "../lib/repositories/disputesRepository";
 import { createHireRequest as createHireRequestRecord } from "../lib/repositories/hireRequestsRepository";
 import { createNegotiation as createNegotiationRecord } from "../lib/repositories/negotiationsRepository";
 import { createOpportunity as createOpportunityRecord } from "../lib/repositories/opportunitiesRepository";
+import { createReview as createReviewRecord } from "../lib/repositories/reviewsRepository";
+import {
+  saveOpportunity as saveOpportunityRecord,
+  unsaveOpportunity as unsaveOpportunityRecord,
+} from "../lib/repositories/savedOpportunitiesRepository";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 import type {
@@ -171,6 +180,14 @@ const AgentExchangeContext = createContext<AgentExchangeContextValue | null>(
 
 function createId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isUuid(value: string | undefined) {
+  return Boolean(
+    value?.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    ),
+  );
 }
 
 function formatLocalDate(offsetDays = 0) {
@@ -550,9 +567,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         notes,
         title,
       };
-      if (isSupabaseConfigured) {
-        await createMilestoneRecord(contractId, milestone);
-      }
+      const persistedMilestone =
+        isSupabaseConfigured && isUuid(contractId)
+          ? await createMilestoneRecord(contractId, milestone)
+          : milestone;
 
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
@@ -567,7 +585,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
               },
               ...workspace.activity,
             ],
-            milestones: [...workspace.milestones, milestone],
+            milestones: [...workspace.milestones, persistedMilestone],
             updatedAt: now,
           };
         }),
@@ -589,7 +607,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       const milestone = workspace?.milestones.find(
         (candidate) => candidate.id === milestoneId,
       );
-      if (isSupabaseConfigured && milestone) {
+      if (isSupabaseConfigured && milestone && isUuid(milestoneId)) {
         await updateMilestoneRecord(milestoneId, {
           completed: !milestone.completed,
           completedAt: milestone.completed ? undefined : new Date().toISOString(),
@@ -642,7 +660,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         return;
       }
 
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured && isUuid(milestoneId)) {
         await updateMilestoneRecord(milestoneId, { notes });
       }
 
@@ -693,9 +711,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         status: "draft" as const,
         title,
       };
-      if (isSupabaseConfigured) {
-        await createDeliverableRecord(contractId, deliverable);
-      }
+      const persistedDeliverable =
+        isSupabaseConfigured && isUuid(contractId)
+          ? await createDeliverableRecord(contractId, deliverable)
+          : deliverable;
 
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
@@ -710,7 +729,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
               },
               ...workspace.activity,
             ],
-            deliverables: [...workspace.deliverables, deliverable],
+            deliverables: [...workspace.deliverables, persistedDeliverable],
             updatedAt: now,
           };
         }),
@@ -737,7 +756,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       const deliverable = workspace?.deliverables.find(
         (candidate) => candidate.id === deliverableId,
       );
-      if (isSupabaseConfigured && deliverable) {
+      if (isSupabaseConfigured && deliverable && isUuid(deliverableId)) {
         const now = new Date().toISOString();
         await updateDeliverableRecord(deliverableId, {
           approvedAt: status === "approved" ? now : deliverable.approvedAt,
@@ -895,7 +914,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         createdAt: now,
         senderType,
       };
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured && isUuid(contractId)) {
         await createMessageRecord({ ...message, contractId });
       }
 
@@ -923,7 +942,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const addAgentReview = useCallback(
-    (
+    async (
       contractId: string,
       agentName: string,
       contractTitle: string,
@@ -935,25 +954,46 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         return;
       }
 
+      const currentContract = state.localContracts.find(
+        (contract) => contract.id === contractId,
+      );
+      const relatedApplication = state.applications.find(
+        (application) =>
+          currentContract?.sourceId === application.id &&
+          currentContract.sourceType === "application",
+      );
+      const relatedHireRequest = state.hireRequests.find(
+        (hireRequest) =>
+          currentContract?.sourceId === hireRequest.id &&
+          currentContract.sourceType === "hire-request",
+      );
+      const relatedNegotiation = state.negotiations.find(
+        (negotiation) =>
+          currentContract?.sourceId === negotiation.id &&
+          currentContract.sourceType === "negotiation",
+      );
+      const now = new Date().toISOString();
+      const reviewRecord = {
+        id: createId("review"),
+        agentId:
+          relatedApplication?.agentId ??
+          relatedHireRequest?.agentId ??
+          relatedNegotiation?.agentId,
+        agentName,
+        contractId,
+        contractTitle,
+        createdAt: now,
+        organization,
+        rating,
+        review,
+      };
+
+      const persistedReview =
+        isSupabaseConfigured && isUuid(contractId)
+          ? await createReviewRecord(reviewRecord)
+          : reviewRecord;
+
       setState((current) => {
-        const relatedApplication = current.applications.find(
-          (application) =>
-            current.localContracts.some(
-              (contract) =>
-                contract.id === contractId &&
-                contract.sourceId === application.id &&
-                contract.sourceType === "application",
-            ),
-        );
-        const relatedHireRequest = current.hireRequests.find((hireRequest) =>
-          current.localContracts.some(
-            (contract) =>
-              contract.id === contractId &&
-              contract.sourceId === hireRequest.id &&
-              contract.sourceType === "hire-request",
-          ),
-        );
-        const now = new Date().toISOString();
         const nextState = withWorkspace(current, contractId, (workspace) => ({
           ...workspace,
           activity: [
@@ -971,34 +1011,39 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         return {
           ...nextState,
           agentReviews: [
-            {
-              id: createId("review"),
-              agentId: relatedApplication?.agentId ?? relatedHireRequest?.agentId,
-              agentName,
-              contractId,
-              contractTitle,
-              createdAt: now,
-              organization,
-              rating,
-              review,
-            },
+            persistedReview,
             ...nextState.agentReviews,
           ],
         };
       });
       showToast("Review saved.");
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, showToast, state],
   );
 
   const openContractDispute = useCallback(
-    (contractId: string, reason: string) => {
+    async (contractId: string, reason: string) => {
       if (!requireAuthForPersistentWrite("open disputes")) {
         return;
       }
 
+      const now = new Date().toISOString();
+      const disputeRecord = {
+        id: createId("dispute"),
+        contractId,
+        createdAt: now,
+        reason,
+        status: "Open" as const,
+        updatedAt: now,
+      };
+      const persistedDispute =
+        isSupabaseConfigured && isUuid(contractId)
+          ? await createDisputeRecord(disputeRecord, {
+              source: "contract_workspace",
+            })
+          : disputeRecord;
+
       setState((current) => {
-        const now = new Date().toISOString();
         const nextState = withWorkspace(current, contractId, (workspace) => ({
           ...workspace,
           activity: [
@@ -1016,14 +1061,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         return {
           ...nextState,
           contractDisputes: [
-            {
-              id: createId("dispute"),
-              contractId,
-              createdAt: now,
-              reason,
-              status: "Open",
-              updatedAt: now,
-            },
+            persistedDispute,
             ...nextState.contractDisputes,
           ],
         };
@@ -1034,7 +1072,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const updateContractDispute = useCallback(
-    (
+    async (
       contractId: string,
       disputeId: string,
       status: ContractDisputeStatus,
@@ -1042,6 +1080,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     ) => {
       if (!requireAuthForPersistentWrite("update disputes")) {
         return;
+      }
+
+      if (isSupabaseConfigured && isUuid(contractId) && isUuid(disputeId)) {
+        await updateDisputeRecord(disputeId, status, resolutionNotes);
       }
 
       setState((current) => {
@@ -1081,13 +1123,27 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const toggleSavedOpportunity = useCallback(
-    (opportunityId: string) => {
+    async (opportunityId: string) => {
+      const isRealSupabaseOpportunity = isUuid(opportunityId);
+      if (
+        isSupabaseConfigured &&
+        isRealSupabaseOpportunity &&
+        !requireAuthForPersistentWrite("save opportunities")
+      ) {
+        return;
+      }
+
       setState((current) => {
         const isSaved = current.savedOpportunities.some(
           (savedOpportunity) => savedOpportunity.opportunityId === opportunityId,
         );
 
         if (isSaved) {
+          if (isSupabaseConfigured && isRealSupabaseOpportunity) {
+            void unsaveOpportunityRecord(opportunityId).catch((error) =>
+              setError(error instanceof Error ? error.message : "Unable to unsave opportunity."),
+            );
+          }
           showToast("Opportunity removed from saved items.");
           return {
             ...current,
@@ -1098,6 +1154,11 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           };
         }
 
+        if (isSupabaseConfigured && isRealSupabaseOpportunity) {
+          void saveOpportunityRecord(opportunityId).catch((error) =>
+            setError(error instanceof Error ? error.message : "Unable to save opportunity."),
+          );
+        }
         showToast("Opportunity saved.");
         return {
           ...current,
@@ -1111,7 +1172,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         };
       });
     },
-    [showToast],
+    [requireAuthForPersistentWrite, showToast],
   );
 
   const submitApplication = useCallback(

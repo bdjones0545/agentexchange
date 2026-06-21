@@ -100,6 +100,14 @@ create table if not exists hire_requests (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists saved_opportunities (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid references profiles(id) on delete cascade,
+  opportunity_id uuid references opportunities(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (owner_id, opportunity_id)
+);
+
 create table if not exists contracts (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid references organizations(id) on delete set null,
@@ -154,6 +162,7 @@ create table if not exists contract_messages (
 create table if not exists reviews (
   id uuid primary key default gen_random_uuid(),
   contract_id uuid references contracts(id) on delete cascade,
+  contract_title text,
   agent_id uuid references agents(id) on delete set null,
   organization_id uuid references organizations(id) on delete set null,
   agent_name text not null,
@@ -165,10 +174,12 @@ create table if not exists reviews (
 
 create table if not exists disputes (
   id uuid primary key default gen_random_uuid(),
+  owner_id uuid references profiles(id) on delete set null,
   contract_id uuid references contracts(id) on delete cascade,
   reason text not null,
   status text not null default 'Open',
   resolution_notes text,
+  metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -197,6 +208,15 @@ alter table negotiations
 
 alter table hire_requests
   add column if not exists owner_id uuid references profiles(id) on delete set null;
+
+alter table disputes
+  add column if not exists owner_id uuid references profiles(id) on delete set null;
+
+alter table disputes
+  add column if not exists metadata jsonb not null default '{}'::jsonb;
+
+alter table reviews
+  add column if not exists contract_title text;
 
 alter table activity_events
   add column if not exists owner_id uuid references profiles(id) on delete set null;
@@ -227,6 +247,8 @@ alter table opportunities alter column owner_id set default public.current_profi
 alter table applications alter column owner_id set default public.current_profile_id();
 alter table negotiations alter column owner_id set default public.current_profile_id();
 alter table hire_requests alter column owner_id set default public.current_profile_id();
+alter table saved_opportunities alter column owner_id set default public.current_profile_id();
+alter table disputes alter column owner_id set default public.current_profile_id();
 alter table activity_events alter column owner_id set default public.current_profile_id();
 
 create or replace function public.is_organization_owner(organization_uuid uuid)
@@ -375,6 +397,9 @@ create index if not exists idx_hire_requests_agent_id on hire_requests(agent_id)
 create index if not exists idx_hire_requests_opportunity_id on hire_requests(opportunity_id);
 create index if not exists idx_hire_requests_status on hire_requests(status);
 create index if not exists idx_hire_requests_created_at on hire_requests(created_at);
+create index if not exists idx_saved_opportunities_owner_id on saved_opportunities(owner_id);
+create index if not exists idx_saved_opportunities_opportunity_id on saved_opportunities(opportunity_id);
+create index if not exists idx_saved_opportunities_created_at on saved_opportunities(created_at);
 create index if not exists idx_contracts_organization_id on contracts(organization_id);
 create index if not exists idx_contracts_agent_id on contracts(agent_id);
 create index if not exists idx_contracts_status on contracts(status);
@@ -391,6 +416,7 @@ create index if not exists idx_reviews_agent_id on reviews(agent_id);
 create index if not exists idx_reviews_organization_id on reviews(organization_id);
 create index if not exists idx_reviews_created_at on reviews(created_at);
 create index if not exists idx_disputes_contract_id on disputes(contract_id);
+create index if not exists idx_disputes_owner_id on disputes(owner_id);
 create index if not exists idx_disputes_status on disputes(status);
 create index if not exists idx_disputes_created_at on disputes(created_at);
 create index if not exists idx_activity_events_actor_id on activity_events(actor_id);
@@ -406,6 +432,7 @@ alter table opportunities enable row level security;
 alter table applications enable row level security;
 alter table negotiations enable row level security;
 alter table hire_requests enable row level security;
+alter table saved_opportunities enable row level security;
 alter table contracts enable row level security;
 alter table contract_milestones enable row level security;
 alter table contract_deliverables enable row level security;
@@ -584,6 +611,21 @@ create policy "hire_requests_participant_update" on hire_requests
     or public.is_agent_owner(agent_id)
   )
   with check (true);
+
+drop policy if exists "saved_opportunities_owner_read" on saved_opportunities;
+create policy "saved_opportunities_owner_read" on saved_opportunities
+  for select to authenticated
+  using (owner_id = public.current_profile_id());
+
+drop policy if exists "saved_opportunities_owner_insert" on saved_opportunities;
+create policy "saved_opportunities_owner_insert" on saved_opportunities
+  for insert to authenticated
+  with check (owner_id = public.current_profile_id());
+
+drop policy if exists "saved_opportunities_owner_delete" on saved_opportunities;
+create policy "saved_opportunities_owner_delete" on saved_opportunities
+  for delete to authenticated
+  using (owner_id = public.current_profile_id());
 
 drop policy if exists "contracts_participant_read" on contracts;
 create policy "contracts_participant_read" on contracts
