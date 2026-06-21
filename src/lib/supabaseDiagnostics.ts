@@ -1,4 +1,9 @@
-import { isSupabaseConfigured, supabase, getSupabaseErrorMessage } from "./supabase";
+import {
+  isSupabaseConfigured,
+  supabase,
+  supabaseEnvDiagnostics,
+  getSupabaseErrorMessage,
+} from "./supabase";
 
 export type SupabaseDiagnosticStatus = "fail" | "pass" | "warn";
 
@@ -36,6 +41,21 @@ async function checkReadable(tableName: string) {
 
 export async function runSupabaseDiagnostics(): Promise<SupabaseDiagnosticResult[]> {
   const results: SupabaseDiagnosticResult[] = [
+    result(
+      "has VITE_SUPABASE_URL",
+      supabaseEnvDiagnostics.hasUrl ? "pass" : "warn",
+      `has VITE_SUPABASE_URL: ${supabaseEnvDiagnostics.hasUrl}`,
+    ),
+    result(
+      "has VITE_SUPABASE_ANON_KEY",
+      supabaseEnvDiagnostics.hasAnonKey ? "pass" : "warn",
+      `has VITE_SUPABASE_ANON_KEY: ${supabaseEnvDiagnostics.hasAnonKey}`,
+    ),
+    result(
+      "URL starts with https",
+      supabaseEnvDiagnostics.urlStartsWithHttps ? "pass" : "warn",
+      `URL starts with https: ${supabaseEnvDiagnostics.urlStartsWithHttps}`,
+    ),
     result(
       "Environment variables",
       isSupabaseConfigured ? "pass" : "warn",

@@ -6,7 +6,15 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as
   | string
   | undefined;
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const supabaseEnvDiagnostics = {
+  hasAnonKey: Boolean(supabaseAnonKey),
+  hasUrl: Boolean(supabaseUrl),
+  urlStartsWithHttps: Boolean(supabaseUrl?.startsWith("https://")),
+};
+
+export const isSupabaseConfigured = Boolean(
+  supabaseEnvDiagnostics.hasUrl && supabaseEnvDiagnostics.hasAnonKey,
+);
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!)
