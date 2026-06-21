@@ -423,7 +423,14 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   const requireAuthForPersistentWrite = useCallback(
     (action: string) => {
       if (isSupabaseConfigured && !isAuthenticated) {
+        const redirectTo = `${window.location.pathname}${window.location.search}`;
+        setError(`Sign in required to ${action}.`);
         showToast(`Sign in required to ${action}.`);
+        window.setTimeout(() => {
+          window.location.assign(
+            `/sign-in?redirect=${encodeURIComponent(redirectTo)}`,
+          );
+        }, 600);
         return false;
       }
 

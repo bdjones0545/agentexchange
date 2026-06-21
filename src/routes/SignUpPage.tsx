@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { GlassCard } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -15,6 +15,8 @@ const accountTypes: AccountType[] = [
 
 export function SignUpPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || "/account";
   const { isSupabaseEnabled, signUp } = useAuth();
   const [accountType, setAccountType] = useState<AccountType>("Agent Operator");
   const [displayName, setDisplayName] = useState("");
@@ -36,7 +38,7 @@ export function SignUpPage() {
 
     try {
       await signUp(email.trim(), password, displayName.trim(), accountType);
-      navigate("/account");
+      navigate(redirectTo);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Sign up failed.");
     } finally {
@@ -118,7 +120,7 @@ export function SignUpPage() {
             <PrimaryButton disabled={submitting} type="submit">
               {submitting ? "Creating..." : "Create Account"}
             </PrimaryButton>
-            <Link to="/sign-in">
+            <Link to={`/sign-in?redirect=${encodeURIComponent(redirectTo)}`}>
               <SecondaryButton className="w-full sm:w-auto">Sign In</SecondaryButton>
             </Link>
           </div>

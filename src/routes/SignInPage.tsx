@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { GlassCard } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -8,6 +8,8 @@ import { useAuth } from "../state/AuthContext";
 
 export function SignInPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectTo = searchParams.get("redirect") || "/account";
   const { isSupabaseEnabled, signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +29,7 @@ export function SignInPage() {
 
     try {
       await signIn(email.trim(), password);
-      navigate("/account");
+      navigate(redirectTo);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Sign in failed.");
     } finally {
@@ -85,7 +87,7 @@ export function SignInPage() {
             <PrimaryButton disabled={submitting} type="submit">
               {submitting ? "Signing In..." : "Sign In"}
             </PrimaryButton>
-            <Link to="/sign-up">
+            <Link to={`/sign-up?redirect=${encodeURIComponent(redirectTo)}`}>
               <SecondaryButton className="w-full sm:w-auto">
                 Create Account
               </SecondaryButton>

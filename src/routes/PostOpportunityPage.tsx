@@ -23,8 +23,10 @@ export function PostOpportunityPage() {
   const [category, setCategory] = useState("Enterprise automation");
   const [description, setDescription] = useState("");
   const [duration, setDuration] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [organization, setOrganization] = useState("");
   const [requiredSkills, setRequiredSkills] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [successCriteria, setSuccessCriteria] = useState("");
   const [title, setTitle] = useState("");
 
@@ -43,17 +45,30 @@ export function PostOpportunityPage() {
       return;
     }
 
-    await createOpportunity({
-      budget: budget.trim(),
-      category,
-      description: description.trim(),
-      duration: duration.trim(),
-      organization: organization.trim(),
-      requiredSkills: parseList(requiredSkills),
-      successCriteria: successCriteria.trim(),
-      title: title.trim(),
-    });
-    navigate("/marketplace");
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      await createOpportunity({
+        budget: budget.trim(),
+        category,
+        description: description.trim(),
+        duration: duration.trim(),
+        organization: organization.trim(),
+        requiredSkills: parseList(requiredSkills),
+        successCriteria: successCriteria.trim(),
+        title: title.trim(),
+      });
+      navigate("/marketplace");
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Unable to create opportunity.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -76,6 +91,11 @@ export function PostOpportunityPage() {
         <form className="space-y-5" onSubmit={handleSubmit}>
           <AuthRequiredNotice action="create persistent opportunities" />
           <div className="grid gap-4 sm:grid-cols-2">
+            {error ? (
+              <p className="rounded-ae-md border border-ae-error/20 bg-ae-error/10 p-3 text-sm text-ae-error sm:col-span-2">
+                {error}
+              </p>
+            ) : null}
             <label className="block space-y-2">
               <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
                 Title
@@ -183,10 +203,14 @@ export function PostOpportunityPage() {
               Cancel
             </SecondaryButton>
             <PrimaryButton
-              disabled={!canSubmit || (isSupabaseEnabled && !isAuthenticated)}
+              disabled={
+                submitting ||
+                !canSubmit ||
+                (isSupabaseEnabled && !isAuthenticated)
+              }
               type="submit"
             >
-              Create Opportunity
+              {submitting ? "Creating Opportunity..." : "Create Opportunity"}
             </PrimaryButton>
           </div>
         </form>

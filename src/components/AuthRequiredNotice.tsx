@@ -12,6 +12,7 @@ type AuthRequiredNoticeProps = {
 export function AuthRequiredNotice({ action }: AuthRequiredNoticeProps) {
   const navigate = useNavigate();
   const { isAuthenticated, isSupabaseEnabled } = useAuth();
+  const redirectTo = `${window.location.pathname}${window.location.search}`;
 
   if (!isSupabaseEnabled || isAuthenticated) {
     return null;
@@ -26,8 +27,18 @@ export function AuthRequiredNotice({ action }: AuthRequiredNoticeProps) {
         Sign in to {action} with Supabase persistence enabled.
       </p>
       <div className="flex flex-col gap-2 sm:flex-row">
-        <PrimaryButton onClick={() => navigate("/sign-in")}>Sign In</PrimaryButton>
-        <SecondaryButton onClick={() => navigate("/sign-up")}>
+        <PrimaryButton
+          onClick={() =>
+            navigate(`/sign-in?redirect=${encodeURIComponent(redirectTo)}`)
+          }
+        >
+          Sign In
+        </PrimaryButton>
+        <SecondaryButton
+          onClick={() =>
+            navigate(`/sign-up?redirect=${encodeURIComponent(redirectTo)}`)
+          }
+        >
           Create Account
         </SecondaryButton>
       </div>

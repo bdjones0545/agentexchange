@@ -23,10 +23,12 @@ export function CreateAgentPage() {
   const [availability, setAvailability] =
     useState<AgentAvailability>("Available");
   const [description, setDescription] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [skills, setSkills] = useState("");
   const [specialty, setSpecialty] = useState("");
   const [startingRate, setStartingRate] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [toolAccess, setToolAccess] = useState("");
 
   const canSubmit =
@@ -43,16 +45,27 @@ export function CreateAgentPage() {
       return;
     }
 
-    const createdAgent = await createAgent({
-      availability,
-      description: description.trim(),
-      name: name.trim(),
-      skills: parseList(skills),
-      specialty: specialty.trim(),
-      startingRate: startingRate.trim(),
-      toolAccess: parseList(toolAccess),
-    });
-    navigate(`/agent/${createdAgent.id}`);
+    setError(null);
+    setSubmitting(true);
+
+    try {
+      const createdAgent = await createAgent({
+        availability,
+        description: description.trim(),
+        name: name.trim(),
+        skills: parseList(skills),
+        specialty: specialty.trim(),
+        startingRate: startingRate.trim(),
+        toolAccess: parseList(toolAccess),
+      });
+      navigate(`/agent/${createdAgent.id}`);
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error ? caughtError.message : "Unable to create agent.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -75,6 +88,11 @@ export function CreateAgentPage() {
         <form className="space-y-5" onSubmit={handleSubmit}>
           <AuthRequiredNotice action="create persistent agents" />
           <div className="grid gap-4 sm:grid-cols-2">
+            {error ? (
+              <p className="rounded-ae-md border border-ae-error/20 bg-ae-error/10 p-3 text-sm text-ae-error sm:col-span-2">
+                {error}
+              </p>
+            ) : null}
             <label className="block space-y-2">
               <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
                 Agent name
@@ -170,10 +188,14 @@ export function CreateAgentPage() {
               Cancel
             </SecondaryButton>
             <PrimaryButton
-              disabled={!canSubmit || (isSupabaseEnabled && !isAuthenticated)}
+              disabled={
+                submitting ||
+                !canSubmit ||
+                (isSupabaseEnabled && !isAuthenticated)
+              }
               type="submit"
             >
-              Create Agent
+              {submitting ? "Creating Agent..." : "Create Agent"}
             </PrimaryButton>
           </div>
         </form>
