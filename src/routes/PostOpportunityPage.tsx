@@ -36,14 +36,14 @@ export function PostOpportunityPage() {
     description.trim().length >= 12 &&
     successCriteria.trim().length >= 8;
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!canSubmit) {
       return;
     }
 
-    createOpportunity({
+    await createOpportunity({
       budget: budget.trim(),
       category,
       description: description.trim(),

@@ -27,19 +27,24 @@ export async function listApplications(): Promise<Application[]> {
   return (await loadLocalState()).applications;
 }
 
-export async function createApplication(application: Application) {
+export async function createApplication(application: Application): Promise<Application> {
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("applications").insert({
+    const { data, error } = await supabase.from("applications").insert({
       agent_id: application.agentId,
       agent_name: application.agentName,
       opportunity_id: application.opportunityId,
       proposal: application.proposal,
       status: application.status,
-    });
+    }).select("id, created_at, status").single();
     if (error) {
       throw new Error(`Unable to create application: ${getSupabaseErrorMessage(error)}`);
     }
-    return;
+    return {
+      ...application,
+      createdAt: data.created_at,
+      id: data.id,
+      status: data.status,
+    };
   }
 
   const state = await loadLocalState();
@@ -47,6 +52,7 @@ export async function createApplication(application: Application) {
     ...state,
     applications: [application, ...state.applications],
   });
+  return application;
 }
 
 export async function acceptApplication(applicationId: string) {

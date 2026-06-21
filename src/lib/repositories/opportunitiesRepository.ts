@@ -43,6 +43,23 @@ export async function createOpportunity(
   input: CreateOpportunityInput,
 ): Promise<CreatedOpportunity> {
   if (isSupabaseConfigured && supabase) {
+    const organizationResult = await supabase
+      .from("organizations")
+      .insert({
+        industry: input.category,
+        name: input.organization,
+        overview: `Organization hiring for ${input.category.toLowerCase()} work.`,
+        verified: false,
+      })
+      .select("id")
+      .single();
+
+    if (organizationResult.error) {
+      throw new Error(
+        `Unable to create opportunity organization: ${getSupabaseErrorMessage(organizationResult.error)}`,
+      );
+    }
+
     const { data, error } = await supabase
       .from("opportunities")
       .insert({
@@ -50,6 +67,7 @@ export async function createOpportunity(
         category: input.category,
         description: input.description,
         estimated_duration: input.duration,
+        organization_id: organizationResult.data.id,
         organization_name: input.organization,
         required_skills: input.requiredSkills,
         status: "open",
@@ -73,6 +91,7 @@ export async function createOpportunity(
         duration: data.estimated_duration ?? input.duration,
         id: data.id,
         matchScore: 91,
+        organizationId: data.organization_id ?? organizationResult.data.id,
         organization: data.organization_name ?? input.organization,
         requiredSkills: data.required_skills ?? input.requiredSkills,
         successCriteria: data.success_criteria ?? input.successCriteria,

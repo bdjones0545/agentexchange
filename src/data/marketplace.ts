@@ -12,6 +12,7 @@ export type Category = {
 export type Opportunity = {
   id: string;
   category: string;
+  organizationId?: string;
   organization?: string;
   title: string;
   summary: string;

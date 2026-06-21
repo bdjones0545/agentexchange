@@ -32,9 +32,9 @@ export async function listNegotiations(): Promise<Negotiation[]> {
   return (await loadLocalState()).negotiations;
 }
 
-export async function createNegotiation(negotiation: Negotiation) {
+export async function createNegotiation(negotiation: Negotiation): Promise<Negotiation> {
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("negotiations").insert({
+    const { data, error } = await supabase.from("negotiations").insert({
       agent_id: negotiation.agentId,
       agent_name: negotiation.agentName,
       counter_note: negotiation.counterNote,
@@ -45,11 +45,16 @@ export async function createNegotiation(negotiation: Negotiation) {
       rate: negotiation.rate,
       status: negotiation.status,
       timeline: negotiation.timeline,
-    });
+    }).select("id, created_at, status").single();
     if (error) {
       throw new Error(`Unable to create negotiation: ${getSupabaseErrorMessage(error)}`);
     }
-    return;
+    return {
+      ...negotiation,
+      createdAt: data.created_at,
+      id: data.id,
+      status: data.status,
+    };
   }
 
   const state = await loadLocalState();
@@ -57,4 +62,5 @@ export async function createNegotiation(negotiation: Negotiation) {
     ...state,
     negotiations: [negotiation, ...state.negotiations],
   });
+  return negotiation;
 }

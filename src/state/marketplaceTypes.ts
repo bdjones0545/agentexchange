@@ -85,6 +85,7 @@ export type LocalContract = {
   sourceType: "application" | "hire-request" | "negotiation";
   organizationId: string;
   organization: string;
+  agentId?: string;
   agent: string;
   title: string;
   value: string;

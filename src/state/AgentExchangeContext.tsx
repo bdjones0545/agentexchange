@@ -16,6 +16,22 @@ import {
   loadAgentExchangeState,
   saveAgentExchangeState,
 } from "../lib/repositories/activityRepository";
+import { createAgent as createAgentRecord } from "../lib/repositories/agentsRepository";
+import {
+  acceptApplication as acceptApplicationRecord,
+  createApplication as createApplicationRecord,
+} from "../lib/repositories/applicationsRepository";
+import {
+  createContract as createContractRecord,
+  createDeliverable as createDeliverableRecord,
+  createMessage as createMessageRecord,
+  createMilestone as createMilestoneRecord,
+  updateDeliverable as updateDeliverableRecord,
+  updateMilestone as updateMilestoneRecord,
+} from "../lib/repositories/contractsRepository";
+import { createHireRequest as createHireRequestRecord } from "../lib/repositories/hireRequestsRepository";
+import { createNegotiation as createNegotiationRecord } from "../lib/repositories/negotiationsRepository";
+import { createOpportunity as createOpportunityRecord } from "../lib/repositories/opportunitiesRepository";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 import type {
@@ -87,8 +103,8 @@ type AgentExchangeContextValue = PersistedState & {
   acceptNegotiation: (negotiationId: string) => void;
   approveSuggestedAgentAction: (action: SuggestedAgentAction) => void;
   clearToast: () => void;
-  createAgent: (input: CreateAgentInput) => CreatedAgent;
-  createOpportunity: (input: CreateOpportunityInput) => CreatedOpportunity;
+  createAgent: (input: CreateAgentInput) => Promise<CreatedAgent>;
+  createOpportunity: (input: CreateOpportunityInput) => Promise<CreatedOpportunity>;
   getApplicationForOpportunity: (opportunityId: string) => Application | undefined;
   getContractWorkspace: (contractId: string) => ContractWorkspace;
   getNegotiationForOpportunity: (opportunityId: string) => Negotiation | undefined;
@@ -400,7 +416,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const createOpportunity = useCallback(
-    (input: CreateOpportunityInput) => {
+    async (input: CreateOpportunityInput) => {
       if (!requireAuthForPersistentWrite("create opportunities")) {
         const authRequiredOpportunity: CreatedOpportunity = {
           accent: "violet",
@@ -420,23 +436,26 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         return authRequiredOpportunity;
       }
 
-      const createdOpportunity: CreatedOpportunity = {
-        accent: "violet",
-        budget: input.budget,
-        cadence: input.duration,
-        category: input.category,
-        createdAt: new Date().toISOString(),
-        duration: input.duration,
-        id: createId("opportunity"),
-        matchScore: 91,
-        organization: input.organization,
-        requiredSkills: input.requiredSkills,
-        successCriteria: input.successCriteria,
-        summary: input.description,
-        tags: input.requiredSkills.length > 0 ? input.requiredSkills : ["Custom"],
-        title: input.title,
-        trustLevel: "Local",
-      };
+      const createdOpportunity = isSupabaseConfigured
+        ? await createOpportunityRecord(input)
+        : {
+            accent: "violet" as const,
+            budget: input.budget,
+            cadence: input.duration,
+            category: input.category,
+            createdAt: new Date().toISOString(),
+            duration: input.duration,
+            id: createId("opportunity"),
+            matchScore: 91,
+            organization: input.organization,
+            requiredSkills: input.requiredSkills,
+            successCriteria: input.successCriteria,
+            summary: input.description,
+            tags:
+              input.requiredSkills.length > 0 ? input.requiredSkills : ["Custom"],
+            title: input.title,
+            trustLevel: "Local",
+          };
 
       setState((current) => ({
         ...current,
@@ -453,7 +472,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const createAgent = useCallback(
-    (input: CreateAgentInput) => {
+    async (input: CreateAgentInput) => {
       if (!requireAuthForPersistentWrite("create agents")) {
         const authRequiredAgent: CreatedAgent = {
           accent: "violet",
@@ -478,31 +497,33 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         return authRequiredAgent;
       }
 
-      const initials = input.name
-        .split(" ")
-        .map((part) => part[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase();
-      const createdAgent: CreatedAgent = {
-        accent: "violet",
-        availability: input.availability,
-        avatarInitials: initials || "AI",
-        contractHistoryIds: [],
-        createdAt: new Date().toISOString(),
-        customSkills: input.skills,
-        description: input.description,
-        id: createId("agent"),
-        name: input.name,
-        revenue: "$0",
-        skillIds: [],
-        specialty: input.specialty,
-        startingRate: input.startingRate,
-        successRate: "New",
-        tier: "Local Agent",
-        toolAccess: input.toolAccess,
-        trustScore: 90,
-      };
+      const createdAgent = isSupabaseConfigured
+        ? await createAgentRecord(input)
+        : {
+            accent: "violet" as const,
+            availability: input.availability,
+            avatarInitials:
+              input.name
+                .split(" ")
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase() || "AI",
+            contractHistoryIds: [],
+            createdAt: new Date().toISOString(),
+            customSkills: input.skills,
+            description: input.description,
+            id: createId("agent"),
+            name: input.name,
+            revenue: "$0",
+            skillIds: [],
+            specialty: input.specialty,
+            startingRate: input.startingRate,
+            successRate: "New",
+            tier: "Local Agent",
+            toolAccess: input.toolAccess,
+            trustScore: 90,
+          };
 
       setState((current) => ({
         ...current,
@@ -516,22 +537,25 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const addContractMilestone = useCallback(
-    (contractId: string, title: string, notes: string) => {
+    async (contractId: string, title: string, notes: string) => {
       if (!requireAuthForPersistentWrite("update contracts")) {
         return;
       }
 
+      const now = new Date().toISOString();
+      const milestone = {
+        id: createId("milestone"),
+        completed: false,
+        createdAt: now,
+        notes,
+        title,
+      };
+      if (isSupabaseConfigured) {
+        await createMilestoneRecord(contractId, milestone);
+      }
+
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
-          const now = new Date().toISOString();
-          const milestone = {
-            id: createId("milestone"),
-            completed: false,
-            createdAt: now,
-            notes,
-            title,
-          };
-
           return {
             ...workspace,
             activity: [
@@ -554,9 +578,22 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const toggleMilestoneComplete = useCallback(
-    (contractId: string, milestoneId: string) => {
+    async (contractId: string, milestoneId: string) => {
       if (!requireAuthForPersistentWrite("update contracts")) {
         return;
+      }
+
+      const workspace = state.contractWorkspaces.find(
+        (candidate) => candidate.contractId === contractId,
+      );
+      const milestone = workspace?.milestones.find(
+        (candidate) => candidate.id === milestoneId,
+      );
+      if (isSupabaseConfigured && milestone) {
+        await updateMilestoneRecord(milestoneId, {
+          completed: !milestone.completed,
+          completedAt: milestone.completed ? undefined : new Date().toISOString(),
+        });
       }
 
       setState((current) =>
@@ -596,13 +633,17 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       );
       showToast("Milestone updated.");
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, showToast, state.contractWorkspaces],
   );
 
   const updateMilestoneNotes = useCallback(
-    (contractId: string, milestoneId: string, notes: string) => {
+    async (contractId: string, milestoneId: string, notes: string) => {
       if (!requireAuthForPersistentWrite("update contracts")) {
         return;
+      }
+
+      if (isSupabaseConfigured) {
+        await updateMilestoneRecord(milestoneId, { notes });
       }
 
       setState((current) =>
@@ -638,23 +679,26 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const addContractDeliverable = useCallback(
-    (contractId: string, title: string, notes: string) => {
+    async (contractId: string, title: string, notes: string) => {
       if (!requireAuthForPersistentWrite("update contracts")) {
         return;
       }
 
+      const now = new Date().toISOString();
+      const deliverable = {
+        id: createId("deliverable"),
+        createdAt: now,
+        decisions: [],
+        notes,
+        status: "draft" as const,
+        title,
+      };
+      if (isSupabaseConfigured) {
+        await createDeliverableRecord(contractId, deliverable);
+      }
+
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
-          const now = new Date().toISOString();
-          const deliverable = {
-            id: createId("deliverable"),
-            createdAt: now,
-            decisions: [],
-            notes,
-            status: "draft" as const,
-            title,
-          };
-
           return {
             ...workspace,
             activity: [
@@ -677,7 +721,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const setDeliverableStatus = useCallback(
-    (
+    async (
       contractId: string,
       deliverableId: string,
       status: "submitted" | "approved" | "rejected",
@@ -685,6 +729,36 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     ) => {
       if (!requireAuthForPersistentWrite("update deliverables")) {
         return;
+      }
+
+      const workspace = state.contractWorkspaces.find(
+        (candidate) => candidate.contractId === contractId,
+      );
+      const deliverable = workspace?.deliverables.find(
+        (candidate) => candidate.id === deliverableId,
+      );
+      if (isSupabaseConfigured && deliverable) {
+        const now = new Date().toISOString();
+        await updateDeliverableRecord(deliverableId, {
+          approvedAt: status === "approved" ? now : deliverable.approvedAt,
+          decisions:
+            status === "approved" || status === "rejected"
+              ? [
+                  ...(deliverable.decisions ?? []),
+                  {
+                    id: createId("decision"),
+                    decidedAt: now,
+                    note,
+                    status,
+                  },
+                ]
+              : deliverable.decisions,
+          status: status === "rejected" ? "draft" : status,
+          submittedAt:
+            status === "submitted" || status === "approved"
+              ? deliverable.submittedAt ?? now
+              : deliverable.submittedAt,
+        });
       }
 
       setState((current) =>
@@ -799,11 +873,11 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
             : "Deliverable submitted.",
       );
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, showToast, state.contractWorkspaces],
   );
 
   const sendContractMessage = useCallback(
-    (
+    async (
       contractId: string,
       senderType: ContractMessageSender,
       author: string,
@@ -813,17 +887,20 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         return;
       }
 
+      const now = new Date().toISOString();
+      const message = {
+        id: createId("message"),
+        author,
+        body,
+        createdAt: now,
+        senderType,
+      };
+      if (isSupabaseConfigured) {
+        await createMessageRecord({ ...message, contractId });
+      }
+
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
-          const now = new Date().toISOString();
-          const message = {
-            id: createId("message"),
-            author,
-            body,
-            createdAt: now,
-            senderType,
-          };
-
           return {
             ...workspace,
             activity: [
@@ -1038,22 +1115,25 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const submitApplication = useCallback(
-    (input: SubmitApplicationInput) => {
+    async (input: SubmitApplicationInput) => {
       if (!requireAuthForPersistentWrite("apply to opportunities")) {
         return;
       }
 
-      setState((current) => {
-        const existingApplication = current.applications.find(
-          (application) => application.opportunityId === input.opportunityId,
-        );
-        const nextApplication: Application = {
-          id: existingApplication?.id ?? createId("application"),
-          createdAt: existingApplication?.createdAt ?? new Date().toISOString(),
-          status: "pending",
-          ...input,
-        };
+      const existingApplication = state.applications.find(
+        (application) => application.opportunityId === input.opportunityId,
+      );
+      const draftApplication: Application = {
+        id: existingApplication?.id ?? createId("application"),
+        createdAt: existingApplication?.createdAt ?? new Date().toISOString(),
+        status: "pending",
+        ...input,
+      };
+      const nextApplication = isSupabaseConfigured
+        ? await createApplicationRecord(draftApplication)
+        : draftApplication;
 
+      setState((current) => {
         return {
           ...current,
           agentActivities: [
@@ -1076,32 +1156,33 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Application submitted.");
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, showToast, state.applications],
   );
 
   const submitNegotiation = useCallback(
-    (input: SubmitNegotiationInput) => {
+    async (input: SubmitNegotiationInput) => {
       if (!requireAuthForPersistentWrite("negotiate opportunities")) {
         return;
       }
 
-      setState((current) => {
-        const simulatedAgent = getSimulatedAgentForOpportunity(input.opportunityId);
-        const existingNegotiation = current.negotiations.find(
-          (negotiation) => negotiation.opportunityId === input.opportunityId,
-        );
-        const nextNegotiation: Negotiation = {
-          id: existingNegotiation?.id ?? createId("negotiation"),
-          createdAt: existingNegotiation?.createdAt ?? new Date().toISOString(),
-          status: "pending",
-          ...input,
-          agentId: existingNegotiation?.agentId ?? input.agentId ?? simulatedAgent?.id,
-          agentName:
-            existingNegotiation?.agentName ??
-            input.agentName ??
-            simulatedAgent?.name,
-        };
+      const simulatedAgent = getSimulatedAgentForOpportunity(input.opportunityId);
+      const existingNegotiation = state.negotiations.find(
+        (negotiation) => negotiation.opportunityId === input.opportunityId,
+      );
+      const draftNegotiation: Negotiation = {
+        id: existingNegotiation?.id ?? createId("negotiation"),
+        createdAt: existingNegotiation?.createdAt ?? new Date().toISOString(),
+        status: "pending",
+        ...input,
+        agentId: existingNegotiation?.agentId ?? input.agentId ?? simulatedAgent?.id,
+        agentName:
+          existingNegotiation?.agentName ?? input.agentName ?? simulatedAgent?.name,
+      };
+      const nextNegotiation = isSupabaseConfigured
+        ? await createNegotiationRecord(draftNegotiation)
+        : draftNegotiation;
 
+      setState((current) => {
         return {
           ...current,
           agentActivities: simulatedAgent
@@ -1126,14 +1207,24 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Negotiation submitted.");
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, showToast, state.negotiations],
   );
 
   const submitHireRequest = useCallback(
-    (input: SubmitHireRequestInput) => {
+    async (input: SubmitHireRequestInput) => {
       if (!requireAuthForPersistentWrite("hire agents")) {
         return;
       }
+
+      const draftHireRequest = {
+        id: createId("hire"),
+        createdAt: new Date().toISOString(),
+        status: "pending" as const,
+        ...input,
+      };
+      const nextHireRequest = isSupabaseConfigured
+        ? await createHireRequestRecord(draftHireRequest)
+        : draftHireRequest;
 
       setState((current) => ({
         ...current,
@@ -1148,12 +1239,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         ],
         hireRequests: [
           ...current.hireRequests,
-          {
-            id: createId("hire"),
-            createdAt: new Date().toISOString(),
-            status: "pending",
-            ...input,
-          },
+          nextHireRequest,
         ],
       }));
       showToast("Hire request submitted.");
@@ -1162,49 +1248,73 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const acceptApplication = useCallback(
-    (applicationId: string) => {
+    async (applicationId: string) => {
       if (!requireAuthForPersistentWrite("accept applications")) {
         return;
       }
 
+      const application = state.applications.find(
+        (candidate) => candidate.id === applicationId,
+      );
+
+      if (
+        !application ||
+        application.status !== "pending" ||
+        state.localContracts.some(
+          (contract) =>
+            contract.sourceType === "application" &&
+            contract.sourceId === application.id,
+        )
+      ) {
+        return;
+      }
+
+      const opportunity = getOpportunityForState(
+        state,
+        application.opportunityId,
+      );
+      const draftContract: LocalContract = {
+        id: createId("contract"),
+        sourceId: application.id,
+        sourceType: "application",
+        organizationId:
+          opportunity?.organizationId ??
+          opportunity?.organization?.toLowerCase().replace(/\s+/g, "-") ??
+          "local-organization",
+        organization: opportunity?.organization ?? "Local Organization",
+        agentId: application.agentId,
+        agent: application.agentName,
+        title: application.opportunityTitle,
+        value: opportunity?.budget ?? "Custom scope",
+        status: "Active",
+        startDate: formatLocalDate(),
+        dueDate: formatLocalDate(21),
+        progress: 8,
+        accent: "violet",
+      };
+      const localContract = isSupabaseConfigured
+        ? await createContractRecord(draftContract)
+        : draftContract;
+      if (isSupabaseConfigured) {
+        await acceptApplicationRecord(application.id);
+      }
+
       setState((current) => {
-        const application = current.applications.find(
+        const currentApplication = current.applications.find(
           (candidate) => candidate.id === applicationId,
         );
 
         if (
-          !application ||
-          application.status !== "pending" ||
+          !currentApplication ||
+          currentApplication.status !== "pending" ||
           current.localContracts.some(
             (contract) =>
               contract.sourceType === "application" &&
-              contract.sourceId === application.id,
+              contract.sourceId === currentApplication.id,
           )
         ) {
           return current;
         }
-
-        const opportunity = getOpportunityForState(
-          current,
-          application.opportunityId,
-        );
-        const localContract: LocalContract = {
-          id: createId("contract"),
-          sourceId: application.id,
-          sourceType: "application",
-          organizationId:
-            opportunity?.organization?.toLowerCase().replace(/\s+/g, "-") ??
-            "local-organization",
-          organization: opportunity?.organization ?? "Local Organization",
-          agent: application.agentName,
-          title: application.opportunityTitle,
-          value: opportunity?.budget ?? "Custom scope",
-          status: "Active",
-          startDate: formatLocalDate(),
-          dueDate: formatLocalDate(21),
-          progress: 8,
-          accent: "violet",
-        };
 
         return {
           ...current,
@@ -1221,7 +1331,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Application accepted and contract created.");
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, showToast, state],
   );
 
   const rejectApplication = useCallback(
@@ -1266,58 +1376,59 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const acceptNegotiation = useCallback(
-    (negotiationId: string) => {
+    async (negotiationId: string) => {
       if (!requireAuthForPersistentWrite("accept negotiations")) {
         return;
       }
 
+      const negotiation = state.negotiations.find(
+        (candidate) => candidate.id === negotiationId,
+      );
+
+      if (
+        !negotiation ||
+        (negotiation.status !== "pending" && negotiation.status !== "countered") ||
+        state.localContracts.some(
+          (contract) =>
+            contract.sourceType === "negotiation" &&
+            contract.sourceId === negotiation.id,
+        )
+      ) {
+        return;
+      }
+
+      const opportunity = getOpportunityForState(state, negotiation.opportunityId);
+      const agent =
+        negotiation.agentId && negotiation.agentName
+          ? {
+              id: negotiation.agentId,
+              name: negotiation.agentName,
+            }
+          : getSimulatedAgentForOpportunity(negotiation.opportunityId);
+      const draftContract: LocalContract = {
+        id: createId("contract"),
+        sourceId: negotiation.id,
+        sourceType: "negotiation",
+        organizationId:
+          opportunity?.organizationId ??
+          opportunity?.organization?.toLowerCase().replace(/\s+/g, "-") ??
+          "local-organization",
+        organization: opportunity?.organization ?? "Local Organization",
+        agentId: agent?.id,
+        agent: agent?.name ?? "Recommended Agent",
+        title: negotiation.opportunityTitle,
+        value: negotiation.counterRate ?? negotiation.rate,
+        status: "Active",
+        startDate: formatLocalDate(),
+        dueDate: formatLocalDate(21),
+        progress: 5,
+        accent: "violet",
+      };
+      const localContract = isSupabaseConfigured
+        ? await createContractRecord(draftContract)
+        : draftContract;
+
       setState((current) => {
-        const negotiation = current.negotiations.find(
-          (candidate) => candidate.id === negotiationId,
-        );
-
-        if (
-          !negotiation ||
-          (negotiation.status !== "pending" &&
-            negotiation.status !== "countered") ||
-          current.localContracts.some(
-            (contract) =>
-              contract.sourceType === "negotiation" &&
-              contract.sourceId === negotiation.id,
-          )
-        ) {
-          return current;
-        }
-
-        const opportunity = getOpportunityForState(
-          current,
-          negotiation.opportunityId,
-        );
-        const agent =
-          negotiation.agentId && negotiation.agentName
-            ? {
-                id: negotiation.agentId,
-                name: negotiation.agentName,
-              }
-            : getSimulatedAgentForOpportunity(negotiation.opportunityId);
-        const localContract: LocalContract = {
-          id: createId("contract"),
-          sourceId: negotiation.id,
-          sourceType: "negotiation",
-          organizationId:
-            opportunity?.organization?.toLowerCase().replace(/\s+/g, "-") ??
-            "local-organization",
-          organization: opportunity?.organization ?? "Local Organization",
-          agent: agent?.name ?? "Recommended Agent",
-          title: negotiation.opportunityTitle,
-          value: negotiation.counterRate ?? negotiation.rate,
-          status: "Active",
-          startDate: formatLocalDate(),
-          dueDate: formatLocalDate(21),
-          progress: 5,
-          accent: "violet",
-        };
-
         return {
           ...current,
           agentActivities: agent
@@ -1344,7 +1455,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Negotiation accepted and contract created.");
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, showToast, state],
   );
 
   const rejectNegotiation = useCallback(
@@ -1400,44 +1511,54 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const acceptHireRequest = useCallback(
-    (hireRequestId: string) => {
+    async (hireRequestId: string) => {
       if (!requireAuthForPersistentWrite("accept hire requests")) {
         return;
       }
 
+      const hireRequest = state.hireRequests.find(
+        (candidate) => candidate.id === hireRequestId,
+      );
+
+      if (
+        !hireRequest ||
+        hireRequest.status !== "pending" ||
+        state.localContracts.some(
+          (contract) =>
+            contract.sourceType === "hire-request" &&
+            contract.sourceId === hireRequest.id,
+        )
+      ) {
+        return;
+      }
+
+      const opportunity = hireRequest.opportunityId
+        ? getOpportunityForState(state, hireRequest.opportunityId)
+        : undefined;
+      const draftContract: LocalContract = {
+        id: createId("contract"),
+        sourceId: hireRequest.id,
+        sourceType: "hire-request",
+        organizationId:
+          opportunity?.organizationId ??
+          opportunity?.organization?.toLowerCase().replace(/\s+/g, "-") ??
+          "local-organization",
+        organization: opportunity?.organization ?? "Local Organization",
+        agentId: hireRequest.agentId,
+        agent: hireRequest.agentName,
+        title: hireRequest.quickJobTitle || hireRequest.opportunityTitle,
+        value: opportunity?.budget ?? "Custom scope",
+        status: "Active",
+        startDate: formatLocalDate(),
+        dueDate: formatLocalDate(14),
+        progress: 5,
+        accent: "emerald",
+      };
+      const localContract = isSupabaseConfigured
+        ? await createContractRecord(draftContract)
+        : draftContract;
+
       setState((current) => {
-        const hireRequest = current.hireRequests.find(
-          (candidate) => candidate.id === hireRequestId,
-        );
-
-        if (
-          !hireRequest ||
-          hireRequest.status !== "pending" ||
-          current.localContracts.some(
-            (contract) =>
-              contract.sourceType === "hire-request" &&
-              contract.sourceId === hireRequest.id,
-          )
-        ) {
-          return current;
-        }
-
-        const localContract: LocalContract = {
-          id: createId("contract"),
-          sourceId: hireRequest.id,
-          sourceType: "hire-request",
-          organizationId: "local-organization",
-          organization: "Local Organization",
-          agent: hireRequest.agentName,
-          title: hireRequest.quickJobTitle || hireRequest.opportunityTitle,
-          value: "Custom scope",
-          status: "Active",
-          startDate: formatLocalDate(),
-          dueDate: formatLocalDate(14),
-          progress: 5,
-          accent: "emerald",
-        };
-
         return {
           ...current,
           hireRequests: current.hireRequests.map((candidate) =>
@@ -1453,7 +1574,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Hire request accepted and contract created.");
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, showToast, state],
   );
 
   const approveSuggestedAgentAction = useCallback(

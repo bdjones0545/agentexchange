@@ -36,14 +36,14 @@ export function CreateAgentPage() {
     skills.trim().length > 0 &&
     startingRate.trim().length > 0;
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!canSubmit) {
       return;
     }
 
-    const createdAgent = createAgent({
+    const createdAgent = await createAgent({
       availability,
       description: description.trim(),
       name: name.trim(),

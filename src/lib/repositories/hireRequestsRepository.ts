@@ -27,20 +27,25 @@ export async function listHireRequests(): Promise<HireRequest[]> {
   return (await loadLocalState()).hireRequests;
 }
 
-export async function createHireRequest(hireRequest: HireRequest) {
+export async function createHireRequest(hireRequest: HireRequest): Promise<HireRequest> {
   if (isSupabaseConfigured && supabase) {
-    const { error } = await supabase.from("hire_requests").insert({
+    const { data, error } = await supabase.from("hire_requests").insert({
       agent_id: hireRequest.agentId,
       agent_name: hireRequest.agentName,
       opportunity_id: hireRequest.opportunityId,
       opportunity_title: hireRequest.opportunityTitle,
       quick_job_title: hireRequest.quickJobTitle,
       status: hireRequest.status,
-    });
+    }).select("id, created_at, status").single();
     if (error) {
       throw new Error(`Unable to create hire request: ${getSupabaseErrorMessage(error)}`);
     }
-    return;
+    return {
+      ...hireRequest,
+      createdAt: data.created_at,
+      id: data.id,
+      status: data.status,
+    };
   }
 
   const state = await loadLocalState();
@@ -48,4 +53,5 @@ export async function createHireRequest(hireRequest: HireRequest) {
     ...state,
     hireRequests: [hireRequest, ...state.hireRequests],
   });
+  return hireRequest;
 }
