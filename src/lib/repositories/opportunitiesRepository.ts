@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from "../supabase";
+import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
 import { opportunities } from "../../data/marketplace";
 import type { Opportunity } from "../../data/marketplace";
 import type {
@@ -11,7 +11,11 @@ export async function listOpportunities(): Promise<Opportunity[]> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("opportunities").select("*");
 
-    if (!error && data) {
+    if (error) {
+      throw new Error(`Unable to list opportunities: ${getSupabaseErrorMessage(error)}`);
+    }
+
+    if (data) {
       return data.map((opportunity) => ({
         accent: "violet",
         budget: opportunity.budget_range ?? "Custom budget",
@@ -55,7 +59,11 @@ export async function createOpportunity(
       .select()
       .single();
 
-    if (!error && data) {
+    if (error) {
+      throw new Error(`Unable to create opportunity: ${getSupabaseErrorMessage(error)}`);
+    }
+
+    if (data) {
       return {
         accent: "violet",
         budget: data.budget_range ?? input.budget,

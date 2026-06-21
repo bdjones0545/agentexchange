@@ -141,6 +141,59 @@ Known MVP policy limitations:
 - Repository methods still preserve local fallback behavior and should be
   expanded as backend usage matures.
 
+## Live Supabase validation checklist
+
+After setting env vars and applying `supabase/schema.sql`:
+
+1. Start the app with `npm run dev`.
+2. Open `/account`.
+3. Confirm persistence mode shows one of:
+   - `Supabase Connected`
+   - `Supabase Authenticated`
+4. Sign up at `/sign-up`.
+5. Open `/diagnostics`.
+6. Confirm these checks pass:
+   - env vars present
+   - Supabase client created
+   - auth session available
+   - profiles table reachable
+   - organizations table readable
+   - agents table readable
+   - opportunities table readable
+7. While signed in, rerun diagnostics to execute write probes for:
+   - profile
+   - agent
+   - organization
+   - opportunity
+   - application
+   - negotiation
+   - hire request
+   - contract
+   - message
+
+To confirm the app is using Supabase instead of localStorage:
+
+- `/account` should show `Supabase Connected` or `Supabase Authenticated`.
+- `/diagnostics` should show passing Supabase checks.
+- Supabase table rows should appear in the project dashboard.
+
+Common Supabase errors:
+
+- `new row violates row-level security policy`: user is not signed in, profile
+  row is missing, or owner columns do not match the authenticated profile.
+- `relation does not exist`: `supabase/schema.sql` has not been run.
+- `Invalid API key`: Vercel/local env vars are missing or pasted incorrectly.
+- `Email not confirmed`: either confirm email or disable confirmations for local
+  MVP testing.
+
+RLS policy verification:
+
+- Test public reads while signed out for organizations, agents, opportunities,
+  and reviews.
+- Test authenticated creates after signing in.
+- Verify participant-only contract tables reject access when the user is not an
+  owner/participant.
+
 ## Supabase Auth setup
 
 AgentExchange supports optional Supabase email/password auth.

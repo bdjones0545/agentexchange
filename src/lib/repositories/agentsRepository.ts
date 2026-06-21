@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from "../supabase";
+import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
 import { agents } from "../../data/agents";
 import type { Agent } from "../../data/agents";
 import type { CreateAgentInput, CreatedAgent } from "../../state/marketplaceTypes";
@@ -8,7 +8,11 @@ export async function listAgents(): Promise<Agent[]> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("agents").select("*");
 
-    if (!error && data) {
+    if (error) {
+      throw new Error(`Unable to list agents: ${getSupabaseErrorMessage(error)}`);
+    }
+
+    if (data) {
       return data.map((agent) => ({
         accent: "violet",
         availability: agent.availability,
@@ -54,7 +58,11 @@ export async function createAgent(
       .select()
       .single();
 
-    if (!error && data) {
+    if (error) {
+      throw new Error(`Unable to create agent: ${getSupabaseErrorMessage(error)}`);
+    }
+
+    if (data) {
       return {
         accent: "violet",
         availability: data.availability,

@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from "../supabase";
+import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
 import type { Contract } from "../../data/operations";
 import type {
   ContractMessage,
@@ -11,7 +11,11 @@ export async function listContracts(): Promise<LocalContract[]> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("contracts").select("*");
 
-    if (!error && data) {
+    if (error) {
+      throw new Error(`Unable to list contracts: ${getSupabaseErrorMessage(error)}`);
+    }
+
+    if (data) {
       return data.map((contract) => ({
         accent: "violet",
         agent: contract.agent_name,
@@ -35,7 +39,7 @@ export async function listContracts(): Promise<LocalContract[]> {
 
 export async function createContract(contract: LocalContract | Contract) {
   if (isSupabaseConfigured && supabase) {
-    await supabase.from("contracts").insert({
+    const { error } = await supabase.from("contracts").insert({
       agent_name: contract.agent,
       due_date: contract.dueDate,
       organization_name: contract.organization,
@@ -47,6 +51,9 @@ export async function createContract(contract: LocalContract | Contract) {
       title: contract.title,
       value: contract.value,
     });
+    if (error) {
+      throw new Error(`Unable to create contract: ${getSupabaseErrorMessage(error)}`);
+    }
     return;
   }
 
@@ -59,13 +66,16 @@ export async function createContract(contract: LocalContract | Contract) {
 
 export async function updateContractWorkspace(workspace: ContractWorkspace) {
   if (isSupabaseConfigured && supabase) {
-    await supabase.from("activity_events").insert({
+    const { error } = await supabase.from("activity_events").insert({
       entity_id: workspace.contractId,
       entity_type: "contract",
       event_type: "contract_workspace_snapshot",
       message: "Contract workspace updated",
       metadata: workspace,
     });
+    if (error) {
+      throw new Error(`Unable to update contract workspace: ${getSupabaseErrorMessage(error)}`);
+    }
     return;
   }
 
@@ -83,11 +93,14 @@ export async function updateContractWorkspace(workspace: ContractWorkspace) {
 
 export async function createMessage(message: ContractMessage) {
   if (isSupabaseConfigured && supabase) {
-    await supabase.from("contract_messages").insert({
+    const { error } = await supabase.from("contract_messages").insert({
       author: message.author,
       body: message.body,
       contract_id: message.id,
       sender_type: message.senderType,
     });
+    if (error) {
+      throw new Error(`Unable to create message: ${getSupabaseErrorMessage(error)}`);
+    }
   }
 }

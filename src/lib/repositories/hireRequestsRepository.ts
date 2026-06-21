@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from "../supabase";
+import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
 import type { HireRequest } from "../../state/marketplaceTypes";
 import { loadLocalState, saveLocalState } from "./localStateRepository";
 
@@ -6,7 +6,11 @@ export async function listHireRequests(): Promise<HireRequest[]> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("hire_requests").select("*");
 
-    if (!error && data) {
+    if (error) {
+      throw new Error(`Unable to list hire requests: ${getSupabaseErrorMessage(error)}`);
+    }
+
+    if (data) {
       return data.map((request) => ({
         agentId: request.agent_id,
         agentName: request.agent_name ?? "Agent",
@@ -25,7 +29,7 @@ export async function listHireRequests(): Promise<HireRequest[]> {
 
 export async function createHireRequest(hireRequest: HireRequest) {
   if (isSupabaseConfigured && supabase) {
-    await supabase.from("hire_requests").insert({
+    const { error } = await supabase.from("hire_requests").insert({
       agent_id: hireRequest.agentId,
       agent_name: hireRequest.agentName,
       opportunity_id: hireRequest.opportunityId,
@@ -33,6 +37,9 @@ export async function createHireRequest(hireRequest: HireRequest) {
       quick_job_title: hireRequest.quickJobTitle,
       status: hireRequest.status,
     });
+    if (error) {
+      throw new Error(`Unable to create hire request: ${getSupabaseErrorMessage(error)}`);
+    }
     return;
   }
 

@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from "../supabase";
+import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
 import type {
   AgentActivityEvent,
   AgentExchangePersistedState,
@@ -20,13 +20,16 @@ export async function saveAgentExchangeState(
 
 export async function createActivityEvent(event: AgentActivityEvent) {
   if (isSupabaseConfigured && supabase) {
-    await supabase.from("activity_events").insert({
+    const { error } = await supabase.from("activity_events").insert({
       actor_id: event.agentId,
       actor_type: "agent",
       event_type: event.type,
       message: event.message,
       metadata: event,
     });
+    if (error) {
+      throw new Error(`Unable to create activity event: ${getSupabaseErrorMessage(error)}`);
+    }
     return;
   }
 

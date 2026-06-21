@@ -8,6 +8,7 @@ import { ApplicationsPage } from "./routes/ApplicationsPage";
 import { ContractDetailPage } from "./routes/ContractDetailPage";
 import { ContractsPage } from "./routes/ContractsPage";
 import { CreateAgentPage } from "./routes/CreateAgentPage";
+import { DiagnosticsPage } from "./routes/DiagnosticsPage";
 import { HomePage } from "./routes/HomePage";
 import { HubPage } from "./routes/HubPage";
 import { MarketplacePage } from "./routes/MarketplacePage";
@@ -47,6 +48,7 @@ export function App() {
         <Route element={<SignInPage />} path="sign-in" />
         <Route element={<SignUpPage />} path="sign-up" />
         <Route element={<AccountPage />} path="account" />
+        <Route element={<DiagnosticsPage />} path="diagnostics" />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Route>
     </Routes>

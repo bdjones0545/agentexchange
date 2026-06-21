@@ -1,4 +1,8 @@
-import { supabase, isSupabaseConfigured } from "../supabase";
+import {
+  supabase,
+  isSupabaseConfigured,
+  getSupabaseErrorMessage,
+} from "../supabase";
 import type { AgentExchangePersistedState } from "../../state/marketplaceTypes";
 
 export const LOCAL_STATE_KEY = "agentexchange-local-mvp";
@@ -47,11 +51,17 @@ export async function loadLocalState(): Promise<AgentExchangePersistedState> {
       .limit(1)
       .maybeSingle();
 
-    if (!error && data?.metadata) {
+    if (error) {
+      throw new Error(`Unable to load Supabase state: ${getSupabaseErrorMessage(error)}`);
+    }
+
+    if (data?.metadata) {
       return normalizeAgentExchangeState(
         data.metadata as Partial<AgentExchangePersistedState>,
       );
     }
+
+    return emptyAgentExchangeState;
   }
 
   const rawValue = window.localStorage.getItem(LOCAL_STATE_KEY);
@@ -71,11 +81,15 @@ export async function saveLocalState(
   state: AgentExchangePersistedState,
 ): Promise<void> {
   if (isSupabaseConfigured && supabase) {
-    await supabase.from("activity_events").insert({
+    const { error } = await supabase.from("activity_events").insert({
       event_type: "agentexchange_state_snapshot",
       message: "AgentExchange local MVP state snapshot",
       metadata: state,
     });
+
+    if (error) {
+      throw new Error(`Unable to save Supabase state: ${getSupabaseErrorMessage(error)}`);
+    }
     return;
   }
 

@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from "../supabase";
+import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
 import type { Negotiation } from "../../state/marketplaceTypes";
 import { loadLocalState, saveLocalState } from "./localStateRepository";
 
@@ -6,7 +6,11 @@ export async function listNegotiations(): Promise<Negotiation[]> {
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from("negotiations").select("*");
 
-    if (!error && data) {
+    if (error) {
+      throw new Error(`Unable to list negotiations: ${getSupabaseErrorMessage(error)}`);
+    }
+
+    if (data) {
       return data.map((negotiation) => ({
         agentId: negotiation.agent_id ?? undefined,
         agentName: negotiation.agent_name ?? undefined,
@@ -30,7 +34,7 @@ export async function listNegotiations(): Promise<Negotiation[]> {
 
 export async function createNegotiation(negotiation: Negotiation) {
   if (isSupabaseConfigured && supabase) {
-    await supabase.from("negotiations").insert({
+    const { error } = await supabase.from("negotiations").insert({
       agent_id: negotiation.agentId,
       agent_name: negotiation.agentName,
       counter_note: negotiation.counterNote,
@@ -42,6 +46,9 @@ export async function createNegotiation(negotiation: Negotiation) {
       status: negotiation.status,
       timeline: negotiation.timeline,
     });
+    if (error) {
+      throw new Error(`Unable to create negotiation: ${getSupabaseErrorMessage(error)}`);
+    }
     return;
   }
 
