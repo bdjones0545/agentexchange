@@ -1,300 +1,167 @@
 # AgentExchange
 
-AgentExchange is a frontend-first MVP for an autonomous AI-agent marketplace.
-It includes marketplace, agent, contract, organization, settings, and revenue
-workflows. The app can use Supabase when configured and falls back to
-`localStorage` when Supabase environment variables are missing.
+**A frontend-first marketplace for hiring, negotiating with, and managing autonomous AI agents.**
 
-## Stack
+## Overview
 
-- React
-- TypeScript
-- Tailwind CSS
-- Vite
-- React Router
+AgentExchange is an MVP web application that models an end-to-end marketplace for autonomous AI agents. Organizations post opportunities and hire agents; agent owners publish agents, apply to work, and negotiate terms; and both sides manage the resulting contracts, deliverables, payouts, and reviews from a single interface.
 
-## Requirements
+The app is deliberately **frontend-first**: it runs entirely in the browser with no backend required. When Supabase environment variables are configured it persists data to a real Postgres database with Row Level Security and optional email/password auth. When they are absent, it falls back gracefully to `localStorage`, so the full experience can be demoed offline with zero setup.
 
-- Node.js 20+ recommended
-- npm
+This MVP does **not** include real payments, real AI execution, or admin moderation — those layers are stubbed or simulated to focus on the marketplace workflows themselves.
 
-No environment variables are required for local fallback mode. Supabase-backed
-mode uses optional Vite env vars documented below.
+**Who it's for:** teams prototyping an agent marketplace, and anyone exploring the UX of discovering, contracting, and paying autonomous agents.
 
-## Setup
+## Features
+
+- **Marketplace & discovery** — browse opportunities and agents with search, filtering, categories, and saved items.
+- **Agent profiles** — publish agents with skills, trust/verification signals, activity timelines, and a network graph.
+- **Opportunities & applications** — post opportunities, apply to them, and review applicants.
+- **Negotiation & hiring** — negotiate terms and send hire requests through dedicated modals and flows.
+- **Contracts** — track contracts with milestones, deliverables, in-contract messaging, statuses, and history.
+- **Organizations** — organization profiles, agent rosters, stats, and a dedicated organization dashboard.
+- **Wallet & revenue** — wallet summary, earnings charts, payouts, transactions, and spend/revenue reporting.
+- **Reviews & disputes** — leave reviews and open disputes tied to contracts.
+- **Settings & account** — notification preferences, integration status, and account management.
+- **Optional auth** — Supabase email/password sign-up and sign-in; marketplace browsing stays public while writes require a signed-in user.
+- **Dual persistence** — automatic Supabase mode when configured, `localStorage` demo mode otherwise.
+- **Built-in diagnostics** — a `/diagnostics` page that checks env vars, client creation, auth session, table reachability, and write probes.
+
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Framework | [React 19](https://react.dev/) |
+| Language | [TypeScript](https://www.typescriptlang.org/) |
+| Build tool | [Vite 8](https://vitejs.dev/) |
+| Styling | [Tailwind CSS 4](https://tailwindcss.com/) (via `@tailwindcss/vite`) |
+| Routing | [React Router 7](https://reactrouter.com/) |
+| Backend (optional) | [Supabase](https://supabase.com/) (Postgres + Auth + RLS) via `@supabase/supabase-js` |
+| Hosting | [Vercel](https://vercel.com/) (SPA rewrites) / Netlify (`_redirects`) |
+| Package manager | npm |
+
+## Getting Started
+
+### Prerequisites
+
+- **Node.js `>=20.19.0`** (see `engines` in `package.json`)
+- **npm** (uses `package-lock.json`)
+
+### Install
 
 ```bash
 npm install
 ```
 
-## Run locally
+### Run the dev server
 
 ```bash
 npm run dev
 ```
 
-Vite will print the local development URL, usually:
+Vite prints the local URL, usually `http://localhost:5173`. With no environment variables set, the app runs in `localStorage` demo mode — no further setup needed.
 
-```text
-http://localhost:5173
-```
+### Environment variables
 
-## Build
+Both variables are **optional**. Supplying them switches the app from `localStorage` mode to Supabase-backed mode. They are read in `src/lib/supabase.ts`.
 
-```bash
-npm run build
-```
+| Variable | Description |
+| --- | --- |
+| `VITE_SUPABASE_URL` | Your Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Your Supabase anon/public API key |
 
-The production output is generated in `dist/`.
-
-## Preview production build locally
-
-```bash
-npm run preview
-```
-
-## Persistence model
-
-This MVP does not include authentication, payments, or real AI APIs.
-
-Persistence works in two modes:
-
-1. Supabase mode when these env vars exist:
-
-```text
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
-```
-
-2. Local fallback mode when either env var is missing.
-
-In local fallback mode, interactive state is persisted in browser
-`localStorage` under:
-
-```text
-agentexchange-local-mvp
-```
-
-This includes locally created opportunities, agents, applications,
-negotiations, contracts, contract workspaces, messages, reviews, disputes, and
-simulated agent activity.
-
-## Supabase setup
-
-1. Create a Supabase project.
-2. Open the Supabase SQL editor.
-3. Paste and run:
-
-```text
-supabase/schema.sql
-```
-
-4. Copy your project URL and anon key.
-5. Create `.env.local`:
+Copy the template and fill in your values:
 
 ```bash
 cp .env.example .env.local
 ```
 
-6. Fill in:
-
-```text
+```dotenv
 VITE_SUPABASE_URL=your-project-url
 VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
-7. Restart the dev server:
+Restart the dev server after changing env vars.
+
+### Supabase setup (optional)
+
+1. Create a Supabase project.
+2. In the Supabase **SQL Editor**, paste and run the full contents of `supabase/schema.sql`. This creates the marketplace tables, an `updated_at` trigger, Row Level Security on every table, baseline read/write policies, and helpful indexes.
+3. To enable auth, go to **Authentication → Providers** and enable **Email**. For local testing you can disable email confirmations.
+4. Copy your project URL and anon key into `.env.local` (see above) and restart.
+
+Verify the connection by opening `/diagnostics` in the running app — it checks env vars, client creation, auth session, and table reachability, and can run write probes while signed in.
+
+### Build & preview
 
 ```bash
-npm run dev
+npm run build     # type-checks (tsc -b) then builds to dist/
+npm run preview   # serve the production build locally
 ```
 
-If those env vars are not present, the app continues using localStorage.
-
-## Supabase schema, RLS, and indexes
-
-`supabase/schema.sql` creates the MVP database structure and security baseline:
-
-- Core tables for profiles, organizations, agents, opportunities, applications,
-  negotiations, hire requests, contracts, contract workspaces, reviews,
-  disputes, and activity events.
-- Reusable `updated_at` trigger function.
-- Row Level Security enabled on all tables.
-- Basic policies for public marketplace reads and authenticated owner/participant
-  writes.
-- Helpful indexes for owner, profile, organization, agent, opportunity,
-  contract, status, and created-at lookups.
-
-To apply it:
-
-1. Open Supabase SQL Editor.
-2. Paste the full contents of `supabase/schema.sql`.
-3. Run the SQL.
-4. Confirm there are no SQL errors.
-
-Known MVP policy limitations:
-
-- Policies are intentionally broad for authenticated contract participants.
-- There is no admin moderation model yet.
-- There is no payment authorization model yet.
-- Organization and agent ownership depends on `profiles.user_id = auth.uid()`.
-- Repository methods still preserve local fallback behavior and should be
-  expanded as backend usage matures.
-
-## Live Supabase validation checklist
-
-After setting env vars and applying `supabase/schema.sql`:
-
-1. Start the app with `npm run dev`.
-2. Open `/account`.
-3. Confirm persistence mode shows one of:
-   - `Supabase Connected`
-   - `Supabase Authenticated`
-4. Sign up at `/sign-up`.
-5. Open `/diagnostics`.
-6. Confirm these checks pass:
-   - env vars present
-   - Supabase client created
-   - auth session available
-   - profiles table reachable
-   - organizations table readable
-   - agents table readable
-   - opportunities table readable
-7. While signed in, rerun diagnostics to execute write probes for:
-   - profile
-   - agent
-   - organization
-   - opportunity
-   - application
-   - negotiation
-   - hire request
-   - contract
-   - message
-
-To confirm the app is using Supabase instead of localStorage:
-
-- `/account` should show `Supabase Connected` or `Supabase Authenticated`.
-- `/diagnostics` should show passing Supabase checks.
-- Supabase table rows should appear in the project dashboard.
-
-Common Supabase errors:
-
-- `new row violates row-level security policy`: user is not signed in, profile
-  row is missing, or owner columns do not match the authenticated profile.
-- `relation does not exist`: `supabase/schema.sql` has not been run.
-- `Invalid API key`: Vercel/local env vars are missing or pasted incorrectly.
-- `Email not confirmed`: either confirm email or disable confirmations for local
-  MVP testing.
-
-RLS policy verification:
-
-- Test public reads while signed out for organizations, agents, opportunities,
-  and reviews.
-- Test authenticated creates after signing in.
-- Verify participant-only contract tables reject access when the user is not an
-  owner/participant.
-
-## Supabase Auth setup
-
-AgentExchange supports optional Supabase email/password auth.
-
-In Supabase:
-
-1. Go to **Authentication > Providers**.
-2. Enable **Email**.
-3. For local testing, either disable email confirmations or configure the
-   confirmation redirect URL for your local/dev environment.
-4. Run `supabase/schema.sql` so the `profiles` table exists.
-5. Add these env vars locally or in Vercel/Netlify:
+## Project Structure
 
 ```text
-VITE_SUPABASE_URL=
-VITE_SUPABASE_ANON_KEY=
+agentexchange/
+├── src/
+│   ├── App.tsx                 # Route definitions (React Router)
+│   ├── main.tsx                # App entry point
+│   ├── index.css               # Global styles / Tailwind entry
+│   ├── components/             # Reusable UI (cards, modals, badges, nav, charts)
+│   ├── routes/                 # Page components (Marketplace, Agents, Contracts, Wallet, Auth, Diagnostics, …)
+│   ├── state/                  # React context: AgentExchangeContext, AuthContext, marketplace types
+│   ├── data/                   # Seed/demo data and local selectors
+│   └── lib/
+│       ├── supabase.ts         # Supabase client + config detection
+│       ├── supabaseDiagnostics.ts
+│       ├── auth.ts             # Auth helpers
+│       └── repositories/       # Data-access layer (Supabase-or-localStorage per entity)
+├── supabase/
+│   └── schema.sql              # Tables, RLS policies, triggers, indexes
+├── docs/
+│   ├── LAUNCH_CHECKLIST.md
+│   └── MANUAL_PRODUCTION_VALIDATION.md
+├── scripts/
+│   └── audit-supabase-mvp.mjs  # CLI audit for a live Supabase project
+├── public/
+│   └── _redirects              # Netlify SPA fallback
+├── index.html
+├── vite.config.ts              # Vite + React + Tailwind plugins
+├── vercel.json                 # Vercel SPA rewrites
+└── package.json
 ```
 
-When Supabase is configured:
+### Data model
 
-- Browsing the marketplace remains public.
-- Creating agents, creating opportunities, applying, negotiating, hiring, and
-  contract updates require a signed-in user.
-- Sign-up creates a `profiles` row with `user_id`, `display_name`,
-  `account_type`, and email when available.
+`supabase/schema.sql` defines the marketplace tables: `profiles`, `organizations`, `agents`, `opportunities`, `applications`, `negotiations`, `hire_requests`, `saved_opportunities`, `contracts`, `contract_milestones`, `contract_deliverables`, `contract_messages`, `reviews`, `disputes`, and `activity_events`. Row Level Security is enabled on all of them, with public reads for the marketplace and owner/participant-scoped writes.
 
-When Supabase is not configured:
+## Deployment
 
-- Auth is disabled gracefully.
-- The app remains usable in localStorage demo mode.
+The app is a single-page application, so the host must rewrite all routes to `index.html` for deep links and refreshes (e.g. `/marketplace`, `/agent/:id`, `/contracts/:id`) to resolve.
 
-## Reset local data for testing
+### Vercel
 
-In the browser console:
-
-```js
-localStorage.removeItem("agentexchange-local-mvp");
-location.reload();
-```
-
-Or clear all localStorage for the current origin:
-
-```js
-localStorage.clear();
-location.reload();
-```
-
-## Routing and refresh support
-
-AgentExchange uses React Router browser routes. Production hosts must serve
-`index.html` for nested routes such as:
-
-- `/marketplace`
-- `/agent/:id`
-- `/contracts/:id`
-- `/organization/:id`
-- `/organization-dashboard`
-
-This repo includes:
-
-- `vercel.json` for Vercel rewrites
-- `public/_redirects` for Netlify redirects
-
-These ensure direct refreshes and shared links resolve to the React app.
-
-## Deploy to Vercel
-
-1. Import the repository in Vercel.
-2. Use the default Vite settings:
-   - Install command: `npm install`
-   - Build command: `npm run build`
-   - Output directory: `dist`
-3. Optional Supabase environment variables:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-4. If enabling auth, ensure Supabase Email provider is enabled.
-5. Deploy.
-
-`vercel.json` handles SPA route rewrites.
-
-## Deploy to Netlify
-
-1. Import the repository in Netlify.
-2. Configure:
-   - Build command: `npm run build`
-   - Publish directory: `dist`
-3. Optional Supabase environment variables:
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_ANON_KEY`
-4. If enabling auth, ensure Supabase Email provider is enabled.
-5. Deploy.
-
-`public/_redirects` is copied into `dist/` during the Vite build and handles SPA
-route fallback.
-
-## npm scripts
+`vercel.json` handles SPA routing by rewriting every path to `/index.html`:
 
 ```json
 {
-  "dev": "vite",
-  "build": "tsc -b && vite build",
-  "preview": "vite preview"
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
 }
 ```
+
+1. Import the repository in Vercel (framework preset: **Vite**).
+2. Install command `npm install`, build command `npm run build`, output directory `dist`.
+3. Optionally add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` environment variables. If enabling auth, ensure the Supabase Email provider is on.
+4. Deploy.
+
+### Netlify
+
+`public/_redirects` (`/* /index.html 200`) is copied into `dist/` during the build and provides the same SPA fallback. Use build command `npm run build` and publish directory `dist`.
+
+## npm scripts
+
+| Script | Command | Purpose |
+| --- | --- | --- |
+| `npm run dev` | `vite` | Start the dev server |
+| `npm run build` | `tsc -b && vite build` | Type-check and build to `dist/` |
+| `npm run preview` | `vite preview` | Preview the production build |
