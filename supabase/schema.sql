@@ -281,6 +281,28 @@ as $$
   )
 $$;
 
+-- Canonical organization-side authority for an opportunity: the profile that
+-- posted it, or the owner of the organization it belongs to. Authorization is
+-- derived from relational ownership only -- never from organization_name,
+-- agent_name, display names, or any other client-supplied text.
+create or replace function public.is_opportunity_org_side(opportunity_uuid uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.opportunities o
+    where o.id = opportunity_uuid
+      and (
+        o.owner_id = public.current_profile_id()
+        or public.is_organization_owner(o.organization_id)
+      )
+  )
+$$;
+
 create or replace function public.can_access_contract(contract_uuid uuid)
 returns boolean
 language sql
@@ -538,16 +560,13 @@ create policy "applications_participant_update" on applications
   using (
     owner_id = public.current_profile_id()
     or public.is_agent_owner(agent_id)
-    or exists (
-      select 1 from opportunities o
-      where o.id = applications.opportunity_id
-        and (
-          o.owner_id = public.current_profile_id()
-          or public.is_organization_owner(o.organization_id)
-        )
-    )
+    or public.is_opportunity_org_side(opportunity_id)
   )
-  with check (true);
+  with check (
+    owner_id = public.current_profile_id()
+    or public.is_agent_owner(agent_id)
+    or public.is_opportunity_org_side(opportunity_id)
+  );
 
 drop policy if exists "negotiations_authenticated_insert" on negotiations;
 create policy "negotiations_authenticated_insert" on negotiations
@@ -579,16 +598,13 @@ create policy "negotiations_participant_update" on negotiations
   using (
     owner_id = public.current_profile_id()
     or public.is_agent_owner(agent_id)
-    or exists (
-      select 1 from opportunities o
-      where o.id = negotiations.opportunity_id
-        and (
-          o.owner_id = public.current_profile_id()
-          or public.is_organization_owner(o.organization_id)
-        )
-    )
+    or public.is_opportunity_org_side(opportunity_id)
   )
-  with check (true);
+  with check (
+    owner_id = public.current_profile_id()
+    or public.is_agent_owner(agent_id)
+    or public.is_opportunity_org_side(opportunity_id)
+  );
 
 drop policy if exists "hire_requests_authenticated_insert" on hire_requests;
 create policy "hire_requests_authenticated_insert" on hire_requests
@@ -610,7 +626,10 @@ create policy "hire_requests_participant_update" on hire_requests
     owner_id = public.current_profile_id()
     or public.is_agent_owner(agent_id)
   )
-  with check (true);
+  with check (
+    owner_id = public.current_profile_id()
+    or public.is_agent_owner(agent_id)
+  );
 
 drop policy if exists "saved_opportunities_owner_read" on saved_opportunities;
 create policy "saved_opportunities_owner_read" on saved_opportunities
@@ -632,13 +651,13 @@ create policy "contracts_participant_read" on contracts
   for select to authenticated
   using (public.can_access_contract(id));
 
+-- A contract binds an organization to an agent. Only the organization that is
+-- being bound may create that binding. Allowing the agent side to insert let an
+-- agent manufacture a contract naming an organization it does not own.
 drop policy if exists "contracts_participant_insert" on contracts;
 create policy "contracts_participant_insert" on contracts
   for insert to authenticated
-  with check (
-    public.is_organization_owner(organization_id)
-    or public.is_agent_owner(agent_id)
-  );
+  with check (public.is_organization_owner(organization_id));
 
 drop policy if exists "contracts_participant_update" on contracts;
 create policy "contracts_participant_update" on contracts
@@ -725,3 +744,217 @@ drop policy if exists "activity_events_authenticated_insert" on activity_events;
 create policy "activity_events_authenticated_insert" on activity_events
   for insert to authenticated
   with check (true);
+
+-- ---------------------------------------------------------------------------
+-- Marketplace update authority (P0)
+--
+-- Row-level WITH CHECK can only inspect the post-image of a row. It cannot tell
+-- that a row was moved from one security relationship to another, and it cannot
+-- tell which actor performed a status transition. Both of those are required
+-- here, so the invariants below are enforced by BEFORE UPDATE triggers.
+--
+-- Core invariant: permission to update a row must not imply permission to
+-- transform it into a different security relationship. Relationship keys are
+-- immutable after creation, and every status transition is actor-specific.
+--
+-- All authority is derived from authenticated relational ownership
+-- (auth.uid() -> profiles -> organizations / agents / opportunities). Display
+-- names, denormalized organization_name / agent_name text, client-supplied role
+-- strings and frontend visibility are never consulted.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.enforce_application_update_authority()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor uuid := public.current_profile_id();
+begin
+  -- Trusted server-side contexts (service role, migrations, seeds) have no
+  -- end-user profile. Untrusted callers cannot reach this trigger without one:
+  -- the UPDATE policy is restricted to `authenticated` and every branch of its
+  -- USING clause requires a resolvable profile.
+  if actor is null then
+    return new;
+  end if;
+
+  if new.id is distinct from old.id
+     or new.owner_id is distinct from old.owner_id
+     or new.agent_id is distinct from old.agent_id
+     or new.opportunity_id is distinct from old.opportunity_id
+     or new.created_at is distinct from old.created_at then
+    raise exception 'applications: owner_id, agent_id and opportunity_id are immutable'
+      using errcode = '42501';
+  end if;
+
+  if new.status is distinct from old.status then
+    if old.status <> 'pending' then
+      raise exception 'applications: status "%" is terminal', old.status
+        using errcode = '42501';
+    end if;
+
+    if new.status not in ('accepted', 'rejected') then
+      raise exception 'applications: unsupported status transition "%" -> "%"',
+        old.status, new.status
+        using errcode = '42501';
+    end if;
+
+    -- Accepting and rejecting are both organization-side authority. The
+    -- applicant can neither self-accept nor issue the organization's rejection.
+    if not public.is_opportunity_org_side(old.opportunity_id) then
+      raise exception 'applications: only the opportunity owner may change application status'
+        using errcode = '42501';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.enforce_negotiation_update_authority()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor uuid := public.current_profile_id();
+begin
+  if actor is null then
+    return new;
+  end if;
+
+  if new.id is distinct from old.id
+     or new.owner_id is distinct from old.owner_id
+     or new.agent_id is distinct from old.agent_id
+     or new.opportunity_id is distinct from old.opportunity_id
+     or new.created_at is distinct from old.created_at then
+    raise exception 'negotiations: owner_id, agent_id and opportunity_id are immutable'
+      using errcode = '42501';
+  end if;
+
+  if new.status is distinct from old.status then
+    if old.status not in ('pending', 'countered') then
+      raise exception 'negotiations: status "%" is terminal', old.status
+        using errcode = '42501';
+    end if;
+
+    if new.status not in ('accepted', 'rejected', 'countered') then
+      raise exception 'negotiations: unsupported status transition "%" -> "%"',
+        old.status, new.status
+        using errcode = '42501';
+    end if;
+
+    -- Acceptance binds the organization, so it is organization-side authority
+    -- only. Countering and rejecting/withdrawing remain available to both
+    -- participants.
+    if new.status = 'accepted'
+       and not public.is_opportunity_org_side(old.opportunity_id) then
+      raise exception 'negotiations: only the opportunity owner may accept a negotiation'
+        using errcode = '42501';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.enforce_hire_request_update_authority()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor uuid := public.current_profile_id();
+begin
+  if actor is null then
+    return new;
+  end if;
+
+  if new.id is distinct from old.id
+     or new.owner_id is distinct from old.owner_id
+     or new.agent_id is distinct from old.agent_id
+     or new.opportunity_id is distinct from old.opportunity_id
+     or new.created_at is distinct from old.created_at then
+    raise exception 'hire_requests: owner_id, agent_id and opportunity_id are immutable'
+      using errcode = '42501';
+  end if;
+
+  if new.status is distinct from old.status then
+    if old.status <> 'pending' then
+      raise exception 'hire_requests: status "%" is terminal', old.status
+        using errcode = '42501';
+    end if;
+
+    if new.status not in ('accepted', 'rejected') then
+      raise exception 'hire_requests: unsupported status transition "%" -> "%"',
+        old.status, new.status
+        using errcode = '42501';
+    end if;
+
+    -- A hire request is issued by the organization and answered by the agent.
+    -- Only the owner of the requested agent may accept it; the requesting
+    -- organization cannot accept on the agent's behalf. Rejection stays open to
+    -- both sides so the agent can decline and the organization can cancel.
+    if new.status = 'accepted'
+       and not public.is_agent_owner(old.agent_id) then
+      raise exception 'hire_requests: only the owner of the requested agent may accept'
+        using errcode = '42501';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+-- Contract INSERT is restricted to the organization side. Closing only INSERT
+-- would leave the same forgery reachable through UPDATE, because
+-- can_access_contract() re-reads the committed row and therefore cannot
+-- constrain the post-image. The binding parties are immutable instead.
+create or replace function public.enforce_contract_update_authority()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor uuid := public.current_profile_id();
+begin
+  if actor is null then
+    return new;
+  end if;
+
+  if new.id is distinct from old.id
+     or new.organization_id is distinct from old.organization_id
+     or new.agent_id is distinct from old.agent_id
+     or new.created_at is distinct from old.created_at then
+    raise exception 'contracts: organization_id and agent_id are immutable'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists applications_enforce_update_authority on applications;
+create trigger applications_enforce_update_authority
+  before update on applications
+  for each row execute function public.enforce_application_update_authority();
+
+drop trigger if exists negotiations_enforce_update_authority on negotiations;
+create trigger negotiations_enforce_update_authority
+  before update on negotiations
+  for each row execute function public.enforce_negotiation_update_authority();
+
+drop trigger if exists hire_requests_enforce_update_authority on hire_requests;
+create trigger hire_requests_enforce_update_authority
+  before update on hire_requests
+  for each row execute function public.enforce_hire_request_update_authority();
+
+drop trigger if exists contracts_enforce_update_authority on contracts;
+create trigger contracts_enforce_update_authority
+  before update on contracts
+  for each row execute function public.enforce_contract_update_authority();

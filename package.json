@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:rls": "node scripts/rls-authorization-regression.mjs"
   },
   "repository": {
     "type": "git",
