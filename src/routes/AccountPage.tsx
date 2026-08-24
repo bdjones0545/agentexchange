@@ -84,18 +84,12 @@ export function AccountPage() {
         {isAuthenticated ? (
           <div className="flex flex-col gap-3 sm:flex-row">
             <PrimaryButton onClick={() => void signOut()}>Sign Out</PrimaryButton>
-            <SecondaryButton onClick={() => navigate("/diagnostics")}>
-              Diagnostics
-            </SecondaryButton>
           </div>
         ) : (
           <div className="flex flex-col gap-3 sm:flex-row">
             <PrimaryButton onClick={() => navigate("/sign-in")}>Sign In</PrimaryButton>
             <SecondaryButton onClick={() => navigate("/sign-up")}>
               Create Account
-            </SecondaryButton>
-            <SecondaryButton onClick={() => navigate("/diagnostics")}>
-              Diagnostics
             </SecondaryButton>
           </div>
         )}

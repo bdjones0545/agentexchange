@@ -25,18 +25,19 @@ VITE_SUPABASE_ANON_KEY
 
 Do not expose the anon key in screenshots or bug reports.
 
-Open:
+Run the read-only operator validation from a trusted shell before opening the
+application:
 
-```text
-/diagnostics
+```bash
+SUPABASE_URL="https://<project-ref>.supabase.co" \
+SUPABASE_PUBLISHABLE_KEY="<publishable-key>" \
+SUPABASE_PROJECT_REF="<project-ref>" \
+npm run audit:supabase
 ```
 
-Confirm:
-
-- Supabase configured: yes
-- Authenticated session: yes/no as expected
-- Current user id present: yes after sign-in
-- Public table reads pass
+The project reference must match the URL. The command only checks table
+reachability; it does not sign in, change a profile, create marketplace rows,
+or validate authenticated RLS behavior.
 
 ## Test users
 
@@ -179,7 +180,7 @@ Important:
 Mark each item:
 
 - [ ] Vercel env vars configured
-- [ ] `/diagnostics` shows Supabase configured
+- [ ] Read-only operator validation passes for the explicitly named project
 - [ ] User A can sign up/sign in
 - [ ] User B can sign up/sign in
 - [ ] User A profile persists
@@ -203,20 +204,19 @@ Mark each item:
 - [ ] RLS blocks User B updating User A opportunity
 - [ ] RLS blocks User A updating User B agent
 
-## CLI audit option
+## Read-only CLI validation
 
-If you can safely provide test credentials in your own shell, run:
+From a trusted operator shell, run:
 
 ```bash
-export VITE_SUPABASE_URL="..."
-export VITE_SUPABASE_ANON_KEY="..."
-export SUPABASE_TEST_USER_A_EMAIL="..."
-export SUPABASE_TEST_USER_A_PASSWORD="..."
-export SUPABASE_TEST_USER_B_EMAIL="..."
-export SUPABASE_TEST_USER_B_PASSWORD="..."
+export SUPABASE_URL="https://<project-ref>.supabase.co"
+export SUPABASE_PUBLISHABLE_KEY="..."
+export SUPABASE_PROJECT_REF="<project-ref>"
 
-node scripts/audit-supabase-mvp.mjs
+npm run audit:supabase
 ```
 
-The CLI audit uses the anon key and real authenticated sessions, so it validates
-actual RLS behavior.
+The CLI validation is deliberately read-only and uses no authenticated user
+session. It proves target-bound Data API reachability only. Perform the manual
+two-user workflow above—or a separately gated non-production authorization
+harness—to validate authenticated RLS behavior.

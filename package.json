@@ -8,9 +8,11 @@
   },
   "packageManager": "npm@10.9.7",
   "scripts": {
+    "audit:supabase": "node scripts/audit-supabase-mvp.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:diagnostics": "node --test tests/safe-diagnostics.test.mjs"
   },
   "repository": {
     "type": "git",
