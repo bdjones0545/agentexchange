@@ -33,7 +33,11 @@ import {
   createDispute as createDisputeRecord,
   updateDispute as updateDisputeRecord,
 } from "../lib/repositories/disputesRepository";
-import { createHireRequest as createHireRequestRecord } from "../lib/repositories/hireRequestsRepository";
+import {
+  acceptHireRequest as acceptHireRequestRecord,
+  createHireRequest as createHireRequestRecord,
+  materializeHireRequestContract,
+} from "../lib/repositories/hireRequestsRepository";
 import { createNegotiation as createNegotiationRecord } from "../lib/repositories/negotiationsRepository";
 import { createOpportunity as createOpportunityRecord } from "../lib/repositories/opportunitiesRepository";
 import { createReview as createReviewRecord } from "../lib/repositories/reviewsRepository";
@@ -1607,10 +1611,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         id: createId("contract"),
         sourceId: hireRequest.id,
         sourceType: "hire-request",
-        organizationId:
-          opportunity?.organizationId ??
-          opportunity?.organization?.toLowerCase().replace(/\s+/g, "-") ??
-          "local-organization",
+        organizationId: opportunity?.organizationId ?? "",
         organization: opportunity?.organization ?? "Local Organization",
         agentId: hireRequest.agentId,
         agent: hireRequest.agentName,
@@ -1622,9 +1623,16 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         progress: 5,
         accent: "emerald",
       };
-      const localContract = isSupabaseConfigured
-        ? await createContractRecord(draftContract)
-        : draftContract;
+
+      // Agents are not authorized to insert contracts directly, so acceptance
+      // and contract materialization are two separate server-authorized steps:
+      // the agent accepts through RLS, then the database derives every contract
+      // relationship field from that accepted hire request.
+      let localContract: LocalContract | null = draftContract;
+      if (isSupabaseConfigured) {
+        await acceptHireRequestRecord(hireRequest.id);
+        localContract = await materializeHireRequestContract(hireRequest.id);
+      }
 
       setState((current) => {
         return {
@@ -1637,7 +1645,9 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
                 }
               : candidate,
           ),
-          localContracts: [...current.localContracts, localContract],
+          localContracts: localContract
+            ? [...current.localContracts, localContract]
+            : current.localContracts,
         };
       });
       showToast("Hire request accepted and contract created.");

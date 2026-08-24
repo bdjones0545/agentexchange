@@ -958,3 +958,180 @@ drop trigger if exists contracts_enforce_update_authority on contracts;
 create trigger contracts_enforce_update_authority
   before update on contracts
   for each row execute function public.enforce_contract_update_authority();
+
+-- ---------------------------------------------------------------------------
+-- Hire-request contract materialization (P0 follow-up)
+--
+-- Generic contract INSERT is restricted to is_organization_owner(organization_id),
+-- so an accepting agent can no longer create the resulting contract from the
+-- client. Restoring is_agent_owner(agent_id) as generic INSERT authority would
+-- reopen the P0, so the flow is re-established as two separate, narrowly scoped
+-- steps instead:
+--
+--   1. the owning agent accepts the hire request through the ordinary RLS
+--      UPDATE path, which is durable and already actor-gated by
+--      enforce_hire_request_update_authority(); then
+--   2. materialize_hire_request_contract() derives every contract relationship
+--      field from that accepted hire request.
+--
+-- The caller supplies only a hire request id. organization_id, agent_id and the
+-- source relationship are all derived server-side, so a legitimate acceptance
+-- never confers authority to name a different organization or agent.
+-- ---------------------------------------------------------------------------
+
+-- At most one canonical contract per accepted hire request. This is the hard
+-- backstop behind the advisory check inside the function below.
+create unique index if not exists uq_contracts_hire_request_source
+  on contracts (source_id)
+  where source_type = 'hire-request' and source_id is not null;
+
+-- Provenance must be immutable, otherwise a second hire request could be
+-- repointed at an existing contract to bypass the uniqueness index above.
+create or replace function public.enforce_contract_update_authority()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  actor uuid := public.current_profile_id();
+begin
+  if actor is null then
+    return new;
+  end if;
+
+  if new.id is distinct from old.id
+     or new.organization_id is distinct from old.organization_id
+     or new.agent_id is distinct from old.agent_id
+     or new.created_at is distinct from old.created_at then
+    raise exception 'contracts: organization_id and agent_id are immutable'
+      using errcode = '42501';
+  end if;
+
+  if new.source_id is distinct from old.source_id
+     or new.source_type is distinct from old.source_type then
+    raise exception 'contracts: source provenance is immutable'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.materialize_hire_request_contract(hire_request_uuid uuid)
+returns contracts
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  hr hire_requests%rowtype;
+  opp opportunities%rowtype;
+  org organizations%rowtype;
+  requested_agent agents%rowtype;
+  existing contracts%rowtype;
+  materialized contracts%rowtype;
+begin
+  if public.current_profile_id() is null then
+    raise exception 'materialize_hire_request_contract: authentication required'
+      using errcode = '42501';
+  end if;
+
+  -- The row lock serialises concurrent callers, which is what makes the
+  -- "already materialised" check below a reliable idempotency gate rather than
+  -- a race.
+  select * into hr from hire_requests where id = hire_request_uuid for update;
+  if not found then
+    raise exception 'materialize_hire_request_contract: hire request not found'
+      using errcode = '42501';
+  end if;
+
+  -- Only the two legitimate parties may materialise. An unrelated authenticated
+  -- user is refused outright.
+  if not (
+    public.is_agent_owner(hr.agent_id)
+    or public.is_opportunity_org_side(hr.opportunity_id)
+  ) then
+    raise exception 'materialize_hire_request_contract: caller is not a party to this hire request'
+      using errcode = '42501';
+  end if;
+
+  -- Materialisation is allowed only after a legitimate acceptance. Acceptance
+  -- itself is gated to the owning agent by the hire_requests update trigger, so
+  -- the requesting organization cannot manufacture this precondition.
+  if hr.status <> 'accepted' then
+    raise exception 'materialize_hire_request_contract: hire request is "%", not accepted', hr.status
+      using errcode = '42501';
+  end if;
+
+  select * into existing
+    from contracts
+   where source_type = 'hire-request'
+     and source_id = hr.id;
+  if found then
+    return existing;
+  end if;
+
+  -- Canonical derivation. Nothing here comes from the caller.
+  if hr.opportunity_id is null then
+    raise exception 'materialize_hire_request_contract: hire request has no opportunity, so no canonical organization can be derived'
+      using errcode = '42501';
+  end if;
+
+  select * into opp from opportunities where id = hr.opportunity_id;
+  if not found or opp.organization_id is null then
+    raise exception 'materialize_hire_request_contract: opportunity has no organization, so no canonical organization can be derived'
+      using errcode = '42501';
+  end if;
+
+  select * into org from organizations where id = opp.organization_id;
+  if not found then
+    raise exception 'materialize_hire_request_contract: organization not found'
+      using errcode = '42501';
+  end if;
+
+  select * into requested_agent from agents where id = hr.agent_id;
+  if not found then
+    raise exception 'materialize_hire_request_contract: agent not found'
+      using errcode = '42501';
+  end if;
+
+  -- The hire request must have been ISSUED by the organization side of its own
+  -- opportunity. Without this, an agent could self-issue a hire request naming
+  -- another organization's opportunity, accept it (it names their own agent),
+  -- and materialize a contract against an organization that never hired them --
+  -- reopening the P0 through this path.
+  if hr.owner_id is null
+     or (opp.owner_id is distinct from hr.owner_id
+         and org.owner_id is distinct from hr.owner_id) then
+    raise exception 'materialize_hire_request_contract: hire request was not issued by the organization side of its opportunity'
+      using errcode = '42501';
+  end if;
+
+  insert into contracts (
+    agent_id, agent_name, due_date, organization_id, organization_name,
+    progress, source_id, source_type, start_date, status, title, value
+  ) values (
+    requested_agent.id,
+    requested_agent.name,
+    to_char(now() + interval '14 days', 'YYYY-MM-DD'),
+    org.id,
+    org.name,
+    5,
+    hr.id,
+    'hire-request',
+    to_char(now(), 'YYYY-MM-DD'),
+    'Active',
+    coalesce(nullif(hr.quick_job_title, ''), nullif(hr.opportunity_title, ''), opp.title, 'Hire request'),
+    coalesce(opp.budget_range, 'Custom scope')
+  )
+  returning * into materialized;
+
+  return materialized;
+end;
+$$;
+
+-- SECURITY DEFINER functions are executable by PUBLIC unless revoked.
+revoke all on function public.materialize_hire_request_contract(uuid) from public;
+revoke all on function public.materialize_hire_request_contract(uuid) from anon;
+grant execute on function public.materialize_hire_request_contract(uuid) to authenticated;

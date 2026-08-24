@@ -297,6 +297,58 @@ async function main() {
     () => C.client.from("contracts").insert({ agent_id: agentC, agent_name: "Agent C", organization_id: orgA, organization_name: "Org A", title: forgedByC }),
     () => countWhere("contracts", "title", forgedByC), 0);
 
+  console.log("\n=== SECURE MATERIALIZATION ATTACK COVERAGE ===");
+
+  // A hire request legitimately issued by A, left pending.
+  async function issuedByA(status = "pending") {
+    await admin.from("contracts").delete().eq("source_type", "hire-request");
+    if (hireId) await admin.from("hire_requests").delete().eq("id", hireId);
+    hireId = await seedRow("hire_requests", { agent_id: agentB, agent_name: "Agent B", opportunity_id: oppA, opportunity_title: "Opp A", owner_id: A.profileId, status }, "hireRequests");
+    return hireId;
+  }
+  const contractsForHire = async (hireRequestId) => countWhere("contracts", "source_id", hireRequestId);
+
+  await issuedByA("pending");
+  await attack("M2  B cannot materialize from an UNACCEPTED hire request",
+    () => B.client.rpc("materialize_hire_request_contract", { hire_request_uuid: hireId }),
+    () => contractsForHire(hireId), 0);
+
+  await issuedByA("pending");
+  await attack("M3  A cannot fake agent acceptance then materialize",
+    async () => {
+      await A.client.from("hire_requests").update({ status: "accepted" }).eq("id", hireId);
+      return A.client.rpc("materialize_hire_request_contract", { hire_request_uuid: hireId });
+    },
+    () => truth("hire_requests", hireId, "status"), "pending");
+
+  await issuedByA("accepted");
+  await attack("M4  C cannot materialize an accepted hire request",
+    () => C.client.rpc("materialize_hire_request_contract", { hire_request_uuid: hireId }),
+    () => contractsForHire(hireId), 0);
+
+  // B self-issues a hire request naming its own agent against A's opportunity,
+  // accepts it, and materializes. This must not yield a contract against Org A.
+  await admin.from("contracts").delete().eq("source_type", "hire-request");
+  let selfIssued = null;
+  await attack("M5  B cannot swap organization by self-issuing a hire request",
+    async () => {
+      const inserted = await B.client.from("hire_requests").insert({ agent_id: agentB, agent_name: "Agent B", opportunity_id: oppA, opportunity_title: "Opp A" }).select("id").single();
+      if (inserted.data) { selfIssued = inserted.data.id; created.hireRequests.push(selfIssued); }
+      if (!selfIssued) return inserted;
+      await B.client.from("hire_requests").update({ status: "accepted" }).eq("id", selfIssued);
+      return B.client.rpc("materialize_hire_request_contract", { hire_request_uuid: selfIssued });
+    },
+    () => countWhere("contracts", "organization_id", orgA), 0);
+
+  await issuedByA("accepted");
+  await attack("M6  B cannot swap agent before materialization",
+    () => B.client.from("hire_requests").update({ agent_id: agentC }).eq("id", hireId),
+    () => truth("hire_requests", hireId, "agent_id"), agentB);
+
+  await attack("M9  generic contract INSERT is still denied to the agent",
+    () => B.client.from("contracts").insert({ agent_id: agentB, agent_name: "Agent B", organization_id: orgA, organization_name: "Org A", source_id: hireId, source_type: "hire-request", title: `direct-insert-${runId}` }),
+    () => countWhere("contracts", "title", `direct-insert-${runId}`), 0);
+
   console.log("\n=== LEGITIMATE COVERAGE (every one must succeed) ===");
 
   // Fresh rows so the legitimate lifecycle is independent of the attack fixtures.
@@ -354,6 +406,58 @@ async function main() {
       return res;
     },
     () => countWhere("contracts", "title", contractTitle), 1);
+
+  console.log("\n=== SECURE MATERIALIZATION LEGITIMATE PATH ===");
+
+  await admin.from("contracts").delete().eq("source_type", "hire-request");
+  if (hireId) await admin.from("hire_requests").delete().eq("id", hireId);
+  if (selfIssued) await admin.from("hire_requests").delete().eq("id", selfIssued);
+
+  let matHireId = null;
+  await legit("L8  A creates a hire request for B's agent",
+    async () => {
+      const res = await A.client.from("hire_requests").insert({ agent_id: agentB, agent_name: "Agent B", opportunity_id: oppA, opportunity_title: `mat-hire-${runId}` }).select("id").single();
+      if (res.data) { matHireId = res.data.id; created.hireRequests.push(matHireId); }
+      return res;
+    },
+    () => countWhere("hire_requests", "opportunity_title", `mat-hire-${runId}`), 1);
+
+  await legit("L9  owning agent B accepts it (durable)",
+    () => B.client.from("hire_requests").update({ status: "accepted" }).eq("id", matHireId),
+    () => truth("hire_requests", matHireId, "status"), "accepted");
+
+  let materializedId = null;
+  await legit("L10 B materializes the contract through the secure path",
+    async () => {
+      const res = await B.client.rpc("materialize_hire_request_contract", { hire_request_uuid: matHireId });
+      const row = Array.isArray(res.data) ? res.data[0] : res.data;
+      if (row) { materializedId = row.id; created.contracts.push(row.id); }
+      return res;
+    },
+    () => countWhere("contracts", "source_id", matHireId), 1);
+
+  await legit("L11 contract references the correct organization",
+    async () => ({ error: null }),
+    () => truth("contracts", materializedId, "organization_id"), orgA);
+
+  await legit("L12 contract references the correct agent",
+    async () => ({ error: null }),
+    () => truth("contracts", materializedId, "agent_id"), agentB);
+
+  await legit("L13 contract references the accepted hire request",
+    async () => ({ error: null }),
+    () => truth("contracts", materializedId, "source_id"), matHireId);
+
+  await legit("L14 retry is idempotent (no duplicate contract)",
+    async () => {
+      await B.client.rpc("materialize_hire_request_contract", { hire_request_uuid: matHireId });
+      return B.client.rpc("materialize_hire_request_contract", { hire_request_uuid: matHireId });
+    },
+    () => countWhere("contracts", "source_id", matHireId), 1);
+
+  await attack("M8  a different hire request cannot hijack the contract",
+    () => B.client.from("contracts").update({ source_id: matHireId === appId ? negId : appId }).eq("id", materializedId),
+    () => truth("contracts", materializedId, "source_id"), matHireId);
 }
 
 let exitCode = 0;
