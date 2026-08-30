@@ -30,12 +30,14 @@
   },
   "homepage": "https://github.com/bdjones0545/agentexchange#readme",
   "dependencies": {
+    "@mcp-b/global": "5.0.1",
     "@supabase/supabase-js": "^2.108.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0"
   },
   "devDependencies": {
+    "@mcp-b/webmcp-types": "5.0.1",
     "@tailwindcss/vite": "^4.3.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
