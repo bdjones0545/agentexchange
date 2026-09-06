@@ -12,7 +12,7 @@
 import { getAgentSkills } from "../data/agents";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
 import type { AgentExchangePersistedState } from "../state/marketplaceTypes";
-import { defineReadOnlyTool, type WebMcpTool } from "./runtime";
+import { defineReadOnlyTool, type WebMcpTool } from "@bdjones/webmcp-kit";
 
 export type AgentExchangeSnapshot = {
   state: AgentExchangePersistedState;
