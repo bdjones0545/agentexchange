@@ -3,7 +3,7 @@ import { Outlet } from "react-router-dom";
 
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { useAuth } from "../state/AuthContext";
-import { buildAgentExchangeTools, useWebMcpTools } from "../webmcp";
+import { buildAgentExchangeTools, useWebMcpTools, webMcpConfig } from "../webmcp";
 import { BottomNavigation } from "./BottomNavigation";
 import { LocalActionToast } from "./LocalActionToast";
 import { TopNavigation } from "./TopNavigation";
@@ -36,6 +36,7 @@ export function AppShell() {
       }),
       [exchange, isAuthenticated],
     ),
+    webMcpConfig(),
   );
 
   return (

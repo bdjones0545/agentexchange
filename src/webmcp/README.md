@@ -46,8 +46,8 @@ action on the user's behalf with no human in the loop, so no such tool exists.
 
 `defineReadOnlyTool` is the only tool constructor, and it hard-codes
 `readOnlyHint: true`. A mutating tool cannot be expressed through it. Adding
-write tools is a deliberate change to `runtime.ts`, not something reachable by
-accident from `tools.ts`.
+write tools is a deliberate change to the shared `@bdjones/webmcp-kit` package,
+not something reachable by accident from `tools.ts`.
 
 Tools that can return text authored by other organizations or agents are marked
 `untrustedContentHint: true`, so a calling agent treats that text as data rather
@@ -59,11 +59,14 @@ user has no applications when it simply could not see them.
 
 ## Files
 
+The app-agnostic half — feature detection, lazy polyfill, registration,
+`defineReadOnlyTool`, and the `useWebMcpTools` hook — lives in
+[`@bdjones/webmcp-kit`](https://github.com/bdjones0545/webmcp-kit), shared with
+the other apps in this series. What stays here is specific to AgentExchange.
+
 | File | Role |
 | --- | --- |
-| `runtime.ts` | Feature detection, lazy polyfill, registration, `defineReadOnlyTool`. App-agnostic. |
-| `config.ts` | Reads the two environment flags. |
-| `useWebMcp.ts` | React hook; registers once, reads live data through a ref. |
+| `config.ts` | Reads the two environment flags. Stays local because Vite substitutes `import.meta.env` at build time. |
 | `tools.ts` | This app's tool definitions. |
 
 ## Verifying locally
