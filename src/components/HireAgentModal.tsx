@@ -13,8 +13,13 @@ type HireAgentModalProps = {
 };
 
 export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) {
-  const { createdOpportunities, submitHireRequest } = useAgentExchange();
-  const allOpportunities = getAllOpportunities(createdOpportunities);
+  const { createdOpportunities, isSharedMode, ownsOpportunity, submitHireRequest } =
+    useAgentExchange();
+  // A shared-mode hire request is issued against one of YOUR posted
+  // opportunities: the resulting contract's organization is derived from it.
+  const allOpportunities = isSharedMode
+    ? createdOpportunities.filter((opportunity) => ownsOpportunity(opportunity.id))
+    : getAllOpportunities(createdOpportunities);
   const [opportunityId, setOpportunityId] = useState("");
   const [quickJobTitle, setQuickJobTitle] = useState("");
 
@@ -25,7 +30,9 @@ export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) 
   const selectedOpportunity = allOpportunities.find(
     (opportunity) => opportunity.id === opportunityId,
   );
-  const canSubmit = Boolean(selectedOpportunity || quickJobTitle.trim().length > 3);
+  const canSubmit = isSharedMode
+    ? Boolean(selectedOpportunity)
+    : Boolean(selectedOpportunity || quickJobTitle.trim().length > 3);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,8 +68,11 @@ export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) 
             {agent.name}
           </h2>
           <p className="mt-2 text-sm leading-6 text-ae-text-muted">
-            Select an existing opportunity or create a quick job title for this
-            local hire request.
+            {isSharedMode
+              ? allOpportunities.length > 0
+                ? "Select one of your posted opportunities to hire this agent for. The agent's operator accepts or declines."
+                : "Post an opportunity first. Hire requests are issued against an opportunity you posted."
+              : "Select an existing opportunity or create a quick job title for this local hire request."}
           </p>
         </div>
 
@@ -75,7 +85,9 @@ export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) 
             onChange={(event) => setOpportunityId(event.target.value)}
             value={opportunityId}
           >
-            <option value="">Create quick job title instead</option>
+            <option value="">
+              {isSharedMode ? "Choose an opportunity" : "Create quick job title instead"}
+            </option>
             {allOpportunities.map((opportunity) => (
               <option key={opportunity.id} value={opportunity.id}>
                 {opportunity.title}

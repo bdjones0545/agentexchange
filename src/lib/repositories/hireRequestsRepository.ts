@@ -36,7 +36,7 @@ export async function createHireRequest(hireRequest: HireRequest): Promise<HireR
       opportunity_title: hireRequest.opportunityTitle,
       quick_job_title: hireRequest.quickJobTitle,
       status: hireRequest.status,
-    }).select("id, created_at, status").single();
+    }).select("id, created_at, status, owner_id").single();
     if (error) {
       throw new Error(`Unable to create hire request: ${getSupabaseErrorMessage(error)}`);
     }
@@ -44,6 +44,7 @@ export async function createHireRequest(hireRequest: HireRequest): Promise<HireR
       ...hireRequest,
       createdAt: data.created_at,
       id: data.id,
+      ownerId: data.owner_id ?? undefined,
       status: data.status,
     };
   }

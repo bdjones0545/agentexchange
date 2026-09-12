@@ -6,7 +6,7 @@
 
 AgentExchange is an MVP web application that models an end-to-end marketplace for autonomous AI agents. Organizations post opportunities and hire agents; agent owners publish agents, apply to work, and negotiate terms; and both sides manage the resulting contracts, deliverables, payouts, and reviews from a single interface.
 
-The app is deliberately **frontend-first**: it runs entirely in the browser with no backend required. When Supabase environment variables are configured it persists data to a real Postgres database with Row Level Security and optional email/password auth. When they are absent, it falls back gracefully to `localStorage`, so the full experience can be demoed offline with zero setup.
+The app is deliberately **frontend-first**: it runs entirely in the browser with no backend required. When Supabase environment variables are configured it persists data to a real Postgres database with Row Level Security and email/password auth, and the marketplace becomes **shared and two-sided**: every signed-in user reads the same opportunities, agents and reviews, and sees the applications, negotiations, hire requests and contracts they are a party to. When the variables are absent, it falls back gracefully to `localStorage`, so the full experience can be demoed offline in a single browser with zero setup.
 
 This MVP does **not** include real payments, real AI execution, or admin moderation — those layers are stubbed or simulated to focus on the marketplace workflows themselves.
 
@@ -25,6 +25,7 @@ This MVP does **not** include real payments, real AI execution, or admin moderat
 - **Settings & account** — notification preferences, integration status, and account management.
 - **Optional auth** — Supabase email/password sign-up and sign-in; marketplace browsing stays public while writes require a signed-in user.
 - **Dual persistence** — automatic Supabase mode when configured, `localStorage` demo mode otherwise.
+- **Two-sided lifecycle in Supabase mode** — organizations post and hire; agent operators publish agents, apply and negotiate; the organization accepts applications and negotiations, the agent operator accepts hire requests, and either acceptance creates a contract both sides can work in. Authority is enforced in Postgres (RLS + triggers), not by hiding buttons.
 - **Safe operator validation** — an explicitly invoked, read-only CLI checks the configured Supabase project's table reachability without changing profiles or creating fixtures.
 
 ## Tech Stack
@@ -100,6 +101,26 @@ npm run audit:supabase
 ```
 
 This check is read-only. It does not authenticate a user, overwrite a profile, create marketplace fixtures, or perform cleanup. User journeys and RLS behavior require separate, deliberately provisioned test accounts in a non-production environment.
+
+### How the two modes store data
+
+| | `localStorage` demo mode | Supabase mode |
+| --- | --- | --- |
+| Who sees what | One browser, one sandbox. You play both sides. | Shared. Two real users in two browsers see each other's listings and actions. |
+| Source of truth | One JSON snapshot under the `agentexchange-local-mvp` key. | The normalized tables in `supabase/schema.sql`. Nothing is snapshotted. |
+| Seed listings | Fully interactive. | Browse-only. Lifecycle actions require real (UUID) rows you or another user created. |
+| Who may act | Anyone. | Organization side: accept/reject/counter applications and negotiations, issue hire requests. Agent operator: apply, negotiate, accept hire requests. Enforced by RLS and `BEFORE UPDATE` triggers. |
+| Freshness | Immediate. | Re-read on window focus and every 30 seconds, plus after each of your own writes. |
+
+### Verifying the authorization boundary
+
+`scripts/rls-local-verify.sh` proves the RLS policies and triggers on a plain local Postgres by stubbing `auth.uid()` and the Supabase roles, applying the real `supabase/schema.sql`, and running attack and legitimate-path checks as three actors (organization, agent operator, unrelated user). Every attack asserts the forbidden state is unchanged afterwards.
+
+```bash
+PGPORT=5432 PGUSER=postgres scripts/rls-local-verify.sh
+```
+
+`npm run test:rls` runs the equivalent suite against a real, isolated Supabase project (never production); it needs the service-role key and `RLS_TEST_ALLOW_DESTRUCTIVE=1`.
 
 ### Build & preview
 

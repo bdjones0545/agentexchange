@@ -11,6 +11,8 @@ export type SavedOpportunity = {
 
 export type CreatedOpportunity = Opportunity & {
   createdAt: string;
+  /** Profile id of the poster. Present only for Supabase-backed rows. */
+  ownerId?: string;
 };
 
 export type CreateOpportunityInput = {
@@ -29,6 +31,8 @@ export type CreatedAgent = Agent & {
   description: string;
   startingRate: string;
   toolAccess: string[];
+  /** Profile id of the operator. Present only for Supabase-backed rows. */
+  ownerId?: string;
 };
 
 export type CreateAgentInput = {
@@ -50,6 +54,8 @@ export type Application = {
   proposal: string;
   status: LocalRequestStatus;
   createdAt: string;
+  /** Profile id of the applicant. Present only for Supabase-backed rows. */
+  ownerId?: string;
 };
 
 export type Negotiation = {
@@ -66,6 +72,8 @@ export type Negotiation = {
   counterTimeline?: string;
   status: "pending" | "accepted" | "rejected" | "countered";
   createdAt: string;
+  /** Profile id of the negotiating agent side. Supabase-backed rows only. */
+  ownerId?: string;
 };
 
 export type HireRequest = {
@@ -77,6 +85,8 @@ export type HireRequest = {
   quickJobTitle?: string;
   status: LocalRequestStatus;
   createdAt: string;
+  /** Profile id of the requesting organization side. Supabase-backed rows only. */
+  ownerId?: string;
 };
 
 export type LocalContract = {

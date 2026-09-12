@@ -13,6 +13,7 @@ import { agents } from "../data/agents";
 import type { SuggestedAgentAction } from "../data/agentRecommendations";
 import { opportunities } from "../data/marketplace";
 import {
+  createActivityEvent,
   loadAgentExchangeState,
   saveAgentExchangeState,
 } from "../lib/repositories/activityRepository";
@@ -20,6 +21,7 @@ import { createAgent as createAgentRecord } from "../lib/repositories/agentsRepo
 import {
   acceptApplication as acceptApplicationRecord,
   createApplication as createApplicationRecord,
+  updateApplicationStatus as updateApplicationStatusRecord,
 } from "../lib/repositories/applicationsRepository";
 import {
   createContract as createContractRecord,
@@ -38,7 +40,10 @@ import {
   createHireRequest as createHireRequestRecord,
   materializeHireRequestContract,
 } from "../lib/repositories/hireRequestsRepository";
-import { createNegotiation as createNegotiationRecord } from "../lib/repositories/negotiationsRepository";
+import {
+  createNegotiation as createNegotiationRecord,
+  updateNegotiation as updateNegotiationRecord,
+} from "../lib/repositories/negotiationsRepository";
 import { createOpportunity as createOpportunityRecord } from "../lib/repositories/opportunitiesRepository";
 import { createReview as createReviewRecord } from "../lib/repositories/reviewsRepository";
 import {
@@ -58,6 +63,7 @@ import type {
   CreatedAgent,
   CreatedOpportunity,
   CreateOpportunityInput,
+  HireRequest,
   LocalActionToastState,
   LocalContract,
   Negotiation,
@@ -162,6 +168,26 @@ type AgentExchangeContextValue = PersistedState & {
   error: string | null;
   loading: boolean;
   saving: boolean;
+  /**
+   * The signed-in user's profile id in Supabase mode, null otherwise. Used
+   * only to decide which actions to SHOW; the database decides what is
+   * allowed.
+   */
+  currentProfileId: string | null;
+  /** True when the marketplace is shared through Supabase (two-sided). */
+  isSharedMode: boolean;
+  /** Re-reads the marketplace so the other party's actions become visible. */
+  refresh: () => Promise<void>;
+  /** Organization side of the opportunity this application targets. */
+  canManageApplication: (application: Application) => boolean;
+  /** Organization side of the opportunity this negotiation targets. */
+  canManageNegotiation: (negotiation: Negotiation) => boolean;
+  /** Owner of the agent that was asked to take the job. */
+  canAcceptHireRequest: (hireRequest: HireRequest) => boolean;
+  /** Owner of the given agent (always true in demo mode). */
+  ownsAgent: (agentId: string | undefined) => boolean;
+  /** Poster of the given opportunity (always true in demo mode). */
+  ownsOpportunity: (opportunityId: string | undefined) => boolean;
 };
 
 const defaultPersistedState: PersistedState = {
@@ -361,29 +387,38 @@ function withWorkspace(
 }
 
 export function AgentExchangeProvider({ children }: PropsWithChildren) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading: authLoading, user } = useAuth();
   const [state, setState] = useState<PersistedState>(defaultPersistedState);
+  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<LocalActionToastState | null>(null);
+  const userId = user?.id ?? null;
 
+  const refresh = useCallback(async () => {
+    const nextState = await loadAgentExchangeState();
+    setState({
+      ...nextState,
+      contractWorkspaces: nextState.contractWorkspaces.map(normalizeWorkspace),
+    });
+    setCurrentProfileId(nextState.currentProfileId);
+  }, []);
+
+  // Initial load, and a reload whenever the signed-in user changes: in
+  // Supabase mode the visible marketplace is scoped by RLS to that user.
   useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
     let isMounted = true;
 
-    loadAgentExchangeState()
-      .then((nextState) => {
-        if (!isMounted) {
-          return;
+    refresh()
+      .then(() => {
+        if (isMounted) {
+          setError(null);
         }
-
-        setState({
-          ...nextState,
-          contractWorkspaces: nextState.contractWorkspaces.map(
-            normalizeWorkspace,
-          ),
-        });
-        setError(null);
       })
       .catch(() => {
         if (isMounted) {
@@ -399,7 +434,26 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [authLoading, refresh, userId]);
+
+  // In shared mode the other party acts in another browser, so re-read on
+  // focus and on a slow interval. Demo mode has nothing to sync.
+  useEffect(() => {
+    if (!isSupabaseConfigured || loading) {
+      return;
+    }
+
+    const quietRefresh = () => {
+      void refresh().catch(() => undefined);
+    };
+    const interval = window.setInterval(quietRefresh, 30_000);
+    window.addEventListener("focus", quietRefresh);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", quietRefresh);
+    };
+  }, [loading, refresh]);
 
   useEffect(() => {
     if (loading) {
@@ -423,6 +477,99 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   const clearToast = useCallback(() => {
     setToast(null);
   }, []);
+
+  const reportError = useCallback(
+    (thrown: unknown) => {
+      const message =
+        thrown instanceof Error ? thrown.message : "Something went wrong.";
+      setError(message);
+      showToast(message);
+    },
+    [showToast],
+  );
+
+  /**
+   * In shared mode only real (UUID) rows can take part in a lifecycle. Seed
+   * listings exist for browsing and are refused with a clear message instead
+   * of failing inside Postgres with a uuid cast error.
+   */
+  const requireRealRecord = useCallback(
+    (id: string | undefined, what: string) => {
+      if (!isSupabaseConfigured) {
+        return true;
+      }
+
+      if (!isUuid(id)) {
+        showToast(`${what} is a demo listing. Create a real one to use it.`);
+        return false;
+      }
+
+      return true;
+    },
+    [showToast],
+  );
+
+  /** Persists an agent timeline event in shared mode; in-memory otherwise. */
+  const recordAgentActivity = useCallback((event: AgentActivityEvent) => {
+    if (isSupabaseConfigured) {
+      void createActivityEvent(event).catch(() => undefined);
+    }
+    return event;
+  }, []);
+
+  const ownsAgent = useCallback(
+    (agentId: string | undefined) => {
+      if (!isSupabaseConfigured) {
+        return true;
+      }
+      if (!agentId || !currentProfileId) {
+        return false;
+      }
+      return state.createdAgents.some(
+        (agent) => agent.id === agentId && agent.ownerId === currentProfileId,
+      );
+    },
+    [currentProfileId, state.createdAgents],
+  );
+
+  const ownsOpportunity = useCallback(
+    (opportunityId: string | undefined) => {
+      if (!isSupabaseConfigured) {
+        return true;
+      }
+      if (!opportunityId || !currentProfileId) {
+        return false;
+      }
+      return state.createdOpportunities.some(
+        (opportunity) =>
+          opportunity.id === opportunityId &&
+          opportunity.ownerId === currentProfileId,
+      );
+    },
+    [currentProfileId, state.createdOpportunities],
+  );
+
+  const canManageApplication = useCallback(
+    (application: Application) => ownsOpportunity(application.opportunityId),
+    [ownsOpportunity],
+  );
+
+  const canManageNegotiation = useCallback(
+    (negotiation: Negotiation) => ownsOpportunity(negotiation.opportunityId),
+    [ownsOpportunity],
+  );
+
+  const canAcceptHireRequest = useCallback(
+    (hireRequest: HireRequest) => ownsAgent(hireRequest.agentId),
+    [ownsAgent],
+  );
+
+  /** After a shared-mode write, converge on what the database now holds. */
+  const settle = useCallback(() => {
+    if (isSupabaseConfigured) {
+      void refresh().catch(() => undefined);
+    }
+  }, [refresh]);
 
   const requireAuthForPersistentWrite = useCallback(
     (action: string) => {
@@ -1191,9 +1338,21 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       if (!requireAuthForPersistentWrite("apply to opportunities")) {
         return;
       }
+      if (
+        !requireRealRecord(input.opportunityId, "That opportunity") ||
+        !requireRealRecord(input.agentId, "That agent")
+      ) {
+        return;
+      }
+      if (!ownsAgent(input.agentId)) {
+        showToast("You can only apply with an agent you operate.");
+        return;
+      }
 
       const existingApplication = state.applications.find(
-        (application) => application.opportunityId === input.opportunityId,
+        (application) =>
+          application.opportunityId === input.opportunityId &&
+          application.agentId === input.agentId,
       );
       const draftApplication: Application = {
         id: existingApplication?.id ?? createId("application"),
@@ -1204,19 +1363,19 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       const nextApplication = isSupabaseConfigured
         ? await createApplicationRecord(draftApplication)
         : draftApplication;
+      const activity = recordAgentActivity(
+        createAgentActivity(
+          input.agentId,
+          input.agentName,
+          "application_submitted",
+          `${input.agentName} applied to ${input.opportunityTitle}.`,
+        ),
+      );
 
       setState((current) => {
         return {
           ...current,
-          agentActivities: [
-            createAgentActivity(
-              input.agentId,
-              input.agentName,
-              "application_submitted",
-              `${input.agentName} applied to ${input.opportunityTitle}.`,
-            ),
-            ...current.agentActivities,
-          ],
+          agentActivities: [activity, ...current.agentActivities],
           applications: existingApplication
             ? current.applications.map((application) =>
                 application.id === existingApplication.id
@@ -1227,13 +1386,29 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         };
       });
       showToast("Application submitted.");
+      settle();
     },
-    [requireAuthForPersistentWrite, showToast, state.applications],
+    [
+      ownsAgent,
+      recordAgentActivity,
+      requireAuthForPersistentWrite,
+      requireRealRecord,
+      settle,
+      showToast,
+      state.applications,
+    ],
   );
 
   const submitNegotiation = useCallback(
     async (input: SubmitNegotiationInput) => {
       if (!requireAuthForPersistentWrite("negotiate opportunities")) {
+        return;
+      }
+      if (!requireRealRecord(input.opportunityId, "That opportunity")) {
+        return;
+      }
+      if (isSupabaseConfigured && !ownsAgent(input.agentId)) {
+        showToast("Choose one of your own agents to negotiate with.");
         return;
       }
 
@@ -1253,20 +1428,26 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       const nextNegotiation = isSupabaseConfigured
         ? await createNegotiationRecord(draftNegotiation)
         : draftNegotiation;
+      const negotiatingAgent =
+        draftNegotiation.agentId && draftNegotiation.agentName
+          ? { id: draftNegotiation.agentId, name: draftNegotiation.agentName }
+          : simulatedAgent;
+      const activity = negotiatingAgent
+        ? recordAgentActivity(
+            createAgentActivity(
+              negotiatingAgent.id,
+              negotiatingAgent.name,
+              "negotiation_started",
+              `${negotiatingAgent.name} entered negotiation for ${input.opportunityTitle}.`,
+            ),
+          )
+        : null;
 
       setState((current) => {
         return {
           ...current,
-          agentActivities: simulatedAgent
-            ? [
-                createAgentActivity(
-                  simulatedAgent.id,
-                  simulatedAgent.name,
-                  "negotiation_started",
-                  `${simulatedAgent.name} entered negotiation for ${input.opportunityTitle}.`,
-                ),
-                ...current.agentActivities,
-              ]
+          agentActivities: activity
+            ? [activity, ...current.agentActivities]
             : current.agentActivities,
           negotiations: existingNegotiation
             ? current.negotiations.map((negotiation) =>
@@ -1278,14 +1459,41 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         };
       });
       showToast("Negotiation submitted.");
+      settle();
     },
-    [requireAuthForPersistentWrite, showToast, state.negotiations],
+    [
+      ownsAgent,
+      recordAgentActivity,
+      requireAuthForPersistentWrite,
+      requireRealRecord,
+      settle,
+      showToast,
+      state.negotiations,
+    ],
   );
 
   const submitHireRequest = useCallback(
     async (input: SubmitHireRequestInput) => {
       if (!requireAuthForPersistentWrite("hire agents")) {
         return;
+      }
+      if (!requireRealRecord(input.agentId, "That agent")) {
+        return;
+      }
+      if (isSupabaseConfigured) {
+        // A shared-mode hire request must name one of the requester's own
+        // opportunities: the contract's organization is derived from it.
+        if (!input.opportunityId) {
+          showToast("Pick one of your posted opportunities to hire against.");
+          return;
+        }
+        if (!requireRealRecord(input.opportunityId, "That opportunity")) {
+          return;
+        }
+        if (!ownsOpportunity(input.opportunityId)) {
+          showToast("You can only hire against an opportunity you posted.");
+          return;
+        }
       }
 
       const draftHireRequest = {
@@ -1297,31 +1505,42 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       const nextHireRequest = isSupabaseConfigured
         ? await createHireRequestRecord(draftHireRequest)
         : draftHireRequest;
+      const activity = recordAgentActivity(
+        createAgentActivity(
+          input.agentId,
+          input.agentName,
+          "hire_request_submitted",
+          `${input.agentName} received a hire request for ${input.opportunityTitle}.`,
+        ),
+      );
 
       setState((current) => ({
         ...current,
-        agentActivities: [
-          createAgentActivity(
-            input.agentId,
-            input.agentName,
-            "hire_request_submitted",
-            `${input.agentName} received a hire request for ${input.opportunityTitle}.`,
-          ),
-          ...current.agentActivities,
-        ],
+        agentActivities: [activity, ...current.agentActivities],
         hireRequests: [
           ...current.hireRequests,
           nextHireRequest,
         ],
       }));
       showToast("Hire request submitted.");
+      settle();
     },
-    [requireAuthForPersistentWrite, showToast],
+    [
+      ownsOpportunity,
+      recordAgentActivity,
+      requireAuthForPersistentWrite,
+      requireRealRecord,
+      settle,
+      showToast,
+    ],
   );
 
   const acceptApplication = useCallback(
     async (applicationId: string) => {
       if (!requireAuthForPersistentWrite("accept applications")) {
+        return;
+      }
+      if (!requireRealRecord(applicationId, "That application")) {
         return;
       }
 
@@ -1402,54 +1621,71 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         };
       });
       showToast("Application accepted and contract created.");
+      settle();
     },
-    [requireAuthForPersistentWrite, showToast, state],
+    [requireAuthForPersistentWrite, requireRealRecord, settle, showToast, state],
   );
 
   const rejectApplication = useCallback(
-    (applicationId: string) => {
+    async (applicationId: string) => {
       if (!requireAuthForPersistentWrite("reject applications")) {
         return;
       }
+      if (!requireRealRecord(applicationId, "That application")) {
+        return;
+      }
 
-      setState((current) => {
-        const application = current.applications.find(
-          (candidate) => candidate.id === applicationId,
-        );
+      const application = state.applications.find(
+        (candidate) => candidate.id === applicationId,
+      );
 
-        if (!application || application.status !== "pending") {
-          return current;
-        }
+      if (!application || application.status !== "pending") {
+        return;
+      }
 
-        return {
-          ...current,
-          agentActivities: [
-            createAgentActivity(
-              application.agentId,
-              application.agentName,
-              "status_changed",
-              `${application.agentName}'s application to ${application.opportunityTitle} was rejected.`,
-            ),
-            ...current.agentActivities,
-          ],
-          applications: current.applications.map((candidate) =>
-            candidate.id === applicationId
-              ? {
-                  ...candidate,
-                  status: "rejected",
-                }
-              : candidate,
-          ),
-        };
-      });
+      if (isSupabaseConfigured) {
+        await updateApplicationStatusRecord(applicationId, "rejected");
+      }
+      const activity = recordAgentActivity(
+        createAgentActivity(
+          application.agentId,
+          application.agentName,
+          "status_changed",
+          `${application.agentName}'s application to ${application.opportunityTitle} was rejected.`,
+        ),
+      );
+
+      setState((current) => ({
+        ...current,
+        agentActivities: [activity, ...current.agentActivities],
+        applications: current.applications.map((candidate) =>
+          candidate.id === applicationId
+            ? {
+                ...candidate,
+                status: "rejected",
+              }
+            : candidate,
+        ),
+      }));
       showToast("Application rejected.");
+      settle();
     },
-    [requireAuthForPersistentWrite, showToast],
+    [
+      recordAgentActivity,
+      requireAuthForPersistentWrite,
+      requireRealRecord,
+      settle,
+      showToast,
+      state.applications,
+    ],
   );
 
   const acceptNegotiation = useCallback(
     async (negotiationId: string) => {
       if (!requireAuthForPersistentWrite("accept negotiations")) {
+        return;
+      }
+      if (!requireRealRecord(negotiationId, "That negotiation")) {
         return;
       }
 
@@ -1499,20 +1735,25 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       const localContract = isSupabaseConfigured
         ? await createContractRecord(draftContract)
         : draftContract;
+      if (isSupabaseConfigured) {
+        await updateNegotiationRecord(negotiationId, { status: "accepted" });
+      }
+      const activity = agent
+        ? recordAgentActivity(
+            createAgentActivity(
+              agent.id,
+              agent.name,
+              "status_changed",
+              `${agent.name}'s negotiation for ${negotiation.opportunityTitle} was accepted.`,
+            ),
+          )
+        : null;
 
       setState((current) => {
         return {
           ...current,
-          agentActivities: agent
-            ? [
-                createAgentActivity(
-                  agent.id,
-                  agent.name,
-                  "status_changed",
-                  `${agent.name}'s negotiation for ${negotiation.opportunityTitle} was accepted.`,
-                ),
-                ...current.agentActivities,
-              ]
+          agentActivities: activity
+            ? [activity, ...current.agentActivities]
             : current.agentActivities,
           localContracts: [...current.localContracts, localContract],
           negotiations: current.negotiations.map((candidate) =>
@@ -1526,14 +1767,28 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         };
       });
       showToast("Negotiation accepted and contract created.");
+      settle();
     },
-    [requireAuthForPersistentWrite, showToast, state],
+    [
+      recordAgentActivity,
+      requireAuthForPersistentWrite,
+      requireRealRecord,
+      settle,
+      showToast,
+      state,
+    ],
   );
 
   const rejectNegotiation = useCallback(
-    (negotiationId: string) => {
+    async (negotiationId: string) => {
       if (!requireAuthForPersistentWrite("reject negotiations")) {
         return;
+      }
+      if (!requireRealRecord(negotiationId, "That negotiation")) {
+        return;
+      }
+      if (isSupabaseConfigured) {
+        await updateNegotiationRecord(negotiationId, { status: "rejected" });
       }
 
       setState((current) => ({
@@ -1548,12 +1803,13 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         ),
       }));
       showToast("Negotiation rejected.");
+      settle();
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, requireRealRecord, settle, showToast],
   );
 
   const counterNegotiation = useCallback(
-    (
+    async (
       negotiationId: string,
       counterRate: string,
       counterTimeline: string,
@@ -1561,6 +1817,17 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     ) => {
       if (!requireAuthForPersistentWrite("counter negotiations")) {
         return;
+      }
+      if (!requireRealRecord(negotiationId, "That negotiation")) {
+        return;
+      }
+      if (isSupabaseConfigured) {
+        await updateNegotiationRecord(negotiationId, {
+          counterNote,
+          counterRate,
+          counterTimeline,
+          status: "countered",
+        });
       }
 
       setState((current) => ({
@@ -1578,13 +1845,17 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         ),
       }));
       showToast("Counter negotiation saved.");
+      settle();
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, requireRealRecord, settle, showToast],
   );
 
   const acceptHireRequest = useCallback(
     async (hireRequestId: string) => {
       if (!requireAuthForPersistentWrite("accept hire requests")) {
+        return;
+      }
+      if (!requireRealRecord(hireRequestId, "That hire request")) {
         return;
       }
 
@@ -1651,8 +1922,9 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         };
       });
       showToast("Hire request accepted and contract created.");
+      settle();
     },
-    [requireAuthForPersistentWrite, showToast, state],
+    [requireAuthForPersistentWrite, requireRealRecord, settle, showToast, state],
   );
 
   const approveSuggestedAgentAction = useCallback(
@@ -1774,6 +2046,26 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     ],
   );
 
+  /**
+   * UI handlers are fire-and-forget, so a rejected write (an RLS refusal, a
+   * network failure) would otherwise vanish as an unhandled rejection. Every
+   * exposed action reports its failure to the user instead.
+   */
+  const safe = useCallback(
+    <A extends unknown[]>(action: (...args: A) => unknown) =>
+      (...args: A) => {
+        try {
+          const result = action(...args);
+          if (result instanceof Promise) {
+            result.catch(reportError);
+          }
+        } catch (thrown) {
+          reportError(thrown);
+        }
+      },
+    [reportError],
+  );
+
   const value = useMemo<AgentExchangeContextValue>(
     () => ({
       ...state,
@@ -1781,15 +2073,23 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       loading,
       saving,
       toast,
-      acceptApplication,
-      acceptHireRequest,
-      acceptNegotiation,
-      addAgentReview,
-      approveSuggestedAgentAction,
-      addContractDeliverable,
-      addContractMilestone,
+      currentProfileId,
+      isSharedMode: isSupabaseConfigured,
+      refresh,
+      canAcceptHireRequest,
+      canManageApplication,
+      canManageNegotiation,
+      ownsAgent,
+      ownsOpportunity,
+      acceptApplication: safe(acceptApplication),
+      acceptHireRequest: safe(acceptHireRequest),
+      acceptNegotiation: safe(acceptNegotiation),
+      addAgentReview: safe(addAgentReview),
+      approveSuggestedAgentAction: safe(approveSuggestedAgentAction),
+      addContractDeliverable: safe(addContractDeliverable),
+      addContractMilestone: safe(addContractMilestone),
       clearToast,
-      counterNegotiation,
+      counterNegotiation: safe(counterNegotiation),
       createAgent,
       createOpportunity,
       getApplicationForOpportunity: (opportunityId) =>
@@ -1808,20 +2108,28 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         state.savedOpportunities.some(
           (savedOpportunity) => savedOpportunity.opportunityId === opportunityId,
         ),
-      openContractDispute,
-      rejectApplication,
-      rejectNegotiation,
-      sendContractMessage,
-      setDeliverableStatus,
-      submitApplication,
-      submitHireRequest,
-      submitNegotiation,
-      toggleMilestoneComplete,
-      toggleSavedOpportunity,
-      updateContractDispute,
-      updateMilestoneNotes,
+      openContractDispute: safe(openContractDispute),
+      rejectApplication: safe(rejectApplication),
+      rejectNegotiation: safe(rejectNegotiation),
+      sendContractMessage: safe(sendContractMessage),
+      setDeliverableStatus: safe(setDeliverableStatus),
+      submitApplication: safe(submitApplication),
+      submitHireRequest: safe(submitHireRequest),
+      submitNegotiation: safe(submitNegotiation),
+      toggleMilestoneComplete: safe(toggleMilestoneComplete),
+      toggleSavedOpportunity: safe(toggleSavedOpportunity),
+      updateContractDispute: safe(updateContractDispute),
+      updateMilestoneNotes: safe(updateMilestoneNotes),
     }),
     [
+      canAcceptHireRequest,
+      canManageApplication,
+      canManageNegotiation,
+      currentProfileId,
+      ownsAgent,
+      ownsOpportunity,
+      refresh,
+      safe,
       acceptApplication,
       acceptHireRequest,
       acceptNegotiation,

@@ -56,9 +56,9 @@ Use separate browser profiles, separate browsers, or sign out between accounts.
 4. Confirm:
    - Persistence mode is `Supabase Authenticated`
    - Current user id is present
-5. Create or use an organization context.
-6. Go to `/post-opportunity`.
-7. Create an opportunity.
+5. Go to `/post-opportunity`.
+6. Create an opportunity. The organization named in the form is created and
+   owned by User A.
 
 Expected Supabase rows:
 
@@ -78,10 +78,12 @@ Expected RLS:
 3. Go to `/create-agent`.
 4. Create an agent.
 5. Go to `/marketplace`.
-6. Save User A opportunity.
-7. Apply to User A opportunity.
-8. Negotiate on User A opportunity.
-9. Send a hire request if the UI path is available.
+6. Confirm User A's opportunity is visible in the marketplace (shared data).
+7. Save User A opportunity.
+8. Apply to User A opportunity with the agent created in step 4.
+9. Negotiate on User A opportunity.
+10. Open `/applications`: the application shows "Waiting for the organization
+    to review" and no Accept button.
 
 Expected Supabase rows:
 
@@ -102,8 +104,11 @@ Expected RLS:
 
 1. Sign in as User A.
 2. Open `/organization-dashboard`.
-3. Review applications and negotiations.
+3. Review applications and negotiations. Only User A sees Accept / Reject.
 4. Accept an application or negotiation.
+5. Open a User B agent profile and send a hire request against the
+   opportunity from the User A workflow. As User B, accept it from
+   `/applications`; a second contract appears for both users.
 
 Expected Supabase rows:
 

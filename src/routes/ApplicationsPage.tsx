@@ -16,7 +16,10 @@ export function ApplicationsPage() {
     acceptApplication,
     acceptHireRequest,
     applications,
+    canAcceptHireRequest,
+    canManageApplication,
     hireRequests,
+    isSharedMode,
     negotiations,
   } = useAgentExchange();
 
@@ -30,23 +33,23 @@ export function ApplicationsPage() {
           Applications
         </p>
         <h1 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text sm:text-5xl">
-          Local action queue.
+          {isSharedMode ? "Your action queue." : "Local action queue."}
         </h1>
         <p className="mt-3 max-w-2xl text-ae-text-muted">
-          Review locally submitted applications, negotiations, and hire
-          requests. Accepting an application or hire request creates a local
-          contract.
+          {isSharedMode
+            ? "Applications, negotiations, and hire requests you are a party to. Organizations accept applications; agent operators accept hire requests. Accepting creates a contract for both sides."
+            : "Review locally submitted applications, negotiations, and hire requests. Accepting an application or hire request creates a local contract."}
         </p>
       </div>
 
       {!hasLocalActivity ? (
         <GlassCard className="space-y-4 text-center">
           <h2 className="font-ae-display text-2xl font-semibold text-ae-text">
-            No local actions yet
+            {isSharedMode ? "Nothing waiting on you" : "No local actions yet"}
           </h2>
           <p className="mx-auto max-w-xl text-ae-text-muted">
             Apply, negotiate, or hire from the marketplace and agent profiles to
-            populate this local queue.
+            populate this queue.
           </p>
         </GlassCard>
       ) : null}
@@ -77,12 +80,18 @@ export function ApplicationsPage() {
                   {application.proposal}
                 </p>
                 {application.status === "pending" ? (
-                  <PrimaryButton
-                    className="w-full sm:w-auto"
-                    onClick={() => acceptApplication(application.id)}
-                  >
-                    Accept Application
-                  </PrimaryButton>
+                  canManageApplication(application) ? (
+                    <PrimaryButton
+                      className="w-full sm:w-auto"
+                      onClick={() => acceptApplication(application.id)}
+                    >
+                      Accept Application
+                    </PrimaryButton>
+                  ) : (
+                    <p className="text-xs text-ae-text-muted">
+                      Waiting for the organization to review.
+                    </p>
+                  )
                 ) : null}
               </GlassCard>
             ))}
@@ -114,12 +123,18 @@ export function ApplicationsPage() {
                   <ApplicationStatusBadge status={hireRequest.status} />
                 </div>
                 {hireRequest.status === "pending" ? (
-                  <PrimaryButton
-                    className="w-full sm:w-auto"
-                    onClick={() => acceptHireRequest(hireRequest.id)}
-                  >
-                    Accept Hire Request
-                  </PrimaryButton>
+                  canAcceptHireRequest(hireRequest) ? (
+                    <PrimaryButton
+                      className="w-full sm:w-auto"
+                      onClick={() => acceptHireRequest(hireRequest.id)}
+                    >
+                      Accept Hire Request
+                    </PrimaryButton>
+                  ) : (
+                    <p className="text-xs text-ae-text-muted">
+                      Waiting for the agent operator to accept.
+                    </p>
+                  )
                 ) : null}
               </GlassCard>
             ))}
@@ -179,7 +194,7 @@ export function ApplicationsPage() {
         </section>
       ) : null}
 
-      {hasLocalActivity ? (
+      {hasLocalActivity && !isSharedMode ? (
         <p className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-4 py-2 text-center font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-primary">
           Local data stored in this browser
         </p>

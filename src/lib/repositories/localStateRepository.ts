@@ -1,8 +1,3 @@
-import {
-  supabase,
-  isSupabaseConfigured,
-  getSupabaseErrorMessage,
-} from "../supabase";
 import type { AgentExchangePersistedState } from "../../state/marketplaceTypes";
 
 export const LOCAL_STATE_KEY = "agentexchange-local-mvp";
@@ -41,39 +36,13 @@ export function normalizeAgentExchangeState(
   };
 }
 
+/**
+ * Browser-local demo persistence. This is the ONLY store in localStorage
+ * demo mode. In Supabase mode the normalized tables are the store and this
+ * file is not consulted (see supabaseStateRepository.ts).
+ */
 export async function loadLocalState(): Promise<AgentExchangePersistedState> {
-  if (isSupabaseConfigured && supabase) {
-    const { data: sessionData, error: sessionError } =
-      await supabase.auth.getSession();
-
-    if (sessionError) {
-      throw new Error(
-        `Unable to inspect Supabase session: ${getSupabaseErrorMessage(sessionError)}`,
-      );
-    }
-
-    if (!sessionData.session) {
-      return emptyAgentExchangeState;
-    }
-
-    const { data, error } = await supabase
-      .from("activity_events")
-      .select("metadata")
-      .eq("event_type", "agentexchange_state_snapshot")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      throw new Error(`Unable to load Supabase state: ${getSupabaseErrorMessage(error)}`);
-    }
-
-    if (data?.metadata) {
-      return normalizeAgentExchangeState(
-        data.metadata as Partial<AgentExchangePersistedState>,
-      );
-    }
-
+  if (typeof window === "undefined") {
     return emptyAgentExchangeState;
   }
 
@@ -93,29 +62,7 @@ export async function loadLocalState(): Promise<AgentExchangePersistedState> {
 export async function saveLocalState(
   state: AgentExchangePersistedState,
 ): Promise<void> {
-  if (isSupabaseConfigured && supabase) {
-    const { data: sessionData, error: sessionError } =
-      await supabase.auth.getSession();
-
-    if (sessionError) {
-      throw new Error(
-        `Unable to inspect Supabase session: ${getSupabaseErrorMessage(sessionError)}`,
-      );
-    }
-
-    if (!sessionData.session) {
-      return;
-    }
-
-    const { error } = await supabase.from("activity_events").insert({
-      event_type: "agentexchange_state_snapshot",
-      message: "AgentExchange local MVP state snapshot",
-      metadata: state,
-    });
-
-    if (error) {
-      throw new Error(`Unable to save Supabase state: ${getSupabaseErrorMessage(error)}`);
-    }
+  if (typeof window === "undefined") {
     return;
   }
 

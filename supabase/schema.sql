@@ -1135,3 +1135,33 @@ $$;
 revoke all on function public.materialize_hire_request_contract(uuid) from public;
 revoke all on function public.materialize_hire_request_contract(uuid) from anon;
 grant execute on function public.materialize_hire_request_contract(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Shared-marketplace hardening (2026-09-12)
+--
+-- The app no longer stores a per-user JSON snapshot of its whole state in
+-- activity_events; the normalized tables are the only source of truth. That
+-- leaves activity_events as an append-only public timeline, so an actor may
+-- only write events it owns (owner_id defaults to the caller's profile).
+-- ---------------------------------------------------------------------------
+drop policy if exists "activity_events_authenticated_insert" on activity_events;
+create policy "activity_events_authenticated_insert" on activity_events
+  for insert to authenticated
+  with check (owner_id = public.current_profile_id());
+
+-- SECURITY DEFINER helpers are executable by PUBLIC (and therefore by anon
+-- over /rest/v1/rpc) unless revoked. Only current_profile_id() must stay
+-- callable by anon: activity_events_public_read evaluates it for anonymous
+-- readers. Everything else is consulted only by `to authenticated` policies.
+revoke all on function public.is_agent_owner(uuid) from public, anon;
+revoke all on function public.is_organization_owner(uuid) from public, anon;
+revoke all on function public.is_opportunity_org_side(uuid) from public, anon;
+revoke all on function public.can_access_contract(uuid) from public, anon;
+grant execute on function public.is_agent_owner(uuid) to authenticated;
+grant execute on function public.is_organization_owner(uuid) to authenticated;
+grant execute on function public.is_opportunity_org_side(uuid) to authenticated;
+grant execute on function public.can_access_contract(uuid) to authenticated;
+-- The auth trigger runs as its owner; nobody needs to call it directly.
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+
+alter function public.set_updated_at() set search_path = public;

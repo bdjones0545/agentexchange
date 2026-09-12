@@ -23,6 +23,8 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
   const {
     acceptApplication,
     acceptNegotiation,
+    canManageApplication,
+    canManageNegotiation,
     counterNegotiation,
     rejectApplication,
     rejectNegotiation,
@@ -54,14 +56,20 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
           {application.proposal}
         </p>
         {application.status === "pending" ? (
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <PrimaryButton onClick={() => acceptApplication(application.id)}>
-              Accept
-            </PrimaryButton>
-            <SecondaryButton onClick={() => rejectApplication(application.id)}>
-              Reject
-            </SecondaryButton>
-          </div>
+          canManageApplication(application) ? (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <PrimaryButton onClick={() => acceptApplication(application.id)}>
+                Accept
+              </PrimaryButton>
+              <SecondaryButton onClick={() => rejectApplication(application.id)}>
+                Reject
+              </SecondaryButton>
+            </div>
+          ) : (
+            <p className="text-xs text-ae-text-muted">
+              Waiting for the organization to review this application.
+            </p>
+          )
         ) : null}
       </GlassCard>
     );
@@ -113,7 +121,14 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
           </p>
         </div>
       </div>
-      {negotiation.status === "pending" || negotiation.status === "countered" ? (
+      {(negotiation.status === "pending" || negotiation.status === "countered") &&
+      !canManageNegotiation(negotiation) ? (
+        <p className="text-xs text-ae-text-muted">
+          Waiting for the organization to respond.
+        </p>
+      ) : null}
+      {(negotiation.status === "pending" || negotiation.status === "countered") &&
+      canManageNegotiation(negotiation) ? (
         <div className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-3">
             <input
