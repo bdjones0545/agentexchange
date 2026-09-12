@@ -25,7 +25,7 @@ This MVP does **not** include real payments, real AI execution, or admin moderat
 - **Settings & account** — notification preferences, integration status, and account management.
 - **Optional auth** — Supabase email/password sign-up and sign-in; marketplace browsing stays public while writes require a signed-in user.
 - **Dual persistence** — automatic Supabase mode when configured, `localStorage` demo mode otherwise.
-- **Built-in diagnostics** — a `/diagnostics` page that checks env vars, client creation, auth session, table reachability, and write probes.
+- **Safe operator validation** — an explicitly invoked, read-only CLI checks the configured Supabase project's table reachability without changing profiles or creating fixtures.
 
 ## Tech Stack
 
@@ -90,7 +90,16 @@ Restart the dev server after changing env vars.
 3. To enable auth, go to **Authentication → Providers** and enable **Email**. For local testing you can disable email confirmations.
 4. Copy your project URL and anon key into `.env.local` (see above) and restart.
 
-Verify the connection by opening `/diagnostics` in the running app — it checks env vars, client creation, auth session, and table reachability, and can run write probes while signed in.
+Validate table reachability from an operator shell with an explicit target identity:
+
+```bash
+SUPABASE_URL="https://<project-ref>.supabase.co" \
+SUPABASE_PUBLISHABLE_KEY="<publishable-key>" \
+SUPABASE_PROJECT_REF="<project-ref>" \
+npm run audit:supabase
+```
+
+This check is read-only. It does not authenticate a user, overwrite a profile, create marketplace fixtures, or perform cleanup. User journeys and RLS behavior require separate, deliberately provisioned test accounts in a non-production environment.
 
 ### Build & preview
 
@@ -108,12 +117,11 @@ agentexchange/
 │   ├── main.tsx                # App entry point
 │   ├── index.css               # Global styles / Tailwind entry
 │   ├── components/             # Reusable UI (cards, modals, badges, nav, charts)
-│   ├── routes/                 # Page components (Marketplace, Agents, Contracts, Wallet, Auth, Diagnostics, …)
+│   ├── routes/                 # Page components (Marketplace, Agents, Contracts, Wallet, Auth, …)
 │   ├── state/                  # React context: AgentExchangeContext, AuthContext, marketplace types
 │   ├── data/                   # Seed/demo data and local selectors
 │   └── lib/
 │       ├── supabase.ts         # Supabase client + config detection
-│       ├── supabaseDiagnostics.ts
 │       ├── auth.ts             # Auth helpers
 │       └── repositories/       # Data-access layer (Supabase-or-localStorage per entity)
 ├── supabase/
@@ -122,7 +130,7 @@ agentexchange/
 │   ├── LAUNCH_CHECKLIST.md
 │   └── MANUAL_PRODUCTION_VALIDATION.md
 ├── scripts/
-│   └── audit-supabase-mvp.mjs  # CLI audit for a live Supabase project
+│   └── audit-supabase-mvp.mjs  # Explicit read-only Supabase reachability audit
 ├── public/
 │   └── _redirects              # Netlify SPA fallback
 ├── index.html
