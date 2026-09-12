@@ -73,6 +73,7 @@ export async function createAgent(
         description: data.description ?? "",
         id: data.id,
         name: data.name,
+        ownerId: data.owner_id ?? undefined,
         revenue: "$0",
         skillIds: [],
         specialty: data.specialty,

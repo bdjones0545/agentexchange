@@ -55,9 +55,6 @@ export function SettingsPage() {
             <SecondaryButton onClick={() => navigate("/account")}>
               Account
             </SecondaryButton>
-            <SecondaryButton onClick={() => navigate("/diagnostics")}>
-              Diagnostics
-            </SecondaryButton>
           </div>
         </div>
       </SettingsSection>

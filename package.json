@@ -8,9 +8,13 @@
   },
   "packageManager": "npm@10.9.7",
   "scripts": {
+    "audit:supabase": "node scripts/audit-supabase-mvp.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:diagnostics": "node --test tests/safe-diagnostics.test.mjs",
+    "test:rls": "node scripts/rls-authorization-regression.mjs",
+    "test": "vitest run"
   },
   "repository": {
     "type": "git",
@@ -28,18 +32,22 @@
   },
   "homepage": "https://github.com/bdjones0545/agentexchange#readme",
   "dependencies": {
+    "@bdjones/webmcp-kit": "github:bdjones0545/webmcp-kit",
+    "@mcp-b/global": "5.0.1",
     "@supabase/supabase-js": "^2.108.2",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0"
   },
   "devDependencies": {
+    "@mcp-b/webmcp-types": "5.0.1",
     "@tailwindcss/vite": "^4.3.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "3.2.7"
   }
 }

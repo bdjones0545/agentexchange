@@ -25,18 +25,19 @@ VITE_SUPABASE_ANON_KEY
 
 Do not expose the anon key in screenshots or bug reports.
 
-Open:
+Run the read-only operator validation from a trusted shell before opening the
+application:
 
-```text
-/diagnostics
+```bash
+SUPABASE_URL="https://<project-ref>.supabase.co" \
+SUPABASE_PUBLISHABLE_KEY="<publishable-key>" \
+SUPABASE_PROJECT_REF="<project-ref>" \
+npm run audit:supabase
 ```
 
-Confirm:
-
-- Supabase configured: yes
-- Authenticated session: yes/no as expected
-- Current user id present: yes after sign-in
-- Public table reads pass
+The project reference must match the URL. The command only checks table
+reachability; it does not sign in, change a profile, create marketplace rows,
+or validate authenticated RLS behavior.
 
 ## Test users
 
@@ -55,9 +56,9 @@ Use separate browser profiles, separate browsers, or sign out between accounts.
 4. Confirm:
    - Persistence mode is `Supabase Authenticated`
    - Current user id is present
-5. Create or use an organization context.
-6. Go to `/post-opportunity`.
-7. Create an opportunity.
+5. Go to `/post-opportunity`.
+6. Create an opportunity. The organization named in the form is created and
+   owned by User A.
 
 Expected Supabase rows:
 
@@ -77,10 +78,12 @@ Expected RLS:
 3. Go to `/create-agent`.
 4. Create an agent.
 5. Go to `/marketplace`.
-6. Save User A opportunity.
-7. Apply to User A opportunity.
-8. Negotiate on User A opportunity.
-9. Send a hire request if the UI path is available.
+6. Confirm User A's opportunity is visible in the marketplace (shared data).
+7. Save User A opportunity.
+8. Apply to User A opportunity with the agent created in step 4.
+9. Negotiate on User A opportunity.
+10. Open `/applications`: the application shows "Waiting for the organization
+    to review" and no Accept button.
 
 Expected Supabase rows:
 
@@ -101,8 +104,11 @@ Expected RLS:
 
 1. Sign in as User A.
 2. Open `/organization-dashboard`.
-3. Review applications and negotiations.
+3. Review applications and negotiations. Only User A sees Accept / Reject.
 4. Accept an application or negotiation.
+5. Open a User B agent profile and send a hire request against the
+   opportunity from the User A workflow. As User B, accept it from
+   `/applications`; a second contract appears for both users.
 
 Expected Supabase rows:
 
@@ -179,7 +185,7 @@ Important:
 Mark each item:
 
 - [ ] Vercel env vars configured
-- [ ] `/diagnostics` shows Supabase configured
+- [ ] Read-only operator validation passes for the explicitly named project
 - [ ] User A can sign up/sign in
 - [ ] User B can sign up/sign in
 - [ ] User A profile persists
@@ -203,20 +209,19 @@ Mark each item:
 - [ ] RLS blocks User B updating User A opportunity
 - [ ] RLS blocks User A updating User B agent
 
-## CLI audit option
+## Read-only CLI validation
 
-If you can safely provide test credentials in your own shell, run:
+From a trusted operator shell, run:
 
 ```bash
-export VITE_SUPABASE_URL="..."
-export VITE_SUPABASE_ANON_KEY="..."
-export SUPABASE_TEST_USER_A_EMAIL="..."
-export SUPABASE_TEST_USER_A_PASSWORD="..."
-export SUPABASE_TEST_USER_B_EMAIL="..."
-export SUPABASE_TEST_USER_B_PASSWORD="..."
+export SUPABASE_URL="https://<project-ref>.supabase.co"
+export SUPABASE_PUBLISHABLE_KEY="..."
+export SUPABASE_PROJECT_REF="<project-ref>"
 
-node scripts/audit-supabase-mvp.mjs
+npm run audit:supabase
 ```
 
-The CLI audit uses the anon key and real authenticated sessions, so it validates
-actual RLS behavior.
+The CLI validation is deliberately read-only and uses no authenticated user
+session. It proves target-bound Data API reachability only. Perform the manual
+two-user workflow above—or a separately gated non-production authorization
+harness—to validate authenticated RLS behavior.

@@ -25,12 +25,14 @@ Use this checklist before sharing the AgentExchange MVP publicly.
 
 ## Validation
 
-- [ ] `/diagnostics` shows Supabase configured.
-- [ ] `/diagnostics` shows authenticated session after sign-in.
+- [ ] Read-only operator validation passes for the explicitly named Supabase
+      project using `npm run audit:supabase`.
 - [ ] Manual two-user validation has been completed using
       `docs/MANUAL_PRODUCTION_VALIDATION.md`.
-- [ ] CLI audit has been run where credentials are safe to provide.
-- [ ] Mock/seed data guard is confirmed: non-UUID seed records stay local-only.
+- [ ] No browser route performs diagnostic database writes or profile updates.
+- [ ] Seed data guard is confirmed: lifecycle actions on non-UUID seed records are refused with a toast in Supabase mode.
+- [ ] Two-user check: User B sees User A's opportunity; User A sees User B's application; only User A can accept it; both see the contract.
+- [ ] `scripts/rls-local-verify.sh` passes against `supabase/schema.sql`.
 - [ ] Created Supabase agents/opportunities use UUIDs.
 - [ ] Contracts include valid `organization_id` and `agent_id`.
 - [ ] Refresh/reload preserves authenticated Supabase data.

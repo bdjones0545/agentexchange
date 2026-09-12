@@ -35,7 +35,7 @@ export async function createApplication(application: Application): Promise<Appli
       opportunity_id: application.opportunityId,
       proposal: application.proposal,
       status: application.status,
-    }).select("id, created_at, status").single();
+    }).select("id, created_at, status, owner_id").single();
     if (error) {
       throw new Error(`Unable to create application: ${getSupabaseErrorMessage(error)}`);
     }
@@ -43,6 +43,7 @@ export async function createApplication(application: Application): Promise<Appli
       ...application,
       createdAt: data.created_at,
       id: data.id,
+      ownerId: data.owner_id ?? undefined,
       status: data.status,
     };
   }
@@ -63,6 +64,21 @@ export async function acceptApplication(applicationId: string) {
       .eq("id", applicationId);
     if (error) {
       throw new Error(`Unable to accept application: ${getSupabaseErrorMessage(error)}`);
+    }
+  }
+}
+
+export async function updateApplicationStatus(
+  applicationId: string,
+  status: Application["status"],
+) {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase
+      .from("applications")
+      .update({ status })
+      .eq("id", applicationId);
+    if (error) {
+      throw new Error(`Unable to update application: ${getSupabaseErrorMessage(error)}`);
     }
   }
 }

@@ -1,12 +1,43 @@
+import { useMemo } from "react";
 import { Outlet } from "react-router-dom";
 
 import { useAgentExchange } from "../state/AgentExchangeContext";
+import { useAuth } from "../state/AuthContext";
+import { buildAgentExchangeTools, useWebMcpTools, webMcpConfig } from "../webmcp";
 import { BottomNavigation } from "./BottomNavigation";
 import { LocalActionToast } from "./LocalActionToast";
 import { TopNavigation } from "./TopNavigation";
 
 export function AppShell() {
-  const { error, loading, saving } = useAgentExchange();
+  const exchange = useAgentExchange();
+  const { error, loading, saving } = exchange;
+  const { isAuthenticated } = useAuth();
+
+  // Publish this app's read-only tools to any AI agent driving the page.
+  // No-op unless VITE_WEBMCP_ENABLED is set; see src/webmcp/README.md.
+  useWebMcpTools(
+    buildAgentExchangeTools,
+    useMemo(
+      () => ({
+        isAuthenticated,
+        state: {
+          agentActivities: exchange.agentActivities,
+          agentReviews: exchange.agentReviews,
+          applications: exchange.applications,
+          contractWorkspaces: exchange.contractWorkspaces,
+          contractDisputes: exchange.contractDisputes,
+          createdAgents: exchange.createdAgents,
+          createdOpportunities: exchange.createdOpportunities,
+          hireRequests: exchange.hireRequests,
+          localContracts: exchange.localContracts,
+          negotiations: exchange.negotiations,
+          savedOpportunities: exchange.savedOpportunities,
+        },
+      }),
+      [exchange, isAuthenticated],
+    ),
+    webMcpConfig(),
+  );
 
   return (
     <div className="relative min-h-screen overflow-hidden text-ae-text">

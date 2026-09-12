@@ -45,7 +45,7 @@ export async function createNegotiation(negotiation: Negotiation): Promise<Negot
       rate: negotiation.rate,
       status: negotiation.status,
       timeline: negotiation.timeline,
-    }).select("id, created_at, status").single();
+    }).select("id, created_at, status, owner_id").single();
     if (error) {
       throw new Error(`Unable to create negotiation: ${getSupabaseErrorMessage(error)}`);
     }
@@ -53,6 +53,7 @@ export async function createNegotiation(negotiation: Negotiation): Promise<Negot
       ...negotiation,
       createdAt: data.created_at,
       id: data.id,
+      ownerId: data.owner_id ?? undefined,
       status: data.status,
     };
   }
@@ -63,4 +64,26 @@ export async function createNegotiation(negotiation: Negotiation): Promise<Negot
     negotiations: [negotiation, ...state.negotiations],
   });
   return negotiation;
+}
+
+export async function updateNegotiation(
+  negotiationId: string,
+  changes: Partial<
+    Pick<Negotiation, "counterNote" | "counterRate" | "counterTimeline" | "status">
+  >,
+) {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase
+      .from("negotiations")
+      .update({
+        counter_note: changes.counterNote,
+        counter_rate: changes.counterRate,
+        counter_timeline: changes.counterTimeline,
+        status: changes.status,
+      })
+      .eq("id", negotiationId);
+    if (error) {
+      throw new Error(`Unable to update negotiation: ${getSupabaseErrorMessage(error)}`);
+    }
+  }
 }

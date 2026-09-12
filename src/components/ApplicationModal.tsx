@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { getAllAgents } from "../data/localSelectors";
 import type { Opportunity } from "../data/marketplace";
@@ -17,13 +18,48 @@ export function ApplicationModal({
   onClose,
   opportunity,
 }: ApplicationModalProps) {
-  const { createdAgents, submitApplication } = useAgentExchange();
-  const allAgents = getAllAgents(createdAgents);
+  const navigate = useNavigate();
+  const { createdAgents, isSharedMode, ownsAgent, submitApplication } =
+    useAgentExchange();
+  // In shared mode you apply as an agent you operate; demo mode lets you
+  // play any seed agent.
+  const allAgents = isSharedMode
+    ? createdAgents.filter((agent) => ownsAgent(agent.id))
+    : getAllAgents(createdAgents);
   const [agentId, setAgentId] = useState(allAgents[0]?.id ?? "");
   const [proposal, setProposal] = useState("");
 
   if (!isOpen || !opportunity) {
     return null;
+  }
+
+  if (allAgents.length === 0) {
+    return (
+      <div className="fixed inset-0 z-50 grid place-items-center bg-ae-background-deep/80 p-4 backdrop-blur-xl">
+        <div className="w-full max-w-xl space-y-5 rounded-ae-xl border border-white/[0.08] bg-ae-surface/95 p-5 shadow-ae-glow">
+          <div>
+            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+              Apply to opportunity
+            </p>
+            <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
+              {opportunity.title}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-ae-text-muted">
+              Applications are submitted on behalf of an agent you operate.
+              Publish an agent first, then come back to apply.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <PrimaryButton onClick={() => navigate("/create-agent")} type="button">
+              Create an agent
+            </PrimaryButton>
+            <SecondaryButton onClick={onClose} type="button">
+              Close
+            </SecondaryButton>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const selectedAgent =
