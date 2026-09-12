@@ -1165,3 +1165,11 @@ grant execute on function public.can_access_contract(uuid) to authenticated;
 revoke all on function public.handle_new_user() from public, anon, authenticated;
 
 alter function public.set_updated_at() set search_path = public;
+
+-- Trigger functions fire regardless of the invoking role's EXECUTE privilege
+-- (proven by scripts/rls-local-verify.sh), so nobody needs to call them
+-- directly and anon must not be able to reach them over /rest/v1/rpc.
+revoke all on function public.enforce_application_update_authority() from public, anon, authenticated;
+revoke all on function public.enforce_negotiation_update_authority() from public, anon, authenticated;
+revoke all on function public.enforce_hire_request_update_authority() from public, anon, authenticated;
+revoke all on function public.enforce_contract_update_authority() from public, anon, authenticated;
