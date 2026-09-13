@@ -120,7 +120,7 @@ This check is read-only. It does not authenticate a user, overwrite a profile, c
 PGPORT=5432 PGUSER=postgres scripts/rls-local-verify.sh
 ```
 
-`npm run test:rls` runs the equivalent suite against a real, isolated Supabase project (never production); it needs the service-role key and `RLS_TEST_ALLOW_DESTRUCTIVE=1`.
+`npm run journey` runs the full two-user marketplace journey (the automated form of `docs/MANUAL_PRODUCTION_VALIDATION.md`) against a real project: it creates two throwaway users, checks that each sees the other's listings and shared records, exercises the authorization boundary, and deletes everything afterwards. `npm run test:rls` runs the lower-level RLS attack/allow suite (never production); it needs the service-role key and `RLS_TEST_ALLOW_DESTRUCTIVE=1`.
 
 ### Build & preview
 
