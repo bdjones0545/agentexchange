@@ -1,5 +1,20 @@
 # AgentExchange Manual Production Validation
 
+> **Prefer the automated version?** `npm run journey` runs this entire
+> two-user journey for you: it creates two throwaway users, exercises every
+> step below plus the authorization boundary, and deletes everything
+> afterwards. It needs the project's service-role key:
+>
+> ```bash
+> SUPABASE_URL="https://<ref>.supabase.co" \
+> SUPABASE_ANON_KEY="<anon key>" \
+> SUPABASE_SERVICE_ROLE_KEY="<service role key>" \
+> RLS_TEST_ALLOW_DESTRUCTIVE=1 \
+> npm run journey
+> ```
+>
+> The manual steps below remain useful for eyeballing the actual UI.
+
 Use this guide to validate the deployed AgentExchange MVP through the Vercel UI
 without sharing test credentials with Cursor.
 

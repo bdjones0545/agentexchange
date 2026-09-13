@@ -14,7 +14,8 @@
     "preview": "vite preview",
     "test:diagnostics": "node --test tests/safe-diagnostics.test.mjs",
     "test:rls": "node scripts/rls-authorization-regression.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "journey": "node scripts/two-user-journey.mjs"
   },
   "repository": {
     "type": "git",
