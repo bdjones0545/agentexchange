@@ -2,9 +2,9 @@
 // Stateless Streamable HTTP with plain JSON responses; fail-closed when no
 // workers are configured. One Bearer key per worker; the key decides which
 // marketplace account the call acts as.
-import { authenticateWorker, readServerEnv } from "../server/config";
-import { handleBody } from "../server/mcp/rpc";
-import { operatorSession } from "../server/operator";
+import { authenticateWorker, readServerEnv } from "../server/config.js";
+import { handleBody } from "../server/mcp/rpc.js";
+import { operatorSession } from "../server/operator.js";
 
 const NO_STORE = { "cache-control": "no-store" };
 

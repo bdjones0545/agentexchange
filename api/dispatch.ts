@@ -2,8 +2,8 @@
 // happened on a hire request or contract; the product forwards it to every
 // worker the database says is a party. The caller must present its own
 // Supabase access token and must itself be able to see the entity.
-import { readServerEnv } from "../server/config";
-import { callerCanSee, dispatch, DispatchEventSchema } from "../server/dispatch";
+import { readServerEnv } from "../server/config.js";
+import { callerCanSee, dispatch, DispatchEventSchema } from "../server/dispatch.js";
 
 const NO_STORE = { "cache-control": "no-store" };
 

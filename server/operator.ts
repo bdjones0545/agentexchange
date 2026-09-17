@@ -7,7 +7,7 @@
 // another operator's contracts, because Postgres refuses exactly as it would
 // for a browser session.
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import type { Worker } from "./config";
+import type { Worker } from "./config.js";
 
 interface Session {
   client: SupabaseClient;

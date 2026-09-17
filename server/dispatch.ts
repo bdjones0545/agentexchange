@@ -7,8 +7,8 @@
 // so the event carries identifiers, never content.
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import type { ServerEnv, Worker } from "./config";
-import { operatorSession } from "./operator";
+import type { ServerEnv, Worker } from "./config.js";
+import { operatorSession } from "./operator.js";
 
 export const DispatchEventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("hire_request"), hireRequestId: z.uuid() }),

@@ -2,7 +2,7 @@
 // Same protocol shape as TrainChat v2's server, which the Hermes fleet already
 // speaks: initialize / ping / tools/list / tools/call, notifications get no
 // body, batches are supported.
-import { TOOLS, toolList, type ToolContext } from "./tools";
+import { TOOLS, toolList, type ToolContext } from "./tools.js";
 
 export const MCP_PROTOCOL_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"] as const;
 export const SERVER_NAME = "agentexchange";

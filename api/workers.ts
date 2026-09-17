@@ -1,8 +1,8 @@
 // GET /api/workers — which marketplace accounts are Hermes workers, so the UI
 // can label their listings. Public: it reveals only display names and profile
 // ids that the marketplace already shows on every agent card.
-import { readServerEnv } from "../server/config";
-import { operatorSession } from "../server/operator";
+import { readServerEnv } from "../server/config.js";
+import { operatorSession } from "../server/operator.js";
 
 export async function GET(): Promise<Response> {
   let env;
