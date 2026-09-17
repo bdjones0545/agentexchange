@@ -10,6 +10,7 @@ import {
 
 import { deriveWorkspaceStatus } from "../data/contractWorkspace";
 import { agents } from "../data/agents";
+import { contracts as seedContractData } from "../data/operations";
 import type { SuggestedAgentAction } from "../data/agentRecommendations";
 import { opportunities } from "../data/marketplace";
 import {
@@ -56,6 +57,7 @@ import type {
   AgentActivityEvent,
   AgentExchangePersistedState,
   Application,
+  ContractDispute,
   ContractMessageSender,
   ContractDisputeStatus,
   ContractWorkspace,
@@ -188,6 +190,20 @@ type AgentExchangeContextValue = PersistedState & {
   ownsAgent: (agentId: string | undefined) => boolean;
   /** Poster of the given opportunity (always true in demo mode). */
   ownsOpportunity: (opportunityId: string | undefined) => boolean;
+  /** Owner of the given organization (always true in demo mode). */
+  ownsOrganization: (organizationId: string | undefined) => boolean;
+  /**
+   * Organization side of a contract: may approve or reject deliverables,
+   * confirm milestones and leave the review. The database enforces the same.
+   */
+  canDecideContract: (contract: { organizationId?: string }) => boolean;
+  /** Only the party that opened a dispute may mark it resolved. */
+  canResolveDispute: (dispute: ContractDispute) => boolean;
+  /**
+   * Seed contracts for browsing. Empty in shared mode so a real user's
+   * contracts, wallet and history never mix with demo fixtures.
+   */
+  seedContracts: typeof seedContractData;
 };
 
 const defaultPersistedState: PersistedState = {
@@ -547,6 +563,40 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       );
     },
     [currentProfileId, state.createdOpportunities],
+  );
+
+  const ownsOrganization = useCallback(
+    (organizationId: string | undefined) => {
+      if (!isSupabaseConfigured) {
+        return true;
+      }
+      if (!organizationId || !currentProfileId) {
+        return false;
+      }
+      // Every organization is created by the poster of its opportunities.
+      return state.createdOpportunities.some(
+        (opportunity) =>
+          opportunity.organizationId === organizationId &&
+          opportunity.ownerId === currentProfileId,
+      );
+    },
+    [currentProfileId, state.createdOpportunities],
+  );
+
+  const canDecideContract = useCallback(
+    (contract: { organizationId?: string }) =>
+      ownsOrganization(contract.organizationId),
+    [ownsOrganization],
+  );
+
+  const canResolveDispute = useCallback(
+    (dispute: ContractDispute) => {
+      if (!isSupabaseConfigured) {
+        return true;
+      }
+      return Boolean(dispute.ownerId && dispute.ownerId === currentProfileId);
+    },
+    [currentProfileId],
   );
 
   const canManageApplication = useCallback(
@@ -1134,6 +1184,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       const reviewRecord = {
         id: createId("review"),
         agentId:
+          currentContract?.agentId ??
           relatedApplication?.agentId ??
           relatedHireRequest?.agentId ??
           relatedNegotiation?.agentId,
@@ -1190,6 +1241,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         id: createId("dispute"),
         contractId,
         createdAt: now,
+        ownerId: currentProfileId ?? undefined,
         reason,
         status: "Open" as const,
         updatedAt: now,
@@ -1226,7 +1278,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       });
       showToast("Dispute opened.");
     },
-    [requireAuthForPersistentWrite, showToast],
+    [currentProfileId, requireAuthForPersistentWrite, showToast],
   );
 
   const updateContractDispute = useCallback(
@@ -2077,10 +2129,14 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       isSharedMode: isSupabaseConfigured,
       refresh,
       canAcceptHireRequest,
+      canDecideContract,
       canManageApplication,
       canManageNegotiation,
+      canResolveDispute,
       ownsAgent,
       ownsOpportunity,
+      ownsOrganization,
+      seedContracts: isSupabaseConfigured ? [] : seedContractData,
       acceptApplication: safe(acceptApplication),
       acceptHireRequest: safe(acceptHireRequest),
       acceptNegotiation: safe(acceptNegotiation),
@@ -2123,11 +2179,14 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     }),
     [
       canAcceptHireRequest,
+      canDecideContract,
       canManageApplication,
       canManageNegotiation,
+      canResolveDispute,
       currentProfileId,
       ownsAgent,
       ownsOpportunity,
+      ownsOrganization,
       refresh,
       safe,
       acceptApplication,

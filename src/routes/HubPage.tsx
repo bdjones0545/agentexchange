@@ -17,7 +17,6 @@ import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
 import {
   activityFeed,
   collaborations,
-  contracts,
   hubMetrics,
   networkNodes,
 } from "../data/operations";
@@ -36,10 +35,11 @@ export function HubPage() {
     localContracts,
     negotiations,
     savedOpportunities,
+    seedContracts,
   } = useAgentExchange();
   const allAgents = getAllAgents(createdAgents);
   const allOpportunities = getAllOpportunities(createdOpportunities);
-  const allContracts = [...localContracts, ...contracts].map((contract) => {
+  const allContracts = [...localContracts, ...seedContracts].map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
     );

@@ -31,7 +31,7 @@ export async function listOpportunities(): Promise<Opportunity[]> {
         summary: opportunity.description ?? "",
         tags: opportunity.required_skills ?? ["Custom"],
         title: opportunity.title,
-        trustLevel: "Verified",
+        trustLevel: "Unverified",
       }));
     }
   }

@@ -8,7 +8,6 @@ import {
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAllAgents } from "../data/localSelectors";
 import type { Opportunity } from "../data/marketplace";
-import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { accentStyles } from "./accentStyles";
 import { ApplicationStatusBadge } from "./ApplicationStatusBadge";
@@ -40,6 +39,7 @@ export function OpportunityCard({
     getNegotiationForOpportunity,
     negotiations,
     localContracts,
+    seedContracts,
   } = useAgentExchange();
   const application = getApplicationForOpportunity(opportunity.id);
   const negotiation = getNegotiationForOpportunity(opportunity.id);
@@ -48,7 +48,7 @@ export function OpportunityCard({
   const allAgents = getAllAgents(createdAgents);
   const recommendations = getOpportunityRecommendations(opportunity, allAgents);
   const topRecommendation = recommendations[0];
-  const allContracts = [...localContracts, ...contracts].map((contract) => {
+  const allContracts = [...localContracts, ...seedContracts].map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
     );

@@ -174,7 +174,9 @@ run_check "L14 retry is idempotent (no duplicate contract)" legit \
   "select act_as('$B'); select materialize_hire_request_contract('66666666-6666-4666-8666-666666666666');" \
   "select count(*) from contracts where source_id='66666666-6666-4666-8666-666666666666'" "1"
 # M5: B self-issues a hire request naming A's opportunity, accepts it, tries to materialize.
-psql -d "$DB" -qAt -c "select act_as('$B'); insert into hire_requests (id, agent_id, opportunity_id, agent_name, opportunity_title) values ('77777777-7777-4777-8777-777777777777','33333333-3333-4333-8333-333333333333','22222222-2222-4222-8222-222222222222','Scout','Self issued'); update hire_requests set status='accepted' where id='77777777-7777-4777-8777-777777777777';" >/dev/null
+# (Since 2026-09-16 the insert itself is refused — see R4 — so this seed may fail; the
+# materialize check below must still see zero contracts either way.)
+psql -d "$DB" -qAt -c "select act_as('$B'); insert into hire_requests (id, agent_id, opportunity_id, agent_name, opportunity_title) values ('77777777-7777-4777-8777-777777777777','33333333-3333-4333-8333-333333333333','22222222-2222-4222-8222-222222222222','Scout','Self issued'); update hire_requests set status='accepted' where id='77777777-7777-4777-8777-777777777777';" >/dev/null 2>&1 || true
 run_check "M5 B cannot bind A's organization via a self-issued hire request" attack \
   "select act_as('$B'); select materialize_hire_request_contract('77777777-7777-4777-8777-777777777777');" \
   "select count(*) from contracts where source_id='77777777-7777-4777-8777-777777777777'" "0"
@@ -206,6 +208,85 @@ run_check "A20 anon cannot execute the security-definer helpers" attack \
   "select has_function_privilege('anon','public.is_agent_owner(uuid)','execute') or has_function_privilege('anon','public.can_access_contract(uuid)','execute')" "f"
 run_check "L19 authenticated keeps EXECUTE on the helpers the policies call" legit "select 1" \
   "select has_function_privilege('authenticated','public.is_agent_owner(uuid)','execute') and has_function_privilege('anon','public.current_profile_id()','execute')" "t"
+
+
+# --- 2026-09-16 audit: record creation must name a party the caller owns ---
+PC=$(psql -d "$DB" -qAt -c "select id from profiles where user_id='$C'")
+psql -d "$DB" -qAt -c "select act_as('$C'); insert into agents (id, name, specialty) values ('99999999-9999-4999-8999-999999999999','Intruder','Research') on conflict (id) do nothing;" >/dev/null
+run_check "R1  B cannot forge an application naming C's agent" attack \
+  "select act_as('$B'); insert into applications (id, opportunity_id, agent_id, agent_name, proposal) values ('a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1','22222222-2222-4222-8222-222222222222','99999999-9999-4999-8999-999999999999','Intruder','forged');" \
+  "select count(*) from applications where id='a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1'" "0"
+run_check "R2  B cannot open a negotiation naming C's agent" attack \
+  "select act_as('$B'); insert into negotiations (id, opportunity_id, agent_id, agent_name, rate) values ('a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2','22222222-2222-4222-8222-222222222222','99999999-9999-4999-8999-999999999999','Intruder','x');" \
+  "select count(*) from negotiations where id='a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2'" "0"
+run_check "R3  B cannot post an opportunity under A's organization" attack \
+  "select act_as('$B'); insert into opportunities (id, organization_id, organization_name, title, category) values ('a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3','11111111-1111-4111-8111-111111111111','Acme','Impersonated','Research');" \
+  "select count(*) from opportunities where id='a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3'" "0"
+run_check "R4  B cannot issue a hire request against A's opportunity" attack \
+  "select act_as('$B'); insert into hire_requests (id, agent_id, opportunity_id, agent_name, opportunity_title) values ('a4a4a4a4-a4a4-4a4a-8a4a-a4a4a4a4a4a4','33333333-3333-4333-8333-333333333333','22222222-2222-4222-8222-222222222222','Scout','spam');" \
+  "select count(*) from hire_requests where id='a4a4a4a4-a4a4-4a4a-8a4a-a4a4a4a4a4a4'" "0"
+run_check "R5  A cannot create a contract binding an agent that never applied" attack \
+  "select act_as('$A'); insert into contracts (id, organization_id, agent_id, organization_name, agent_name, title) values ('a5a5a5a5-a5a5-4a5a-8a5a-a5a5a5a5a5a5','11111111-1111-4111-8111-111111111111','99999999-9999-4999-8999-999999999999','Acme','Intruder','Unilateral');" \
+  "select count(*) from contracts where id='a5a5a5a5-a5a5-4a5a-8a5a-a5a5a5a5a5a5'" "0"
+run_check "R6  A cannot create a second contract for the same application" attack \
+  "select act_as('$A'); insert into contracts (organization_id, agent_id, organization_name, agent_name, title, source_id, source_type) values ('11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333','Acme','Scout','Dup','44444444-4444-4444-8444-444444444444','application');" \
+  "select count(*) from contracts where source_id='44444444-4444-4444-8444-444444444444'" "1"
+
+# --- trust signals are platform-managed ---
+run_check "T1  new agents start Unverified with trust 0 even if the insert claims otherwise" legit \
+  "select act_as('$B'); insert into agents (id, name, specialty, trust_score, verification_status, revenue, success_rate) values ('b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1','Braggart','x',100,'Enterprise Verified','\$9M','100%');" \
+  "select verification_status||'/'||trust_score||'/'||revenue||'/'||success_rate from agents where id='b1b1b1b1-b1b1-4b1b-8b1b-b1b1b1b1b1b1'" "Unverified/0.00/\$0/New"
+run_check "T2  owner cannot raise its own trust score or verification" attack \
+  "select act_as('$B'); update agents set trust_score=100, verification_status='Enterprise Verified' where id='33333333-3333-4333-8333-333333333333';" \
+  "select verification_status||'/'||trust_score from agents where id='33333333-3333-4333-8333-333333333333'" "Unverified/0.00"
+run_check "T3  owner can still edit its agent's description" legit \
+  "select act_as('$B'); update agents set description='edited' where id='33333333-3333-4333-8333-333333333333';" \
+  "select description from agents where id='33333333-3333-4333-8333-333333333333'" "edited"
+run_check "T4  organization owner cannot mark itself verified" attack \
+  "select act_as('$A'); update organizations set verified=true, rating=5 where id='11111111-1111-4111-8111-111111111111';" \
+  "select verified::text||'/'||rating from organizations where id='11111111-1111-4111-8111-111111111111'" "false/0.00"
+
+# --- reviews are organization-side, attributed, one per contract ---
+run_check "V1  agent cannot review itself" attack \
+  "select act_as('$B'); insert into reviews (contract_id, agent_id, agent_name, organization_name, rating, review) values ('$CID','33333333-3333-4333-8333-333333333333','Scout','Acme',5,'self');" \
+  "select count(*) from reviews where contract_id='$CID'" "0"
+run_check "V2  organization can review the contracted agent, attributed to itself" legit \
+  "select act_as('$A'); insert into reviews (contract_id, agent_id, agent_name, organization_name, rating, review) values ('$CID','33333333-3333-4333-8333-333333333333','Scout','Acme',4,'good');" \
+  "select count(*)||':'||(reviewer_id='$PA')::text from reviews where contract_id='$CID' group by reviewer_id" "1:true"
+run_check "V3  organization cannot review a different agent on that contract" attack \
+  "select act_as('$A'); insert into reviews (contract_id, agent_id, agent_name, organization_name, rating, review) values ('$CID','99999999-9999-4999-8999-999999999999','Intruder','Acme',1,'wrong agent');" \
+  "select count(*) from reviews where contract_id='$CID'" "1"
+run_check "V4  second review on the same contract is refused" attack \
+  "select act_as('$A'); insert into reviews (contract_id, agent_id, agent_name, organization_name, rating, review) values ('$CID','33333333-3333-4333-8333-333333333333','Scout','Acme',5,'again');" \
+  "select count(*) from reviews where contract_id='$CID'" "1"
+
+# --- approvals and completion are organization-side; disputes resolved by complainant ---
+psql -d "$DB" -qAt -c "select act_as('$B'); insert into contract_deliverables (id, contract_id, title, status) values ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1','$CID','Draft','submitted');" >/dev/null
+run_check "W1  agent cannot approve its own deliverable" attack \
+  "select act_as('$B'); update contract_deliverables set status='approved', approved_at=now() where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';" \
+  "select status from contract_deliverables where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1'" "submitted"
+run_check "W2  agent cannot insert a deliverable born approved" attack \
+  "select act_as('$B'); insert into contract_deliverables (id, contract_id, title, status, approved_at) values ('d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2','$CID','Sneaky','approved',now());" \
+  "select count(*) from contract_deliverables where id='d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2'" "0"
+run_check "W3  organization approves the deliverable" legit \
+  "select act_as('$A'); update contract_deliverables set status='approved', approved_at=now(), decisions='[{\"status\":\"approved\"}]'::jsonb where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';" \
+  "select status from contract_deliverables where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1'" "approved"
+run_check "W4  agent cannot mark a milestone complete" attack \
+  "select act_as('$B'); update contract_milestones set completed=true, completed_at=now() where contract_id='$CID';" \
+  "select bool_or(completed)::text from contract_milestones where contract_id='$CID'" "false"
+run_check "W5  organization marks the milestone complete" legit \
+  "select act_as('$A'); update contract_milestones set completed=true, completed_at=now() where contract_id='$CID';" \
+  "select bool_or(completed)::text from contract_milestones where contract_id='$CID'" "true"
+psql -d "$DB" -qAt -c "select act_as('$A'); insert into disputes (id, contract_id, reason) values ('e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1','$CID','late');" >/dev/null
+run_check "X1  the accused agent cannot resolve a dispute against it" attack \
+  "select act_as('$B'); update disputes set status='Resolved' where id='e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1';" \
+  "select status from disputes where id='e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1'" "Open"
+run_check "X2  the agent can mark it under review" legit \
+  "select act_as('$B'); update disputes set status='Under Review' where id='e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1';" \
+  "select status from disputes where id='e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1'" "Under Review"
+run_check "X3  the complainant resolves it" legit \
+  "select act_as('$A'); update disputes set status='Resolved' where id='e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1';" \
+  "select status from disputes where id='e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1'" "Resolved"
 
 echo
 if [ "$FAILED" -ne 0 ]; then echo "RLS LOCAL VERIFY: FAILED"; exit 1; fi

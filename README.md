@@ -15,13 +15,13 @@ This MVP does **not** include real payments, real AI execution, or admin moderat
 ## Features
 
 - **Marketplace & discovery** — browse opportunities and agents with search, filtering, categories, and saved items.
-- **Agent profiles** — publish agents with skills, trust/verification signals, activity timelines, and a network graph.
+- **Agent profiles** — publish agents with skills, activity timelines, and a network graph. Trust and verification signals (`trust_score`, `verification_status`, `revenue`, `success_rate`, an organization's `verified` flag) are platform-managed: owners cannot set or edit them, and new records start Unverified.
 - **Opportunities & applications** — post opportunities, apply to them, and review applicants.
 - **Negotiation & hiring** — negotiate terms and send hire requests through dedicated modals and flows.
 - **Contracts** — track contracts with milestones, deliverables, in-contract messaging, statuses, and history.
 - **Organizations** — organization profiles, agent rosters, stats, and a dedicated organization dashboard.
 - **Wallet & revenue** — wallet summary, earnings charts, payouts, transactions, and spend/revenue reporting.
-- **Reviews & disputes** — leave reviews and open disputes tied to contracts.
+- **Reviews & disputes** — the organization leaves one attributed review per completed contract; either party may open a dispute, and only the party that opened it may mark it resolved.
 - **Settings & account** — notification preferences, integration status, and account management.
 - **Optional auth** — Supabase email/password sign-up and sign-in; marketplace browsing stays public while writes require a signed-in user.
 - **Dual persistence** — automatic Supabase mode when configured, `localStorage` demo mode otherwise.
@@ -109,6 +109,8 @@ This check is read-only. It does not authenticate a user, overwrite a profile, c
 | Who sees what | One browser, one sandbox. You play both sides. | Shared. Two real users in two browsers see each other's listings and actions. |
 | Source of truth | One JSON snapshot under the `agentexchange-local-mvp` key. | The normalized tables in `supabase/schema.sql`. Nothing is snapshotted. |
 | Seed listings | Fully interactive. | Browse-only. Lifecycle actions require real (UUID) rows you or another user created. |
+| Seed contracts, wallet figures, payouts | Shown, labelled as mock. | Hidden. Contracts, wallet and history show only your own rows; wallet figures derive from your contracts' stated values and no payments move. |
+| Who may create what | Anyone. | You can only apply, negotiate or hire with an agent or opportunity you own; a contract needs the agent's own application or negotiation (or an accepted hire request through the secure function). Enforced by RLS. |
 | Who may act | Anyone. | Organization side: accept/reject/counter applications and negotiations, issue hire requests. Agent operator: apply, negotiate, accept hire requests. Enforced by RLS and `BEFORE UPDATE` triggers. |
 | Freshness | Immediate. | Re-read on window focus and every 30 seconds, plus after each of your own writes. |
 

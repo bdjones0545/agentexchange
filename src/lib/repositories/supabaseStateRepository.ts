@@ -101,7 +101,9 @@ export function mapOpportunityRow(row: Row): CreatedOpportunity {
     summary: text(row.description),
     tags: requiredSkills.length > 0 ? requiredSkills : ["Custom"],
     title: text(row.title, "Opportunity"),
-    trustLevel: "Verified",
+    // Real listings are not vouched for by anyone yet; "Verified" is reserved
+    // for organizations the platform has marked verified.
+    trustLevel: "Unverified",
   };
 }
 
@@ -263,6 +265,7 @@ export function mapDisputeRow(row: Row): ContractDispute {
     contractId: text(row.contract_id),
     createdAt: text(row.created_at),
     id: text(row.id),
+    ownerId: optionalText(row.owner_id),
     reason: text(row.reason),
     resolutionNotes: optionalText(row.resolution_notes),
     status: (optionalText(row.status) ?? "Open") as ContractDispute["status"],

@@ -1,6 +1,6 @@
 import { ContractCard } from "../components/ContractCard";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
-import { contracts, type ContractStatus } from "../data/operations";
+import type { ContractStatus } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
 const sections: { title: string; status: ContractStatus; description: string }[] =
@@ -28,8 +28,8 @@ const sections: { title: string; status: ContractStatus; description: string }[]
   ];
 
 export function ContractsPage() {
-  const { getContractWorkspace, localContracts } = useAgentExchange();
-  const allContracts = [...localContracts, ...contracts].map((contract) =>
+  const { getContractWorkspace, localContracts, seedContracts } = useAgentExchange();
+  const allContracts = [...localContracts, ...seedContracts].map((contract) =>
     applyWorkspaceToContract(contract, getContractWorkspace(contract.id)),
   );
 
