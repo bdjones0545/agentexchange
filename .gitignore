@@ -5,3 +5,6 @@ dist
 *.local
 *.tsbuildinfo
 .DS_Store
+
+# Hermes worker credentials (minted by ops/orgo-desktop/mint-keys.mjs) are never committed.
+ops/**/*keys*

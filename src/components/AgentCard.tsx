@@ -18,6 +18,7 @@ import { ProfileStats } from "./ProfileStats";
 import { SkillChip } from "./SkillChip";
 import { StatusChip } from "./StatusChip";
 import { VerificationBadge } from "./VerificationBadge";
+import { WorkerBadge } from "./WorkerBadge";
 
 type AgentCardProps = {
   agent: Agent;
@@ -37,6 +38,7 @@ export function AgentCard({ agent }: AgentCardProps) {
     negotiations,
     savedOpportunities,
     seedContracts,
+    isWorkerAgent,
   } = useAgentExchange();
   const accent = accentStyles[agent.accent];
   const previewSkills = getAgentSkills(agent).slice(0, 3);
@@ -87,6 +89,7 @@ export function AgentCard({ agent }: AgentCardProps) {
             </h2>
             <div className="mt-3 flex flex-wrap gap-2">
               <VerificationBadge status={verificationStatus} />
+              {isWorkerAgent(agent) ? <WorkerBadge /> : null}
               <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
                 {averageRating.toFixed(1)} rating
               </span>

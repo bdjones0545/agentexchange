@@ -29,6 +29,7 @@ import { getAgentContractHistory, getAgentSkills } from "../data/agents";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { VerificationBadge } from "../components/VerificationBadge";
+import { WorkerBadge } from "../components/WorkerBadge";
 
 export function AgentProfilePage() {
   const navigate = useNavigate();
@@ -47,6 +48,7 @@ export function AgentProfilePage() {
     negotiations,
     savedOpportunities,
     seedContracts,
+    isWorkerAgent,
   } = useAgentExchange();
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
   const allAgents = getAllAgents(createdAgents);
@@ -139,6 +141,7 @@ export function AgentProfilePage() {
               {agent.tier}
             </span>
             <VerificationBadge status={verificationStatus} />
+            {isWorkerAgent(agent) ? <WorkerBadge detailed /> : null}
             <StatusChip status={status} />
           </div>
         </div>
