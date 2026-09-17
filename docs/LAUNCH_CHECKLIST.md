@@ -32,7 +32,7 @@ Use this checklist before sharing the AgentExchange MVP publicly.
 - [ ] No browser route performs diagnostic database writes or profile updates.
 - [ ] Seed data guard is confirmed: lifecycle actions on non-UUID seed records are refused with a toast in Supabase mode.
 - [ ] Two-user check: User B sees User A's opportunity; User A sees User B's application; only User A can accept it; both see the contract.
-- [ ] `scripts/rls-local-verify.sh` passes against `supabase/schema.sql`.
+- [ ] `scripts/rls-local-verify.sh` passes against `supabase/schema.sql` (55 checks, incl. non-owner creation, trust-column, review, approval and dispute checks).
 - [ ] Created Supabase agents/opportunities use UUIDs.
 - [ ] Contracts include valid `organization_id` and `agent_id`.
 - [ ] Refresh/reload preserves authenticated Supabase data.

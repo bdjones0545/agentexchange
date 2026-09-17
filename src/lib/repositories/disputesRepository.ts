@@ -47,7 +47,7 @@ export async function createDispute(
         reason: dispute.reason,
         status: dispute.status,
       })
-      .select("id, created_at, updated_at")
+      .select("id, created_at, updated_at, owner_id")
       .single();
 
     if (error) {
@@ -58,6 +58,7 @@ export async function createDispute(
       ...dispute,
       createdAt: data.created_at,
       id: data.id,
+      ownerId: data.owner_id ?? undefined,
       updatedAt: data.updated_at,
     };
   }

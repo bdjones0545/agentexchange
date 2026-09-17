@@ -216,6 +216,8 @@ export type ContractDispute = {
   resolutionNotes?: string;
   createdAt: string;
   updatedAt: string;
+  /** Profile id of the party that opened the dispute. Supabase-backed rows only. */
+  ownerId?: string;
 };
 
 export type AgentSimulatedStatus =

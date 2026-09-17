@@ -17,7 +17,6 @@ import {
   getOrganizationSummary,
   slugifyOrganization,
 } from "../data/organizations";
-import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
 export function OrganizationDashboardPage() {
@@ -31,9 +30,10 @@ export function OrganizationDashboardPage() {
     hireRequests,
     localContracts,
     negotiations,
+    seedContracts,
   } = useAgentExchange();
   const opportunities = getAllOpportunities(createdOpportunities);
-  const allContracts = [...localContracts, ...contracts].map((contract) => {
+  const allContracts = [...localContracts, ...seedContracts].map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
     );

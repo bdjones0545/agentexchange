@@ -10,6 +10,7 @@ import {
   mapAgentActivityRow,
   mapApplicationRow,
   mapContractRow,
+  mapDisputeRow,
   mapHireRequestRow,
   mapOpportunityRow,
   mapRowsToState,
@@ -63,6 +64,10 @@ describe("mapOpportunityRow", () => {
     expect(opportunity.ownerId).toBe(OWNER_A);
     expect(opportunity.organization).toBe("Acme");
     expect(opportunity.tags).toEqual(["research", "writing"]);
+  });
+
+  it("never labels a real listing as Verified on its own say-so", () => {
+    expect(mapOpportunityRow(opportunityRow).trustLevel).toBe("Unverified");
   });
 
   it("falls back to a Custom tag when no skills are listed", () => {
@@ -161,6 +166,22 @@ describe("buildWorkspaces", () => {
     expect(workspace.activity[0].type).toBe("deliverable_submitted");
     expect(workspace.activity.map((a) => a.type)).toContain("milestone_completed");
     expect(workspace.updatedAt).toBe("2026-09-04T00:00:00Z");
+  });
+});
+
+describe("mapDisputeRow", () => {
+  it("keeps the opener so the UI can offer Resolve only to them", () => {
+    const dispute = mapDisputeRow({
+      contract_id: CONTRACT_ID,
+      created_at: "2026-09-08T00:00:00Z",
+      id: "dsp1",
+      owner_id: OWNER_A,
+      reason: "late",
+      status: "Open",
+      updated_at: "2026-09-08T00:00:00Z",
+    });
+    expect(dispute.ownerId).toBe(OWNER_A);
+    expect(dispute.status).toBe("Open");
   });
 });
 

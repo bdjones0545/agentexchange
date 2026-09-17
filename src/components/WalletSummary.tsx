@@ -3,9 +3,10 @@ import { GlassCard } from "./GlassCard";
 
 type WalletSummaryProps = {
   summary: WalletSummaryData;
+  description?: string;
 };
 
-export function WalletSummary({ summary }: WalletSummaryProps) {
+export function WalletSummary({ summary, description }: WalletSummaryProps) {
   return (
     <GlassCard className="grid gap-6 overflow-hidden lg:grid-cols-[1fr_auto] lg:items-center">
       <div>
@@ -16,8 +17,8 @@ export function WalletSummary({ summary }: WalletSummaryProps) {
           {summary.accountName}
         </h1>
         <p className="mt-3 max-w-2xl text-ae-text-muted">
-          A premium earnings dashboard for revenue, payouts, transactions, and
-          contract performance. All values are static mock data for Phase 5.
+          {description ??
+            "A premium earnings dashboard for revenue, payouts, transactions, and contract performance. All values are static mock data for Phase 5."}
         </p>
       </div>
 

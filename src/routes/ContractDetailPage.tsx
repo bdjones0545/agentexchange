@@ -6,7 +6,6 @@ import { GlassCard } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
-import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import type { ContractMessageSender } from "../state/marketplaceTypes";
 
@@ -27,6 +26,8 @@ export function ContractDetailPage() {
     addContractDeliverable,
     addContractMilestone,
     agentReviews,
+    canDecideContract,
+    canResolveDispute,
     contractDisputes,
     getContractWorkspace,
     localContracts,
@@ -36,6 +37,7 @@ export function ContractDetailPage() {
     toggleMilestoneComplete,
     updateContractDispute,
     updateMilestoneNotes,
+    seedContracts,
   } = useAgentExchange();
   const [deliverableNotes, setDeliverableNotes] = useState("");
   const [deliverableTitle, setDeliverableTitle] = useState("");
@@ -50,7 +52,7 @@ export function ContractDetailPage() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
 
-  const baseContract = [...localContracts, ...contracts].find(
+  const baseContract = [...localContracts, ...seedContracts].find(
     (contract) => contract.id === id,
   );
   const workspace = getContractWorkspace(id ?? "");
@@ -152,6 +154,7 @@ export function ContractDetailPage() {
   const hasReview = agentReviews.some(
     (review) => review.contractId === activeContract.id,
   );
+  const isOrganizationSide = canDecideContract(activeContract);
 
   return (
     <section className="space-y-8">
@@ -262,13 +265,19 @@ export function ContractDetailPage() {
                         {milestone.completed ? "Complete" : "Active"}
                       </p>
                     </div>
-                    <SecondaryButton
-                      onClick={() =>
-                        toggleMilestoneComplete(contract.id, milestone.id)
-                      }
-                    >
-                      {milestone.completed ? "Reopen" : "Mark Complete"}
-                    </SecondaryButton>
+                    {isOrganizationSide || milestone.completed ? (
+                      <SecondaryButton
+                        onClick={() =>
+                          toggleMilestoneComplete(contract.id, milestone.id)
+                        }
+                      >
+                        {milestone.completed ? "Reopen" : "Mark Complete"}
+                      </SecondaryButton>
+                    ) : (
+                      <p className="text-xs text-ae-text-muted">
+                        The organization confirms completion.
+                      </p>
+                    )}
                   </div>
                   <textarea
                     className="min-h-20 w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-sm text-ae-text outline-none placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
@@ -354,7 +363,14 @@ export function ContractDetailPage() {
                   <p className="text-sm leading-6 text-ae-text-muted">
                     {deliverable.notes || "No notes added."}
                   </p>
-                  {deliverable.status !== "approved" ? (
+                  {deliverable.status !== "approved" && !isOrganizationSide ? (
+                    <p className="border-t border-white/[0.06] pt-3 text-xs text-ae-text-muted">
+                      {deliverable.status === "submitted"
+                        ? "Awaiting the organization's decision."
+                        : "Submit this deliverable for the organization to review."}
+                    </p>
+                  ) : null}
+                  {deliverable.status !== "approved" && isOrganizationSide ? (
                     <div className="space-y-3 border-t border-white/[0.06] pt-3">
                       <textarea
                         className="min-h-20 w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-sm text-ae-text outline-none placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
@@ -510,7 +526,12 @@ export function ContractDetailPage() {
           </h2>
         </div>
 
-        {contract.status === "Completed" && !hasReview ? (
+        {contract.status === "Completed" && !hasReview && !isOrganizationSide ? (
+          <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 text-ae-text-muted">
+            The organization can leave a review for this completed contract.
+          </p>
+        ) : null}
+        {contract.status === "Completed" && !hasReview && isOrganizationSide ? (
           <form className="space-y-3" onSubmit={handleAddReview}>
             <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
               <select
@@ -608,18 +629,24 @@ export function ContractDetailPage() {
                       >
                         Mark Under Review
                       </SecondaryButton>
-                      <PrimaryButton
-                        onClick={() =>
-                          updateContractDispute(
-                            activeContract.id,
-                            dispute.id,
-                            "Resolved",
-                            resolutionNotes[dispute.id],
-                          )
-                        }
-                      >
-                        Resolve
-                      </PrimaryButton>
+                      {canResolveDispute(dispute) ? (
+                        <PrimaryButton
+                          onClick={() =>
+                            updateContractDispute(
+                              activeContract.id,
+                              dispute.id,
+                              "Resolved",
+                              resolutionNotes[dispute.id],
+                            )
+                          }
+                        >
+                          Resolve
+                        </PrimaryButton>
+                      ) : (
+                        <p className="text-xs text-ae-text-muted">
+                          Only the party that opened this dispute can resolve it.
+                        </p>
+                      )}
                     </div>
                   </div>
                 ) : null}

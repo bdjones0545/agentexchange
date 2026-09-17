@@ -38,7 +38,22 @@ function formatMoney(value: number) {
 }
 
 export function WalletPage() {
-  const { contractWorkspaces, localContracts } = useAgentExchange();
+  const { contractWorkspaces, isSharedMode, localContracts } = useAgentExchange();
+  // In shared mode nothing is simulated: every figure derives from the stated
+  // value of the user's own contracts, and there is no payout system yet.
+  const baseSummary = isSharedMode
+    ? {
+        ...walletSummary,
+        accountName: "Your contracts",
+        reportingPeriod: "All time",
+        totalRevenue: "$0",
+        pendingPayouts: "$0",
+        availableBalance: "$0",
+        revenueThisMonth: "$0",
+      }
+    : walletSummary;
+  const seedTransactions = isSharedMode ? [] : transactions;
+  const seedPayouts = isSharedMode ? [] : payouts;
   const localContractsWithProgress = localContracts.map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
@@ -65,23 +80,23 @@ export function WalletPage() {
     0,
   );
   const dynamicWalletSummary = {
-    ...walletSummary,
+    ...baseSummary,
     availableBalance:
       localCompletedRevenue > 0
         ? formatMoney(localCompletedRevenue)
-        : walletSummary.availableBalance,
+        : baseSummary.availableBalance,
     pendingPayouts:
       localPendingRevenue > 0
         ? formatMoney(localPendingRevenue)
-        : walletSummary.pendingPayouts,
+        : baseSummary.pendingPayouts,
     revenueThisMonth:
       localTotalRevenue > 0
         ? formatMoney(localTotalRevenue)
-        : walletSummary.revenueThisMonth,
+        : baseSummary.revenueThisMonth,
     totalRevenue:
       localTotalRevenue > 0
         ? formatMoney(1840000 + localTotalRevenue)
-        : walletSummary.totalRevenue,
+        : baseSummary.totalRevenue,
   };
   const dynamicRevenueMetrics = revenueMetrics.map((metric) => {
     if (metric.id === "total-revenue") {
@@ -116,12 +131,19 @@ export function WalletPage() {
     status: contract.status === "Completed" ? "Paid" as const : "Pending" as const,
     accent: contract.status === "Completed" ? "emerald" as const : "amber" as const,
   }));
-  const pendingPayouts = payouts.filter((payout) => payout.status !== "Paid");
-  const completedPayouts = payouts.filter((payout) => payout.status === "Paid");
+  const pendingPayouts = seedPayouts.filter((payout) => payout.status !== "Paid");
+  const completedPayouts = seedPayouts.filter((payout) => payout.status === "Paid");
 
   return (
     <section className="space-y-10">
-      <WalletSummary summary={dynamicWalletSummary} />
+      <WalletSummary
+        description={
+          isSharedMode
+            ? "No payments move through AgentExchange yet. Everything below is derived from the stated value of your own contracts; nothing here is a balance you can withdraw."
+            : undefined
+        }
+        summary={dynamicWalletSummary}
+      />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {dynamicRevenueMetrics.map((metric) => (
@@ -129,9 +151,9 @@ export function WalletPage() {
         ))}
       </section>
 
-      <EarningsChart points={earningsHistory} />
+      {isSharedMode ? null : <EarningsChart points={earningsHistory} />}
 
-      <TransactionList transactions={[...localTransactions, ...transactions]} />
+      <TransactionList transactions={[...localTransactions, ...seedTransactions]} />
 
       <section className="space-y-4">
         <div>

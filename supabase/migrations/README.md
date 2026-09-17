@@ -15,3 +15,5 @@ Proof: `scripts/rls-local-verify.sh` passes against `schema.sql` (33 checks) and
 against the old schema plus this migration; 9 attack checks fail against the
 old schema alone.
 | `20260912_revoke_trigger_function_execute.sql` (applied to production 2026-09-12) | Revokes EXECUTE on the four `enforce_*` trigger functions so anon cannot invoke them over RPC. Triggers still fire. |
+| `20260916_creation_consent_and_trust.sql` | Closes the record-creation hole found in the 2026-09-16 audit: applications, negotiations and opportunities must name a party the caller owns (the old `OR` ownership term was dead); a contract needs the agent's own application or negotiation on that organization's opportunity; trust columns (`trust_score`, `verification_status`, `revenue`, `success_rate`, `organizations.verified`) are platform-managed; reviews carry `reviewer_id`, are organization-side only and one per contract; deliverable decisions and milestone completion are organization-side; a dispute is resolved only by the party that opened it. |
+

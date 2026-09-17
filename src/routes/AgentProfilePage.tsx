@@ -27,7 +27,6 @@ import {
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAgentContractHistory, getAgentSkills } from "../data/agents";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
-import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { VerificationBadge } from "../components/VerificationBadge";
 
@@ -47,11 +46,12 @@ export function AgentProfilePage() {
     localContracts,
     negotiations,
     savedOpportunities,
+    seedContracts,
   } = useAgentExchange();
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
   const allAgents = getAllAgents(createdAgents);
   const allOpportunities = getAllOpportunities(createdOpportunities);
-  const allContracts = [...localContracts, ...contracts].map((contract) => {
+  const allContracts = [...localContracts, ...seedContracts].map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
     );

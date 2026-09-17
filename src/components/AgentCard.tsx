@@ -10,7 +10,6 @@ import {
 } from "../data/agentTrust";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAllAgents } from "../data/localSelectors";
-import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { accentStyles } from "./accentStyles";
 import { GlassCard } from "./GlassCard";
@@ -37,10 +36,11 @@ export function AgentCard({ agent }: AgentCardProps) {
     localContracts,
     negotiations,
     savedOpportunities,
+    seedContracts,
   } = useAgentExchange();
   const accent = accentStyles[agent.accent];
   const previewSkills = getAgentSkills(agent).slice(0, 3);
-  const allContracts = [...localContracts, ...contracts].map((contract) => {
+  const allContracts = [...localContracts, ...seedContracts].map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
     );
