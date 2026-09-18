@@ -98,6 +98,7 @@ class Cache:
     ready = False
     model: str = ""
     provider: str | None = None
+    provider_error = False
     runtime_kwargs: dict[str, Any] | None = None
     mcp_tools: list[str] = []
     mcp_servers: list[str] = []
@@ -291,7 +292,21 @@ def run_turn(body: dict[str, Any]) -> dict[str, Any]:
             log.error("mcp rediscovery failed: %s", e)
     t0 = time.time()
     message = event_message(body)
-    kwargs = dict(Cache.runtime_kwargs or {})
+    # xai-oauth access tokens rotate while this service keeps running. Resolving
+    # the agent kwargs per turn runs Hermes's refresh/credential pool; caching them
+    # at warm-up is how the trainchat coach died with "bad-credentials" on 09-13.
+    from gateway.run import _resolve_runtime_agent_kwargs
+
+    try:
+        with Cache.lock:
+            kwargs = dict(_resolve_runtime_agent_kwargs())
+            Cache.runtime_kwargs = kwargs
+            Cache.provider = kwargs.get("provider")
+    except Exception as e:  # noqa: BLE001
+        with Cache.lock:
+            Cache.provider_error = True
+        log.error("provider credential resolution failed: %s", type(e).__name__)
+        return {"ok": False, "error": "provider_error", "text": "model credentials unavailable"}
     session_db = None
     try:
         from hermes_state import SessionDB
@@ -332,10 +347,13 @@ def run_turn(body: dict[str, Any]) -> dict[str, Any]:
                     break
     text = (text or "").strip()
     low = text.lower()
-    provider_fail = (not text) or any(
-        s in low for s in ("api call failed after", "service temporarily unavailable", "connection error", "rate limit", "too many requests", "provider error", "overloaded")
+    provider_fail = (not text) or (isinstance(result, dict) and bool(result.get("failed") or result.get("error"))) or any(
+        s in low for s in ("api call failed after", "service temporarily unavailable", "connection error", "rate limit", "too many requests", "provider error", "overloaded", "unauthenticated:bad-credentials", "oauth2 access token could not be validated")
     )
     actions = extract_actions(messages)
+    with Cache.lock:
+        # A turn that performed actions had working credentials whatever the text says.
+        Cache.provider_error = bool(provider_fail and not actions)
     log.info("turn event=%s actions=%s ms=%d", body.get("event"), [(a["tool"], a["ok"]) for a in actions], model_ms)
     if provider_fail and not actions:
         return {"ok": False, "error": "provider_error", "text": text[:300], "timing": {"model_ms": model_ms}}
@@ -430,7 +448,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?")[0]
         if path in ("/health", "/"):
-            self._json(200, {"ok": True, "ready": Cache.ready, "model": Cache.model, "provider": Cache.provider, "toolsets": TOOLSETS, "mcpServers": Cache.mcp_servers, "mcpTools": len(Cache.mcp_tools), "queue": Jobs.counts(), "sweepSeconds": SWEEP_SECONDS})
+            self._json(200, {"ok": not Cache.provider_error, "ready": Cache.ready and not Cache.provider_error, "providerError": Cache.provider_error, "model": Cache.model, "provider": Cache.provider, "toolsets": TOOLSETS, "mcpServers": Cache.mcp_servers, "mcpTools": len(Cache.mcp_tools), "queue": Jobs.counts(), "sweepSeconds": SWEEP_SECONDS})
             return
         if path.startswith("/jobs/"):
             if not self._authorized():
