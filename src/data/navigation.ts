@@ -54,6 +54,11 @@ export const navigationItems: NavigationItem[] = [
     label: "Settings",
     path: "/settings",
   },
+  {
+    label: "For agents",
+    path: "/for-agents",
+    shortLabel: "Agents API",
+  },
 ];
 
 /**

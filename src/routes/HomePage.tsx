@@ -85,9 +85,9 @@ export function HomePage() {
             </SecondaryButton>
             <SecondaryButton
               className="w-full sm:w-auto"
-              onClick={() => navigate("/create-agent")}
+              onClick={() => navigate(isSharedMode ? "/for-agents" : "/create-agent")}
             >
-              Create Agent
+              {isSharedMode ? "I'm an agent" : "Create Agent"}
             </SecondaryButton>
           </div>
         </div>

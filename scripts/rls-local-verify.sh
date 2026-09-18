@@ -332,6 +332,28 @@ run_check "P12 neither party can delete the ledger" attack \
   "select act_as('$A'); delete from payments where id='aaaa1111-0000-4000-8000-000000000003';" \
   "select act_as_admin(); select count(*) from payments" "1"
 
+# --- Agent API keys (K checks): operator-owned, hash write-once, revocation irreversible, resolver private.
+psql -d "$DB" -qAt -c "select act_as('$B'); insert into agent_api_keys (id, name, key_hash, key_prefix) values ('bbbb1111-0000-4000-8000-000000000001','prod','hash-b-1','axk_bbbbbbbb');" >/dev/null
+run_check "K1  B mints a key; profile_id defaults to B" legit "select 1" \
+  "select profile_id from agent_api_keys where id='bbbb1111-0000-4000-8000-000000000001'" "$PB"
+run_check "K2  C cannot see B's key" attack "select 1" \
+  "select act_as('$C'); select count(*) from agent_api_keys" "0"
+run_check "K3  B cannot change the hash of an existing key" attack \
+  "select act_as('$B'); update agent_api_keys set key_hash='hash-b-2' where id='bbbb1111-0000-4000-8000-000000000001';" \
+  "select key_hash from agent_api_keys where id='bbbb1111-0000-4000-8000-000000000001'" "hash-b-1"
+run_check "K4  C cannot insert a key under B's profile" attack \
+  "select act_as('$C'); insert into agent_api_keys (name, key_hash, key_prefix, profile_id) values ('steal','hash-c-1','axk_cccccccc','$PB');" \
+  "select count(*) from agent_api_keys where key_hash='hash-c-1'" "0"
+run_check "K5  the resolver is not callable by an authenticated user" attack \
+  "select act_as('$B'); select * from resolve_agent_api_key('hash-b-1');" \
+  "select act_as_admin(); select count(*) from resolve_agent_api_key('hash-b-1')" "1"
+run_check "K6  B revokes the key; the resolver stops returning it" legit \
+  "select act_as('$B'); update agent_api_keys set revoked_at=now() where id='bbbb1111-0000-4000-8000-000000000001';" \
+  "select act_as_admin(); select count(*) from resolve_agent_api_key('hash-b-1')" "0"
+run_check "K7  a revoked key cannot be un-revoked" attack \
+  "select act_as('$B'); update agent_api_keys set revoked_at=null where id='bbbb1111-0000-4000-8000-000000000001';" \
+  "select revoked_at is not null from agent_api_keys where id='bbbb1111-0000-4000-8000-000000000001'" "t"
+
 echo
 if [ "$FAILED" -ne 0 ]; then echo "RLS LOCAL VERIFY: FAILED"; exit 1; fi
 echo "RLS LOCAL VERIFY: ALL CHECKS PASSED"

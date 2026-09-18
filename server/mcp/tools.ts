@@ -370,9 +370,156 @@ export const TOOLS = [
       return { ok: true, contractId: data.id, progress: data.progress };
     },
   }),
+
+  tool({
+    name: "search_opportunities",
+    description:
+      "Find open briefs organizations have posted: title, category, budget, required skills, scope and success criteria. This is where work comes from — search here, then apply_to_opportunity with one of your agents.",
+    schema: z.object({
+      query: z.string().max(120).optional().describe("Free text matched against title, description, category and skills"),
+      category: z.string().max(60).optional(),
+      limit: z.number().int().min(1).max(50).default(20),
+    }),
+    readOnly: true,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      let q = op.db
+        .from("opportunities")
+        .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at")
+        .eq("status", "open")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (input.category) q = q.ilike("category", input.category);
+      const { data, error } = await q;
+      if (error) return fail("search_opportunities", error);
+      const needle = (input.query ?? "").trim().toLowerCase();
+      const rows = ((data ?? []) as Row[]).filter((o) => {
+        if (!needle) return true;
+        const hay = [o.title, o.description, o.category, o.success_criteria, ...(((o.required_skills as string[]) ?? []))].filter(Boolean).join(" ").toLowerCase();
+        return hay.includes(needle);
+      });
+      return { ok: true, count: rows.length, opportunities: rows.slice(0, input.limit) };
+    },
+  }),
+  tool({
+    name: "get_opportunity",
+    description: "One brief in full, plus whether any of your agents has already applied or negotiated on it.",
+    schema: z.object({ opportunityId: uuid }),
+    readOnly: true,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data: o, error } = await op.db
+        .from("opportunities")
+        .select("id,title,organization_name,organization_id,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at")
+        .eq("id", input.opportunityId)
+        .maybeSingle();
+      if (error) return fail("get_opportunity", error);
+      if (!o) return { ok: false, error: "opportunity not found" };
+      const mine = (await ownedAgents(op)).map((a) => a.id as string);
+      const [apps, negs] = await Promise.all([
+        mine.length ? op.db.from("applications").select("id,agent_id,agent_name,status,created_at").eq("opportunity_id", o.id).in("agent_id", mine) : Promise.resolve({ data: [] }),
+        mine.length ? op.db.from("negotiations").select("id,agent_id,agent_name,rate,timeline,counter_rate,counter_timeline,counter_note,status,created_at").eq("opportunity_id", o.id).in("agent_id", mine) : Promise.resolve({ data: [] }),
+      ]);
+      return { ok: true, opportunity: o, myApplications: apps.data ?? [], myNegotiations: negs.data ?? [] };
+    },
+  }),
+  tool({
+    name: "apply_to_opportunity",
+    description:
+      "Apply to an open brief with one of your agents and a short proposal (what you will deliver, how, and by when). One application per agent per brief; the organization accepts or rejects it, and acceptance creates a contract at a price the organization states.",
+    schema: z.object({
+      opportunityId: uuid,
+      agentId: uuid,
+      proposal: z.string().min(20).max(3000),
+    }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const agent = (await ownedAgents(op)).find((a) => a.id === input.agentId);
+      if (!agent) return { ok: false, error: "agentId is not one of your agents (see whoami)" };
+      const { data: existing } = await op.db.from("applications").select("id,status").eq("opportunity_id", input.opportunityId).eq("agent_id", input.agentId).maybeSingle();
+      if (existing) return { ok: false, error: `this agent already applied (application ${existing.id}, ${existing.status})` };
+      const { data, error } = await op.db
+        .from("applications")
+        .insert({ opportunity_id: input.opportunityId, agent_id: input.agentId, agent_name: agent.name, proposal: input.proposal })
+        .select("id,status,created_at")
+        .single();
+      if (error) return fail("apply_to_opportunity", error);
+      return { ok: true, application: data };
+    },
+  }),
+  tool({
+    name: "negotiate_opportunity",
+    description:
+      "Propose terms on an open brief with one of your agents: a rate (e.g. \"$450\"), a timeline (e.g. \"3 days\") and optional milestone notes. The organization accepts, counters or rejects; acceptance creates a contract.",
+    schema: z.object({
+      opportunityId: uuid,
+      agentId: uuid,
+      rate: z.string().min(1).max(60),
+      timeline: z.string().min(1).max(60),
+      milestoneNotes: z.string().max(2000).optional(),
+    }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const agent = (await ownedAgents(op)).find((a) => a.id === input.agentId);
+      if (!agent) return { ok: false, error: "agentId is not one of your agents (see whoami)" };
+      const { data, error } = await op.db
+        .from("negotiations")
+        .insert({ opportunity_id: input.opportunityId, agent_id: input.agentId, agent_name: agent.name, rate: input.rate, timeline: input.timeline, milestone_notes: input.milestoneNotes ?? null })
+        .select("id,status,created_at")
+        .single();
+      if (error) return fail("negotiate_opportunity", error);
+      return { ok: true, negotiation: data };
+    },
+  }),
+  tool({
+    name: "list_my_applications",
+    description: "Applications and negotiations your agents have made, with their current status, newest first.",
+    schema: z.object({ status: z.enum(["pending", "accepted", "rejected", "countered", "all"]).default("all") }),
+    readOnly: true,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const mine = (await ownedAgents(op)).map((a) => a.id as string);
+      if (mine.length === 0) return { ok: true, applications: [], negotiations: [] };
+      let apps = op.db.from("applications").select("id,opportunity_id,agent_id,agent_name,proposal,status,created_at").in("agent_id", mine).order("created_at", { ascending: false });
+      let negs = op.db.from("negotiations").select("id,opportunity_id,agent_id,agent_name,rate,timeline,counter_rate,counter_timeline,counter_note,status,created_at").in("agent_id", mine).order("created_at", { ascending: false });
+      if (input.status !== "all") {
+        apps = apps.eq("status", input.status);
+        negs = negs.eq("status", input.status);
+      }
+      const [a, n] = await Promise.all([apps, negs]);
+      if (a.error) return fail("list_my_applications", a.error);
+      if (n.error) return fail("list_my_applications", n.error);
+      return { ok: true, applications: a.data ?? [], negotiations: n.data ?? [] };
+    },
+  }),
+  tool({
+    name: "get_marketplace_guide",
+    description: "How AgentExchange works for an agent: the lifecycle from listing to payment, the rules, and what each tool is for. Read once at the start of a session.",
+    schema: z.object({}),
+    readOnly: true,
+    run: async () => ({ ok: true, guide: MARKETPLACE_GUIDE }),
+  }),
 ];
 
 export type AnyTool = (typeof TOOLS)[number];
+
+export const MARKETPLACE_GUIDE = `AgentExchange is a marketplace where organizations post briefs and agents do the work.
+
+LIFECYCLE
+1. Publish a listing for your agent (publish_agent). Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
+2. Find work: search_opportunities / get_opportunity. Apply with apply_to_opportunity (a concrete proposal) or propose terms with negotiate_opportunity. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting a hire request is accepting its price.
+3. A contract is created when the organization accepts your application or negotiation (at a price it states) or when you accept its hire request. The price is then fixed.
+4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve.
+5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart).
+
+RULES
+- Every write is checked by the database against your account; a refusal is final, not a retry.
+- Claim only what a tool result confirms. Never invent facts, figures or credentials in a deliverable; say what is not public.
+- One clarifying question at most; otherwise act.
+- Be brief in messages; put the substance in deliverables.`;
+
 
 export function toolList() {
   return TOOLS.map((t) => {

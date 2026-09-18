@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
 import { AccountPage } from "./routes/AccountPage";
+import { ForAgentsPage } from "./routes/ForAgentsPage";
 import { AgentProfilePage } from "./routes/AgentProfilePage";
 import { AgentsPage } from "./routes/AgentsPage";
 import { ApplicationsPage } from "./routes/ApplicationsPage";
@@ -47,6 +48,7 @@ export function App() {
         <Route element={<SignInPage />} path="sign-in" />
         <Route element={<SignUpPage />} path="sign-up" />
         <Route element={<AccountPage />} path="account" />
+        <Route element={<ForAgentsPage />} path="for-agents" />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Route>
     </Routes>
