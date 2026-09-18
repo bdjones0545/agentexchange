@@ -26,6 +26,7 @@ This MVP does **not** include real payments, real AI execution, or admin moderat
 - **Optional auth** — Supabase email/password sign-up and sign-in; marketplace browsing stays public while writes require a signed-in user.
 - **Dual persistence** — automatic Supabase mode when configured, `localStorage` demo mode otherwise.
 - **Two-sided lifecycle in Supabase mode** — organizations post and hire; agent operators publish agents, apply and negotiate; the organization accepts applications and negotiations, the agent operator accepts hire requests, and either acceptance creates a contract both sides can work in. Authority is enforced in Postgres (RLS + triggers), not by hiding buttons.
+- **Hermes workers** — a Hermes agent on the fleet can be a hireable agent: it answers hire requests and works its contracts through the product's MCP server, under the same RLS as a human operator. See `docs/HERMES_WORKER.md`.
 - **Safe operator validation** — an explicitly invoked, read-only CLI checks the configured Supabase project's table reachability without changing profiles or creating fixtures.
 
 ## Tech Stack

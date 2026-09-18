@@ -53,6 +53,7 @@ import {
 } from "../lib/repositories/savedOpportunitiesRepository";
 import { isSupabaseConfigured } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
+import { fetchWorkers, notifyWorkers, type WorkerInfo } from "../lib/worker";
 import type {
   AgentActivityEvent,
   AgentExchangePersistedState,
@@ -204,6 +205,12 @@ type AgentExchangeContextValue = PersistedState & {
    * contracts, wallet and history never mix with demo fixtures.
    */
   seedContracts: typeof seedContractData;
+  /**
+   * Hermes workers registered with the product (shared mode only). Agents
+   * owned by one of these profiles execute their contracts autonomously.
+   */
+  workers: WorkerInfo[];
+  isWorkerAgent: (agent: { id: string; ownerId?: string }) => boolean;
 };
 
 const defaultPersistedState: PersistedState = {
@@ -410,7 +417,32 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<LocalActionToastState | null>(null);
+  const [workers, setWorkers] = useState<WorkerInfo[]>([]);
   const userId = user?.id ?? null;
+
+  // Which marketplace accounts are Hermes workers. Public, cached, and only
+  // meaningful in shared mode.
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      return;
+    }
+    let isMounted = true;
+    void fetchWorkers().then((list) => {
+      if (isMounted) {
+        setWorkers(list);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const isWorkerAgent = useCallback(
+    (agent: { id: string; ownerId?: string }) =>
+      Boolean(agent.ownerId) &&
+      workers.some((worker) => worker.profileId === agent.ownerId),
+    [workers],
+  );
 
   const refresh = useCallback(async () => {
     const nextState = await loadAgentExchangeState();
@@ -986,6 +1018,9 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
               ? deliverable.submittedAt ?? now
               : deliverable.submittedAt,
         });
+        if (status === "approved" || status === "rejected") {
+          void notifyWorkers({ event: "deliverable_decision", contractId });
+        }
       }
 
       setState((current) =>
@@ -1124,6 +1159,9 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       };
       if (isSupabaseConfigured && isUuid(contractId)) {
         await createMessageRecord({ ...message, contractId });
+        if (senderType === "Organization") {
+          void notifyWorkers({ event: "message", contractId });
+        }
       }
 
       setState((current) =>
@@ -1557,6 +1595,9 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       const nextHireRequest = isSupabaseConfigured
         ? await createHireRequestRecord(draftHireRequest)
         : draftHireRequest;
+      if (isSupabaseConfigured) {
+        void notifyWorkers({ event: "hire_request", hireRequestId: nextHireRequest.id });
+      }
       const activity = recordAgentActivity(
         createAgentActivity(
           input.agentId,
@@ -1640,6 +1681,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         : draftContract;
       if (isSupabaseConfigured) {
         await acceptApplicationRecord(application.id);
+        void notifyWorkers({ event: "contract_created", contractId: localContract.id });
       }
 
       setState((current) => {
@@ -1789,6 +1831,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         : draftContract;
       if (isSupabaseConfigured) {
         await updateNegotiationRecord(negotiationId, { status: "accepted" });
+        void notifyWorkers({ event: "contract_created", contractId: localContract.id });
       }
       const activity = agent
         ? recordAgentActivity(
@@ -2137,6 +2180,8 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       ownsOpportunity,
       ownsOrganization,
       seedContracts: isSupabaseConfigured ? [] : seedContractData,
+      workers,
+      isWorkerAgent,
       acceptApplication: safe(acceptApplication),
       acceptHireRequest: safe(acceptHireRequest),
       acceptNegotiation: safe(acceptNegotiation),
@@ -2217,6 +2262,8 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       toggleSavedOpportunity,
       updateContractDispute,
       updateMilestoneNotes,
+      workers,
+      isWorkerAgent,
     ],
   );
 
