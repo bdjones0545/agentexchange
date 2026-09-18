@@ -15,6 +15,7 @@ export const DispatchEventSchema = z.discriminatedUnion("event", [
   z.object({ event: z.literal("contract_created"), contractId: z.uuid() }),
   z.object({ event: z.literal("message"), contractId: z.uuid() }),
   z.object({ event: z.literal("deliverable_decision"), contractId: z.uuid() }),
+  z.object({ event: z.literal("contract_funded"), contractId: z.uuid() }),
 ]);
 export type DispatchEvent = z.infer<typeof DispatchEventSchema>;
 

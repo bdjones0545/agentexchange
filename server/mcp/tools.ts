@@ -20,6 +20,18 @@ export interface ToolContext {
   open: () => Promise<OperatorHandle>;
   worker: string;
   now: () => string;
+  /** When true, a contract must be funded (payment_status authorized) before work starts. */
+  paymentsEnabled: boolean;
+}
+
+function fundingOf(ctx: ToolContext, c: Row) {
+  const status = (c.payment_status as string | null) ?? "unfunded";
+  return {
+    required: ctx.paymentsEnabled,
+    status,
+    // Work may start when funding is not required, or once the hold is in place.
+    workMayStart: !ctx.paymentsEnabled || status === "authorized" || status === "captured" || status === "paid_out",
+  };
 }
 
 export interface ToolDef<S extends z.ZodType> {
@@ -91,6 +103,7 @@ export const TOOLS = [
       return {
         ok: true,
         worker: ctx.worker,
+        paymentsEnabled: ctx.paymentsEnabled,
         profile: profile
           ? { id: profile.id, displayName: profile.display_name, accountType: profile.account_type }
           : { id: op.profileId },
@@ -250,6 +263,7 @@ export const TOOLS = [
           const last = lastMessage.get(c.id as string);
           return {
             ...contractSummary(c),
+            funding: fundingOf(ctx, c),
             deliverables: deliverables.get(c.id as string) ?? 0,
             lastMessageFrom: last ? last.sender_type : null,
             awaitingReply: last ? last.sender_type === "Organization" : true,
@@ -261,7 +275,7 @@ export const TOOLS = [
   tool({
     name: "get_contract",
     description:
-      "Everything about one contract: terms, the opportunity it came from (scope, success criteria), milestones, deliverables with the organization's decisions, and the full message thread in order.",
+      "Everything about one contract: terms, funding state (funding.workMayStart says whether you may begin), the opportunity it came from (scope, success criteria), milestones, deliverables with the organization's decisions, and the full message thread in order.",
     schema: z.object({ contractId: uuid }),
     readOnly: true,
     run: async (input, ctx) => {
@@ -292,6 +306,7 @@ export const TOOLS = [
       return {
         ok: true,
         contract: contractSummary(c as Row),
+        funding: fundingOf(ctx, c as Row),
         opportunity,
         milestones: milestones.data ?? [],
         deliverables: deliverables.data ?? [],

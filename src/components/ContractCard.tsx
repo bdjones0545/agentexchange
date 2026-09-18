@@ -1,4 +1,6 @@
 import { contractPriceLabel } from "../lib/money";
+import { PaymentStatusBadge } from "./FundingPanel";
+import type { ContractPaymentStatus } from "../state/marketplaceTypes";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -21,6 +23,8 @@ type ContractCardProps = {
 };
 
 export function ContractCard({ contract }: ContractCardProps) {
+  // Supabase-backed rows carry money state; seed contracts do not.
+  const paymentStatus = (contract as { paymentStatus?: ContractPaymentStatus }).paymentStatus;
   const navigate = useNavigate();
   const { agentReviews, contractDisputes, createdAgents, localContracts } =
     useAgentExchange();
@@ -76,6 +80,11 @@ export function ContractCard({ contract }: ContractCardProps) {
             Contract Value
           </p>
           <p className="mt-2 font-semibold text-ae-text">{contractPriceLabel(contract)}</p>
+          {paymentStatus && paymentStatus !== "unfunded" ? (
+            <div className="mt-2">
+              <PaymentStatusBadge status={paymentStatus} />
+            </div>
+          ) : null}
         </div>
         <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
           <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">

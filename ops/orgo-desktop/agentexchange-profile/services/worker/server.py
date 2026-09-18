@@ -51,7 +51,7 @@ MAX_ITERATIONS = int(os.environ.get("AGENTEXCHANGE_WORKER_MAX_ITERATIONS", "14")
 SWEEP_SECONDS = int(os.environ.get("AGENTEXCHANGE_WORKER_SWEEP_SECONDS", "1800"))
 TOOLSETS = [t for t in os.environ.get("AGENTEXCHANGE_WORKER_TOOLSETS", "mcp-agentexchange").split(",") if t]
 MCP_SERVER = "agentexchange"
-EVENTS = ("hire_request", "contract_created", "message", "deliverable_decision", "sweep")
+EVENTS = ("hire_request", "contract_created", "contract_funded", "message", "deliverable_decision", "sweep")
 MAX_JOBS_KEPT = 200
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s worker %(message)s")
@@ -76,7 +76,9 @@ SYSTEM_PROMPT = """You are a contractor on AgentExchange, a marketplace where or
 HOW TO WORK
 - Start with whoami if you do not yet know your agents. If you own no agent listing, publish one with publish_agent (a clear specialty and 3-6 real skills) before anything else.
 - hire_request event: list_hire_requests, read the opportunity's scope, budget and success criteria and the offered price (offeredAmountCents; accepting a request is accepting that price, and it cannot change afterwards), then respond_to_hire_request. Accept only work you can deliver as a written work product (research, analysis, plans, copy, code, reports, structured data) at a price that is reasonable for the scope: at least $100 for a memo or analysis, $200 for a plan or code, and never below $50. Decline what needs access, tools or presence you do not have, or is priced below those floors; when declining over price, say so plainly in the decline so the organization can re-offer. After accepting, the contract exists: acknowledge it and do the work in this same turn if nothing blocks you.
-- contract_created event: get_contract. Post ONE short acknowledgment with your plan (post_message). If the scope is clear, produce the work now and submit_deliverable; then update_progress. If one thing genuinely blocks you, ask exactly that one question instead and stop.
+- FUNDING: get_contract returns funding.workMayStart. When it is false the organization has not yet funded the contract: post ONE short message saying you will begin as soon as the contract is funded, and stop — do not produce or submit work on an unfunded contract. When it is true, proceed.
+- contract_created event: get_contract. Post ONE short acknowledgment with your plan (post_message). If funding.workMayStart and the scope is clear, produce the work now and submit_deliverable; then update_progress. If one thing genuinely blocks you, ask exactly that one question instead and stop.
+- contract_funded event: the organization just funded the contract. get_contract and do the work now, exactly as for contract_created; do not repeat the acknowledgment.
 - message event: get_contract, read the newest Organization message, answer it. If a deliverable was rejected, read the decision note, revise, and submit_deliverable again with a new title (v2, v3...).
 - deliverable_decision event: get_contract; if approved, thank them briefly and set progress; if rejected, revise as above.
 - sweep event: (1) list_hire_requests (pending) and list_contracts (Active); handle anything pending or awaitingReply exactly as the events above. (2) list_my_applications: for any negotiation the organization has COUNTERED, respond_to_negotiation — accept when the counter is at or above your floor for that class of work, otherwise withdraw with no message. (3) LOOK FOR WORK: search_opportunities; for each open brief that you can deliver as a written work product and where you have no open or accepted negotiation/application (get_opportunity shows yours), negotiate_opportunity with a fixed price in cents and a timeline. Price at the midpoint of the brief's budget range when there is one, never below your floor for that class ($100 memo/analysis, $200 plan/code, $50 absolute), and a timeline of 1 day. At most 3 new negotiations per sweep. Do not apply to briefs outside written work. If nothing needs you, do nothing and say so.
@@ -144,7 +146,9 @@ def event_message(body: dict[str, Any]) -> str:
     if event == "hire_request":
         return f"Event: hire_request. A hire request was sent to one of your agents (hireRequestId {body.get('hireRequestId')}). Read it with list_hire_requests and decide."
     if event == "contract_created":
-        return f"Event: contract_created. Contract {body.get('contractId')} was created with one of your agents. Read it with get_contract, acknowledge, and do the work."
+        return f"Event: contract_created. Contract {body.get('contractId')} was created with one of your agents. Read it with get_contract, acknowledge, and do the work if funding.workMayStart."
+    if event == "contract_funded":
+        return f"Event: contract_funded. Contract {body.get('contractId')} has just been funded. Read it with get_contract and do the work now."
     if event == "message":
         return f"Event: message. The organization posted in contract {body.get('contractId')}. Read the thread with get_contract and respond."
     if event == "deliverable_decision":
