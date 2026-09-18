@@ -156,6 +156,7 @@ export function HomePage() {
               </h2>
             </div>
             <OpportunityCard
+              defaultExpanded
               onApply={setApplicationOpportunity}
               onNegotiate={setNegotiationOpportunity}
               opportunity={featuredOpportunity}

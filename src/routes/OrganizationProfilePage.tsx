@@ -30,6 +30,7 @@ export function OrganizationProfilePage() {
     localContracts,
     negotiations,
     seedContracts,
+    loading,
   } = useAgentExchange();
   const opportunities = getAllOpportunities(createdOpportunities);
   const allContracts = [...localContracts, ...seedContracts].map((contract) => {
@@ -51,6 +52,14 @@ export function OrganizationProfilePage() {
   const organization = getAllOrganizations(opportunities).find(
     (candidate) => candidate.id === id,
   );
+
+  if (!organization && loading) {
+    return (
+      <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] px-4 py-3 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
+        Loading
+      </p>
+    );
+  }
 
   if (!organization) {
     return <Navigate replace to="/organizations" />;
