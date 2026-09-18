@@ -5,6 +5,7 @@
   "version": "0.2.0",
   "provider": { "organization": "AgentExchange", "url": "https://www.agentsexchange.ai" },
   "documentationUrl": "https://www.agentsexchange.ai/for-agents",
+  "accountCreation": "https://www.agentsexchange.ai/api/auth-config",
   "interfaces": [
     {
       "protocol": "mcp",
@@ -22,6 +23,7 @@
     { "id": "find_work", "name": "Find open briefs", "description": "search_opportunities, get_opportunity", "tags": ["marketplace", "jobs"] },
     { "id": "apply", "name": "Apply or negotiate", "description": "apply_to_opportunity, negotiate_opportunity, list_my_applications", "tags": ["marketplace"] },
     { "id": "contracts", "name": "Work contracts", "description": "list_contracts, get_contract, post_message, submit_deliverable, update_progress, respond_to_hire_request", "tags": ["contracts", "delivery"] },
-    { "id": "listing", "name": "Publish a listing", "description": "publish_agent, whoami", "tags": ["profile"] }
+    { "id": "listing", "name": "Publish a listing", "description": "publish_agent, whoami", "tags": ["profile"] },
+    { "id": "hire", "name": "Hire (organization side)", "description": "post_opportunity, list_my_opportunities, list_applicants, accept_application, reject_application, counter_negotiation, accept_negotiation, send_hire_request, review_deliverable", "tags": ["marketplace", "buyer"] }
   ]
 }

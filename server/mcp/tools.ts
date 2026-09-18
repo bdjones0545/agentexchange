@@ -528,6 +528,248 @@ export const TOOLS = [
     readOnly: true,
     run: async () => ({ ok: true, guide: MARKETPLACE_GUIDE }),
   }),
+
+  // ── Demand side: an agent acting for an organization ─────────────────────
+  tool({
+    name: "post_opportunity",
+    description:
+      "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it.",
+    schema: z.object({
+      organization: z.string().min(2).max(120),
+      title: z.string().min(4).max(160),
+      category: z.string().min(2).max(60).describe("e.g. Research, Dev, Sales, Copy"),
+      budgetMinCents: z.number().int().min(5000),
+      budgetMaxCents: z.number().int().min(5000),
+      duration: z.string().min(1).max(60).describe("e.g. \"3 days\""),
+      requiredSkills: z.array(z.string().min(1).max(40)).max(12).default([]),
+      description: z.string().min(20).max(6000),
+      successCriteria: z.string().min(10).max(3000),
+    }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      if (input.budgetMaxCents < input.budgetMinCents) return { ok: false, error: "budgetMaxCents must be >= budgetMinCents" };
+      const { data: existingOrg } = await op.db.from("organizations").select("id,name").eq("owner_id", op.profileId).eq("name", input.organization).limit(1).maybeSingle();
+      let organizationId = existingOrg?.id as string | undefined;
+      if (!organizationId) {
+        const { data: org, error } = await op.db
+          .from("organizations")
+          .insert({ name: input.organization, industry: input.category, overview: `Organization hiring for ${input.category.toLowerCase()} work.` })
+          .select("id")
+          .single();
+        if (error) return fail("post_opportunity (organization)", error);
+        organizationId = org.id as string;
+      }
+      const dollars = (c: number) => `$${(c / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+      const { data, error } = await op.db
+        .from("opportunities")
+        .insert({
+          organization_id: organizationId,
+          organization_name: input.organization,
+          title: input.title,
+          category: input.category,
+          budget_range: `${dollars(input.budgetMinCents)} - ${dollars(input.budgetMaxCents)}`,
+          estimated_duration: input.duration,
+          required_skills: input.requiredSkills,
+          description: input.description,
+          success_criteria: input.successCriteria,
+          status: "open",
+        })
+        .select("id,title,organization_id,budget_range,status,created_at")
+        .single();
+      if (error) return fail("post_opportunity", error);
+      return { ok: true, opportunity: data };
+    },
+  }),
+  tool({
+    name: "list_my_opportunities",
+    description: "Briefs posted by organizations you operate, with how many applications and negotiations are waiting on a decision.",
+    schema: z.object({}),
+    readOnly: true,
+    run: async (_input, ctx) => {
+      const op = await ctx.open();
+      const { data, error } = await op.db.from("opportunities").select("id,title,organization_name,category,budget_range,status,created_at").eq("owner_id", op.profileId).order("created_at", { ascending: false });
+      if (error) return fail("list_my_opportunities", error);
+      const rows = (data ?? []) as Row[];
+      const ids = rows.map((r) => r.id as string);
+      const pendingApps = new Map<string, number>();
+      const openNegs = new Map<string, number>();
+      if (ids.length) {
+        const [{ data: apps }, { data: negs }] = await Promise.all([
+          op.db.from("applications").select("opportunity_id").in("opportunity_id", ids).eq("status", "pending"),
+          op.db.from("negotiations").select("opportunity_id").in("opportunity_id", ids).eq("status", "pending"),
+        ]);
+        for (const a of (apps ?? []) as Row[]) pendingApps.set(a.opportunity_id as string, (pendingApps.get(a.opportunity_id as string) ?? 0) + 1);
+        for (const n of (negs ?? []) as Row[]) openNegs.set(n.opportunity_id as string, (openNegs.get(n.opportunity_id as string) ?? 0) + 1);
+      }
+      return { ok: true, opportunities: rows.map((r) => ({ ...r, pendingApplications: pendingApps.get(r.id as string) ?? 0, pendingNegotiations: openNegs.get(r.id as string) ?? 0 })) };
+    },
+  }),
+  tool({
+    name: "list_applicants",
+    description: "Applications and negotiations agents have made on one of your briefs, with each agent's listing (specialty, skills, verification, trust).",
+    schema: z.object({ opportunityId: uuid }),
+    readOnly: true,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const [{ data: apps, error: e1 }, { data: negs, error: e2 }] = await Promise.all([
+        op.db.from("applications").select("id,agent_id,agent_name,proposal,status,created_at").eq("opportunity_id", input.opportunityId).order("created_at", { ascending: false }),
+        op.db.from("negotiations").select("id,agent_id,agent_name,rate,timeline,milestone_notes,amount_cents,counter_amount_cents,counter_note,accepted_by,status,created_at").eq("opportunity_id", input.opportunityId).order("created_at", { ascending: false }),
+      ]);
+      if (e1) return fail("list_applicants", e1);
+      if (e2) return fail("list_applicants", e2);
+      const agentIds = [...new Set([...((apps ?? []) as Row[]), ...((negs ?? []) as Row[])].map((r) => r.agent_id).filter(Boolean))] as string[];
+      const agents = new Map<string, Row>();
+      if (agentIds.length) {
+        const { data } = await op.db.from("agents").select("id,name,specialty,skills,verification_status,trust_score,success_rate,availability").in("id", agentIds);
+        for (const a of (data ?? []) as Row[]) agents.set(a.id as string, a);
+      }
+      const withAgent = (r: Row) => ({ ...r, agent: agents.get(r.agent_id as string) ?? null });
+      return { ok: true, applications: ((apps ?? []) as Row[]).map(withAgent), negotiations: ((negs ?? []) as Row[]).map(withAgent) };
+    },
+  }),
+  tool({
+    name: "accept_application",
+    description:
+      "Accept an application on your brief at a fixed price (cents). This creates the contract; the price cannot change afterwards. To reject, use reject_application.",
+    schema: z.object({ applicationId: uuid, amountCents: z.number().int().min(5000) }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data: app } = await op.db.from("applications").select("id,opportunity_id,agent_id,agent_name,status").eq("id", input.applicationId).maybeSingle();
+      if (!app) return { ok: false, error: "application not found or not visible" };
+      if (app.status !== "pending") return { ok: false, error: `application is ${app.status}` };
+      const { data: opp } = await op.db.from("opportunities").select("id,title,organization_id,organization_name,budget_range").eq("id", app.opportunity_id).maybeSingle();
+      if (!opp?.organization_id) return { ok: false, error: "opportunity has no organization" };
+      const today = new Date();
+      const iso = (d: Date) => d.toISOString().slice(0, 10);
+      const { data: contract, error } = await op.db
+        .from("contracts")
+        .insert({
+          agent_id: app.agent_id,
+          agent_name: app.agent_name,
+          organization_id: opp.organization_id,
+          organization_name: opp.organization_name,
+          source_id: app.id,
+          source_type: "application",
+          title: opp.title,
+          value: opp.budget_range ?? "Custom scope",
+          status: "Active",
+          progress: 5,
+          start_date: iso(today),
+          due_date: iso(new Date(today.getTime() + 21 * 86400000)),
+          amount_cents: input.amountCents,
+          currency: "USD",
+        })
+        .select("*")
+        .single();
+      if (error) return fail("accept_application", error);
+      const { error: statusError } = await op.db.from("applications").update({ status: "accepted" }).eq("id", app.id);
+      if (statusError) return fail("accept_application (status)", statusError);
+      return { ok: true, contract: contractSummary(contract as Row) };
+    },
+  }),
+  tool({
+    name: "reject_application",
+    description: "Reject a pending application on your brief.",
+    schema: z.object({ applicationId: uuid }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data, error } = await op.db.from("applications").update({ status: "rejected" }).eq("id", input.applicationId).eq("status", "pending").select("id,status").maybeSingle();
+      if (error) return fail("reject_application", error);
+      if (!data) return { ok: false, error: "application not found, not pending, or not yours to decide" };
+      return { ok: true, applicationId: data.id, status: data.status };
+    },
+  }),
+  tool({
+    name: "counter_negotiation",
+    description: "Counter an agent's proposal on your brief with your own price (cents), timeline and note. The agent then accepts (a contract is created at your price) or withdraws.",
+    schema: z.object({ negotiationId: uuid, counterAmountCents: z.number().int().min(5000), timeline: z.string().max(60).optional(), note: z.string().max(1000).optional() }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const rate = `$${(input.counterAmountCents / 100).toFixed(input.counterAmountCents % 100 === 0 ? 0 : 2)}`;
+      const { data, error } = await op.db
+        .from("negotiations")
+        .update({ status: "countered", counter_amount_cents: input.counterAmountCents, counter_rate: rate, counter_timeline: input.timeline ?? null, counter_note: input.note ?? null })
+        .eq("id", input.negotiationId)
+        .in("status", ["pending", "countered"])
+        .select("id,status,counter_amount_cents")
+        .maybeSingle();
+      if (error) return fail("counter_negotiation", error);
+      if (!data) return { ok: false, error: "negotiation not found, closed, or not yours to counter" };
+      return { ok: true, negotiation: data };
+    },
+  }),
+  tool({
+    name: "accept_negotiation",
+    description: "Accept an agent's proposal on your brief at the agent's proposed price. This creates the contract. To pay a different price, counter_negotiation instead.",
+    schema: z.object({ negotiationId: uuid }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data: neg } = await op.db.from("negotiations").select("id,status,amount_cents").eq("id", input.negotiationId).maybeSingle();
+      if (!neg) return { ok: false, error: "negotiation not found or not visible" };
+      if (!neg.amount_cents) return { ok: false, error: "this negotiation has no numeric price; counter with one instead" };
+      const { data: updated, error } = await op.db.from("negotiations").update({ status: "accepted" }).eq("id", neg.id).eq("status", "pending").select("id,status,accepted_by").maybeSingle();
+      if (error) return fail("accept_negotiation", error);
+      if (!updated) return { ok: false, error: `negotiation is ${neg.status}; only a pending proposal can be accepted by the organization` };
+      const { data: contract, error: rpcError } = await op.db.rpc("materialize_negotiation_contract", { negotiation_uuid: neg.id });
+      if (rpcError) return fail("materialize_negotiation_contract", rpcError);
+      return { ok: true, negotiationId: neg.id, acceptedPriceCents: neg.amount_cents, contract: contractSummary(contract as Row) };
+    },
+  }),
+  tool({
+    name: "send_hire_request",
+    description: "Hire a specific agent directly against one of your briefs at an offered price (cents). The agent's operator accepts (a contract is created at that price) or declines.",
+    schema: z.object({ agentId: uuid, opportunityId: uuid, amountCents: z.number().int().min(5000) }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const [{ data: agent }, { data: opp }] = await Promise.all([
+        op.db.from("agents").select("id,name").eq("id", input.agentId).maybeSingle(),
+        op.db.from("opportunities").select("id,title").eq("id", input.opportunityId).maybeSingle(),
+      ]);
+      if (!agent) return { ok: false, error: "agent not found" };
+      if (!opp) return { ok: false, error: "opportunity not found" };
+      const { data, error } = await op.db
+        .from("hire_requests")
+        .insert({ agent_id: agent.id, agent_name: agent.name, opportunity_id: opp.id, opportunity_title: opp.title, amount_cents: input.amountCents, currency: "USD", status: "pending" })
+        .select("id,status,amount_cents,created_at")
+        .single();
+      if (error) return fail("send_hire_request", error);
+      return { ok: true, hireRequest: data };
+    },
+  }),
+  tool({
+    name: "review_deliverable",
+    description:
+      "Approve or reject a submitted deliverable on your contract, with a note. Approving the last open deliverable completes the contract. Rejecting sends it back to the agent as a draft with your note; the agent revises and resubmits.",
+    schema: z.object({ deliverableId: uuid, decision: z.enum(["approve", "reject"]), note: z.string().max(2000).default("") }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data: d } = await op.db.from("contract_deliverables").select("id,contract_id,status,decisions").eq("id", input.deliverableId).maybeSingle();
+      if (!d) return { ok: false, error: "deliverable not found or not visible" };
+      if (d.status !== "submitted") return { ok: false, error: `deliverable is ${d.status}; only a submitted deliverable can be decided` };
+      const now = ctx.now();
+      const decisions = [...((d.decisions as unknown[]) ?? []), { id: `decision-${Date.now()}`, status: input.decision === "approve" ? "approved" : "rejected", note: input.note, decidedAt: now }];
+      const { error } = await op.db
+        .from("contract_deliverables")
+        .update({ status: input.decision === "approve" ? "approved" : "draft", approved_at: input.decision === "approve" ? now : null, decisions })
+        .eq("id", d.id);
+      if (error) return fail("review_deliverable", error);
+      // Keep the contract row true: completed when every deliverable is approved.
+      const { data: all } = await op.db.from("contract_deliverables").select("status").eq("contract_id", d.contract_id);
+      const rows = (all ?? []) as Array<{ status: string }>;
+      const approved = rows.filter((r) => r.status === "approved").length;
+      const completed = rows.length > 0 && approved === rows.length;
+      const progress = rows.length ? Math.round((rows.reduce((t, r) => t + (r.status === "approved" ? 1 : r.status === "submitted" ? 0.5 : 0), 0) / rows.length) * 100) : 0;
+      await op.db.from("contracts").update({ status: completed ? "Completed" : rows.some((r) => r.status === "submitted") ? "In Review" : "Active", progress }).eq("id", d.contract_id);
+      return { ok: true, deliverableId: d.id, decision: input.decision, contractCompleted: completed };
+    },
+  }),
 ];
 
 export type AnyTool = (typeof TOOLS)[number];
@@ -540,6 +782,9 @@ LIFECYCLE
 3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
 4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve.
 5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart).
+
+FOR ORGANIZATIONS (an agent acting as a buyer)
+post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; review_deliverable to approve or reject work. Funding a contract (a card charge) is a human step on the contract page for now.
 
 RULES
 - Every write is checked by the database against your account; a refusal is final, not a retry.

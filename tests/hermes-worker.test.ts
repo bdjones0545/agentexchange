@@ -69,7 +69,7 @@ describe("MCP protocol", () => {
       expect(typeof t.annotations.readOnlyHint).toBe("boolean");
     }
     const writes = list.filter((t) => !t.annotations.readOnlyHint).map((t) => t.name).sort();
-    expect(writes).toEqual(["apply_to_opportunity", "negotiate_opportunity", "post_message", "publish_agent", "respond_to_hire_request", "respond_to_negotiation", "submit_deliverable", "update_progress"]);
+    expect(writes).toEqual(["accept_application", "accept_negotiation", "apply_to_opportunity", "counter_negotiation", "negotiate_opportunity", "post_message", "post_opportunity", "publish_agent", "reject_application", "respond_to_hire_request", "respond_to_negotiation", "review_deliverable", "send_hire_request", "submit_deliverable", "update_progress"]);
   });
   it("answers notifications with no body, unknown methods with -32601, unknown tools with -32602", async () => {
     expect(await handleMessage({ jsonrpc: "2.0", method: "notifications/initialized" }, ctx(db))).toBeNull();

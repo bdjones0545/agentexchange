@@ -107,3 +107,59 @@ describe("supply-side tools", () => {
     expect(g.guide).toMatch(/submit_deliverable/);
   });
 });
+
+describe("demand-side tools (an agent acting for an organization)", () => {
+  const ORG_PROFILE = "22222222-2222-4222-8222-222222222222";
+  const orgCtx = (db: ReturnType<typeof fakeDb>): ToolContext => ({ open: async () => ({ db, profileId: ORG_PROFILE }), worker: "agent:buyer", now: () => "2026-09-18T00:00:00.000Z" });
+
+  it("post_opportunity reuses an organization of the same name and formats the budget", async () => {
+    const db = fakeDb({ tables: { organizations: [{ id: "org-1", owner_id: ORG_PROFILE, name: "Acme" }], opportunities: [] } });
+    const r = (await tool("post_opportunity").run({ organization: "Acme", title: "Competitive scan", category: "Research", budgetMinCents: 40000, budgetMaxCents: 80000, duration: "3 days", requiredSkills: ["research"], description: "Profile three competitors in the youth strength market.", successCriteria: "One table, one recommendation." }, orgCtx(db))) as { ok: boolean; opportunity: { organization_id: string; budget_range: string } };
+    expect(r.ok).toBe(true);
+    expect(r.opportunity.organization_id).toBe("org-1");
+    expect(r.opportunity.budget_range).toBe("$400 - $800");
+    const { data: orgs } = await db.from("organizations").select("*");
+    expect(orgs).toHaveLength(1);
+  });
+
+  it("accept_application creates the contract at the stated price and marks the application accepted", async () => {
+    const db = fakeDb({ tables: {
+      applications: [{ id: "aaaa0000-0000-4000-8000-000000000011", opportunity_id: OPP, agent_id: AGENT, agent_name: "Scout", status: "pending" }],
+      opportunities: [{ id: OPP, title: "Market memo", organization_id: "org-1", organization_name: "Acme", budget_range: "$400 - $800" }],
+      contracts: [],
+    } });
+    const r = (await tool("accept_application").run({ applicationId: "aaaa0000-0000-4000-8000-000000000011", amountCents: 60000 }, orgCtx(db))) as { ok: boolean; contract: { amountCents: number; sourceType: string } };
+    expect(r.ok).toBe(true);
+    expect(r.contract).toMatchObject({ amountCents: 60000, sourceType: "application" });
+    const { data: apps } = await db.from("applications").select("*");
+    expect((apps as Array<{ status: string }>)[0].status).toBe("accepted");
+    const again = (await tool("accept_application").run({ applicationId: "aaaa0000-0000-4000-8000-000000000011", amountCents: 60000 }, orgCtx(db))) as { ok: boolean; error: string };
+    expect(again.ok).toBe(false);
+    expect(again.error).toMatch(/is accepted/);
+  });
+
+  it("counter then the agent accepts; accept_negotiation only takes a pending proposal", async () => {
+    let rpc: unknown = null;
+    const db = fakeDb({ tables: { negotiations: [{ id: "aaaa0000-0000-4000-8000-000000000021", opportunity_id: OPP, agent_id: AGENT, status: "pending", amount_cents: 60000 }] }, rpc: (name, args) => { rpc = [name, args]; return { data: { id: "c1", title: "Market memo", status: "Active", amount_cents: 60000 }, error: null }; } });
+    const countered = (await tool("counter_negotiation").run({ negotiationId: "aaaa0000-0000-4000-8000-000000000021", counterAmountCents: 45000, note: "budget" }, orgCtx(db))) as { ok: boolean; negotiation: { status: string; counter_amount_cents: number } };
+    expect(countered.negotiation).toMatchObject({ status: "countered", counter_amount_cents: 45000 });
+    const orgAccept = (await tool("accept_negotiation").run({ negotiationId: "aaaa0000-0000-4000-8000-000000000021" }, orgCtx(db))) as { ok: boolean; error: string };
+    expect(orgAccept.ok).toBe(false);
+    expect(orgAccept.error).toMatch(/only a pending proposal/);
+    expect(rpc).toBeNull();
+  });
+
+  it("review_deliverable approves, appends the decision, and completes the contract when all are approved", async () => {
+    const db = fakeDb({ tables: {
+      contract_deliverables: [{ id: "aaaa0000-0000-4000-8000-000000000031", contract_id: "c1", status: "submitted", decisions: [] }],
+      contracts: [{ id: "c1", status: "In Review", progress: 90 }],
+    } });
+    const r = (await tool("review_deliverable").run({ deliverableId: "aaaa0000-0000-4000-8000-000000000031", decision: "approve", note: "Good." }, orgCtx(db))) as { ok: boolean; contractCompleted: boolean };
+    expect(r).toMatchObject({ ok: true, contractCompleted: true });
+    const { data: c } = await db.from("contracts").select("*");
+    expect((c as Array<{ status: string; progress: number }>)[0]).toMatchObject({ status: "Completed", progress: 100 });
+    const { data: d } = await db.from("contract_deliverables").select("*");
+    expect((d as Array<{ status: string; decisions: unknown[] }>)[0]).toMatchObject({ status: "approved" });
+    expect((d as Array<{ decisions: Array<{ status: string; note: string }> }>)[0].decisions[0]).toMatchObject({ status: "approved", note: "Good." });
+  });
+});
