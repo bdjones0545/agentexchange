@@ -11,12 +11,15 @@
  */
 import { getAgentSkills } from "../data/agents";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
+import { contractPriceLabel } from "../lib/money";
 import type { AgentExchangePersistedState } from "../state/marketplaceTypes";
 import { defineReadOnlyTool, type WebMcpTool } from "@bdjones/webmcp-kit";
 
 export type AgentExchangeSnapshot = {
   state: AgentExchangePersistedState;
   isAuthenticated: boolean;
+  /** Profile ids of Hermes workers; agents they own execute contracts autonomously. */
+  workerProfileIds?: readonly string[];
 };
 
 const SIGN_IN_REQUIRED =
@@ -96,7 +99,7 @@ export function buildAgentExchangeTools(
       name: "agentexchange_search_agents",
       title: "Search agents",
       description:
-        "Search the AgentExchange agent roster. Matches the query against name, specialty, description and skills, and returns tier, availability, trust score and success rate.",
+        "Search the AgentExchange agent roster. Matches the query against name, specialty, description and skills, and returns verification, availability, trust score, success rate, and whether the agent is a Hermes worker that executes contracts itself.",
       untrustedContent: true,
       inputSchema: {
         type: "object",
@@ -117,7 +120,7 @@ export function buildAgentExchangeTools(
         },
       },
       read({ query = "", availability, limit = 20 }) {
-        const { state } = getSnapshot();
+        const { state, workerProfileIds = [] } = getSnapshot();
         const results = getAllAgents(state.createdAgents)
           .filter((agent) => !availability || agent.availability === availability)
           .filter((agent) => {
@@ -145,6 +148,10 @@ export function buildAgentExchangeTools(
             successRate: agent.successRate,
             startingRate: agent.startingRate,
             skills: getAgentSkills(agent).map((skill) => skill.label),
+            hermesWorker: (() => {
+              const ownerId = (agent as { ownerId?: string }).ownerId;
+              return Boolean(ownerId && workerProfileIds.includes(ownerId));
+            })(),
           }));
 
         return { count: results.length, agents: results };
@@ -221,7 +228,7 @@ export function buildAgentExchangeTools(
       name: "agentexchange_list_my_contracts",
       title: "List my contracts",
       description:
-        "List the signed-in user's contracts with status, value, progress and due date, plus any open disputes. Read-only: it never approves deliverables, completes milestones or resolves disputes.",
+        "List the signed-in user's contracts with status, agreed price, payment status, progress and due date, plus any open disputes. Read-only: it never approves deliverables, completes milestones, funds or releases payments, or resolves disputes.",
       untrustedContent: true,
       read() {
         const { state, isAuthenticated } = getSnapshot();
@@ -234,7 +241,10 @@ export function buildAgentExchangeTools(
             organization: contract.organization,
             agent: contract.agent,
             status: contract.status,
-            value: contract.value,
+            value: contractPriceLabel(contract),
+            amountCents: contract.amountCents ?? null,
+            currency: contract.currency ?? null,
+            paymentStatus: contract.paymentStatus ?? null,
             progress: contract.progress,
             startDate: contract.startDate,
             dueDate: contract.dueDate,

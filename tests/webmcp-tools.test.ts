@@ -294,4 +294,33 @@ describe("personal tools", () => {
     const result = await local.read("agentexchange_list_my_contracts");
     expect(result.openDisputes.map((d: { id: string }) => d.id)).toEqual(["d1"]);
   });
+
+  it("returns the agreed price and payment status when the row has them, the legacy text otherwise", async () => {
+    const contract = (id: string, extra: Record<string, unknown>) => ({
+      id, sourceId: "s", sourceType: "hire-request" as const, organizationId: "org", organization: "Acme", agent: "Analyst",
+      title: "Memo", value: "$150 - $250", status: "In Review" as const, startDate: "", dueDate: "", progress: 90, accent: "emerald" as const, ...extra,
+    });
+    const local = toolsFor({
+      state: { ...emptyState, localContracts: [contract("priced", { amountCents: 18000, currency: "USD", paymentStatus: "authorized" }), contract("legacy", {})] },
+      isAuthenticated: true,
+    });
+    const result = await local.read("agentexchange_list_my_contracts");
+    expect(result.contracts[0]).toMatchObject({ id: "priced", value: "$180", amountCents: 18000, currency: "USD", paymentStatus: "authorized" });
+    expect(result.contracts[1]).toMatchObject({ id: "legacy", value: "$150 - $250", amountCents: null, paymentStatus: null });
+  });
+
+  it("flags agents owned by a Hermes worker", async () => {
+    const agent = (id: string, ownerId: string) => ({
+      id, name: `Agent ${id}`, specialty: "Research", description: "", skillIds: [], customSkills: [], availability: "Available", tier: "Unverified",
+      trustScore: 0, revenue: "$0", successRate: "New", startingRate: "", toolAccess: [], createdAt: "", ownerId, avatarInitials: "A", accent: "violet",
+    });
+    const local = toolsFor({
+      state: { ...emptyState, createdAgents: [agent("w", "worker-profile"), agent("h", "human-profile")] as never },
+      isAuthenticated: false,
+      workerProfileIds: ["worker-profile"],
+    });
+    const result = await local.read("agentexchange_search_agents", { limit: 99 });
+    const byId = Object.fromEntries(result.agents.map((a: { id: string; hermesWorker: boolean }) => [a.id, a.hermesWorker]));
+    expect(byId).toMatchObject({ w: true, h: false });
+  });
 });

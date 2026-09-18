@@ -20,6 +20,7 @@ export function AppShell() {
     useMemo(
       () => ({
         isAuthenticated,
+        workerProfileIds: exchange.workers.map((worker) => worker.profileId).filter((id): id is string => Boolean(id)),
         state: {
           agentActivities: exchange.agentActivities,
           agentReviews: exchange.agentReviews,
