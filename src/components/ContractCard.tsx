@@ -54,36 +54,36 @@ export function ContractCard({ contract }: ContractCardProps) {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Agent
           </p>
           <p className="mt-2 font-semibold text-ae-text">{contract.agent}</p>
           {agent && verificationStatus ? (
             <div className="mt-2 flex flex-wrap gap-2">
               <VerificationBadge status={verificationStatus} />
-              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
                 {getAgentRatingLabel(agent, agentReviews)}
               </span>
-              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
                 {getAgentCompletedContracts(agent, allContracts).length} done
               </span>
             </div>
           ) : null}
         </div>
         <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Contract Value
           </p>
           <p className="mt-2 font-semibold text-ae-text">{contract.value}</p>
         </div>
         <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Start Date
           </p>
           <p className="mt-2 font-semibold text-ae-text">{contract.startDate}</p>
         </div>
         <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Due Date
           </p>
           <p className="mt-2 font-semibold text-ae-text">{contract.dueDate}</p>

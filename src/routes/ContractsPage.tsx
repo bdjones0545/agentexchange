@@ -18,12 +18,12 @@ const sections: { title: string; status: ContractStatus; description: string }[]
     {
       title: "Pending Approval",
       status: "Pending Approval",
-      description: "Contracts awaiting organization approval or final signoff.",
+      description: "Waiting on a final decision.",
     },
     {
       title: "Completed Contracts",
       status: "Completed",
-      description: "Settled work retained here as static mock history.",
+      description: "Approved and closed.",
     },
   ];
 

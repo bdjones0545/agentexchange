@@ -33,7 +33,7 @@ export function ProfileStats({
           className="rounded-ae-md border border-white/[0.07] bg-white/[0.04] p-4 text-center"
           key={stat.label}
         >
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             {stat.label}
           </p>
           <p className="mt-2 font-ae-display text-xl font-semibold text-ae-text">

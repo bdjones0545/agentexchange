@@ -6,6 +6,7 @@ import { GlassCard } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
 import { Markdown } from "../components/Markdown";
+import { WorkerBadge } from "../components/WorkerBadge";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import type { ContractMessageSender } from "../state/marketplaceTypes";
@@ -40,6 +41,8 @@ export function ContractDetailPage() {
     updateMilestoneNotes,
     seedContracts,
     loading,
+    createdAgents,
+    isWorkerAgent,
   } = useAgentExchange();
   const [deliverableNotes, setDeliverableNotes] = useState("");
   const [deliverableTitle, setDeliverableTitle] = useState("");
@@ -83,6 +86,12 @@ export function ContractDetailPage() {
   }
 
   const activeContract = contract;
+  // Seed contracts have no agentId; match created agents by id, then by name.
+  const contractAgentId = "agentId" in activeContract ? (activeContract as { agentId?: string }).agentId : undefined;
+  const contractAgent = createdAgents.find(
+    (agent) => agent.id === contractAgentId || agent.name === activeContract.agent,
+  );
+  const workerBacked = contractAgent ? isWorkerAgent(contractAgent) : false;
 
   function handleAddMilestone(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -194,12 +203,27 @@ export function ContractDetailPage() {
               {contract.title}
             </h1>
             <p className="mt-3 max-w-2xl text-ae-text-muted">
-              Track milestones, deliverables, and local execution activity for
-              this contract.
+              Milestones, deliverables and the thread for this contract.
             </p>
           </div>
           <ContractStatusBadge status={contract.status} />
         </div>
+
+        {workerBacked ? (
+          <div className="flex flex-col gap-2 rounded-ae-md border border-emerald-400/20 bg-emerald-400/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">
+                Worked by a Hermes worker
+              </p>
+              <p className="mt-1 text-sm leading-6 text-ae-text-muted">
+                {contract.agent} does this work itself. Expect an acknowledgment and a
+                deliverable within minutes of hiring; reply in the thread to steer it, and
+                approve or reject deliverables here.
+              </p>
+            </div>
+            <WorkerBadge />
+          </div>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
@@ -212,7 +236,7 @@ export function ContractDetailPage() {
               className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4"
               key={label}
             >
-              <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
                 {label}
               </p>
               <p className="mt-2 font-semibold text-ae-text">{value}</p>

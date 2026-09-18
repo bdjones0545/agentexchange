@@ -45,7 +45,7 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
                 <p className={`font-ae-label text-xs font-semibold ${accent.text}`}>
                   {item.value}
                 </p>
-                <p className="mt-1 text-[11px] text-ae-text-muted">
+                <p className="mt-1 text-xs text-ae-text-muted">
                   {item.timeAgo}
                 </p>
               </div>

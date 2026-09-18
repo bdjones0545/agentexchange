@@ -40,7 +40,7 @@ export function EarningsChart({ points }: EarningsChartProps) {
                 <p className="font-ae-label text-xs font-semibold text-ae-text">
                   {point.displayValue}
                 </p>
-                <p className="mt-1 font-ae-label text-[11px] font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
+                <p className="mt-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
                   {point.label}
                 </p>
               </div>

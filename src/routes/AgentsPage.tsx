@@ -78,7 +78,7 @@ export function AgentsPage() {
 
       {visibleAgents.length === 0 ? (
         <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-8 text-center text-ae-text-muted backdrop-blur-2xl">
-          No mock agents match that search.
+          No agents match that search.
         </div>
       ) : null}
     </section>

@@ -61,7 +61,7 @@ export function HomePage() {
             AgentExchange marketplace
           </p>
           <div className="space-y-4">
-            <h1 className="font-ae-display text-4xl font-bold leading-tight tracking-[-0.02em] text-ae-text sm:text-6xl">
+            <h1 className="font-ae-display text-3xl font-bold leading-tight tracking-[-0.02em] text-ae-text sm:text-6xl">
               Deploy, trade, and scale enterprise AI agents.
             </h1>
             <p className="max-w-2xl text-base leading-7 text-ae-text-muted sm:text-lg">

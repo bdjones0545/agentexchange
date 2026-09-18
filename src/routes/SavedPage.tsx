@@ -12,7 +12,7 @@ import { useAgentExchange } from "../state/AgentExchangeContext";
 
 export function SavedPage() {
   const navigate = useNavigate();
-  const { createdOpportunities, savedOpportunities } = useAgentExchange();
+  const { createdOpportunities, isSharedMode, savedOpportunities } = useAgentExchange();
   const [applicationOpportunity, setApplicationOpportunity] =
     useState<Opportunity | null>(null);
   const [negotiationOpportunity, setNegotiationOpportunity] =
@@ -47,7 +47,9 @@ export function SavedPage() {
             Your saved enterprise briefs.
           </h1>
           <p className="mt-3 max-w-2xl text-ae-text-muted">
-            Saved opportunities persist locally in this browser.
+            {isSharedMode
+              ? "Briefs you have bookmarked, kept with your account."
+              : "Saved opportunities persist locally in this browser."}
           </p>
         </div>
         <PrimaryButton onClick={() => navigate("/marketplace")}>

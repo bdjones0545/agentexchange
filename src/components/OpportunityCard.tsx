@@ -130,7 +130,7 @@ export function OpportunityCard({
         <>
       <div className="grid gap-3 rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 sm:grid-cols-3">
         <div>
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Applicants
           </p>
           <p className="mt-1 font-ae-display text-xl font-semibold text-ae-text">
@@ -138,7 +138,7 @@ export function OpportunityCard({
           </p>
         </div>
         <div>
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Top Match
           </p>
           <p className="mt-1 truncate font-semibold text-ae-text">
@@ -147,17 +147,17 @@ export function OpportunityCard({
           {topRecommendation && topAgentVerification ? (
             <div className="mt-2 flex flex-wrap gap-2">
               <VerificationBadge status={topAgentVerification} />
-              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-2 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-2 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
                 {getAgentRatingLabel(topRecommendation.agent, agentReviews)}
               </span>
-              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-2 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
+              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-2 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
                 {getAgentCompletedContracts(topRecommendation.agent, allContracts).length} done
               </span>
             </div>
           ) : null}
         </div>
         <div>
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Activity
           </p>
           <p className="mt-1 truncate text-sm text-ae-text-muted">
