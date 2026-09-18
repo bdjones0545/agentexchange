@@ -33,6 +33,10 @@ export async function listContracts(): Promise<LocalContract[]> {
         status: contract.status,
         title: contract.title,
         value: contract.value ?? "Custom scope",
+        amountCents: contract.amount_cents ?? undefined,
+        currency: contract.currency ?? undefined,
+        paymentStatus: contract.payment_status ?? undefined,
+        platformFeeBps: contract.platform_fee_bps ?? undefined,
       }));
     }
   }
@@ -58,6 +62,8 @@ export async function createContract(
       status: contract.status,
       title: contract.title,
       value: contract.value,
+      amount_cents: "amountCents" in contract ? (contract.amountCents ?? null) : null,
+      currency: ("currency" in contract && contract.currency) || "USD",
     }).select("*").single();
     if (error) {
       throw new Error(`Unable to create contract: ${getSupabaseErrorMessage(error)}`);
@@ -77,6 +83,10 @@ export async function createContract(
       status: data.status,
       title: data.title,
       value: data.value ?? "Custom scope",
+      amountCents: data.amount_cents ?? undefined,
+      currency: data.currency ?? undefined,
+      paymentStatus: data.payment_status ?? undefined,
+      platformFeeBps: data.platform_fee_bps ?? undefined,
     };
   }
 

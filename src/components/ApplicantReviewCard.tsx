@@ -1,7 +1,10 @@
 import { useState } from "react";
 
+import { centsToDollarsInput, dollarsInputToCents, parseMoneyToCents } from "../lib/money";
+import { getAllOpportunities } from "../data/localSelectors";
 import type { Application, Negotiation } from "../state/marketplaceTypes";
 import { useAgentExchange } from "../state/AgentExchangeContext";
+import { AgreedPriceField } from "./AgreedPriceField";
 import { ApplicationStatusBadge } from "./ApplicationStatusBadge";
 import { GlassCard } from "./GlassCard";
 import { PrimaryButton } from "./PrimaryButton";
@@ -26,12 +29,25 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
     canManageApplication,
     canManageNegotiation,
     counterNegotiation,
+    createdOpportunities,
+    isSharedMode,
     rejectApplication,
     rejectNegotiation,
   } = useAgentExchange();
   const [counterNote, setCounterNote] = useState("");
   const [counterRate, setCounterRate] = useState("");
   const [counterTimeline, setCounterTimeline] = useState("");
+  // The price the organization confirms on accept. Suggested from the brief's
+  // budget (application) or the negotiated rate; editable until accepted.
+  const opportunityId = props.type === "application" ? props.application.opportunityId : props.negotiation.opportunityId;
+  const opportunity = getAllOpportunities(createdOpportunities).find((candidate) => candidate.id === opportunityId);
+  const suggestedCents =
+    props.type === "negotiation"
+      ? parseMoneyToCents(props.negotiation.counterRate ?? props.negotiation.rate) ?? parseMoneyToCents(opportunity?.budget)
+      : parseMoneyToCents(opportunity?.budget);
+  const [amountInput, setAmountInput] = useState(() => (suggestedCents ? centsToDollarsInput(suggestedCents) : ""));
+  const amountCents = dollarsInputToCents(amountInput);
+  const priceMissing = isSharedMode && amountCents === null;
 
   if (props.type === "application") {
     const { application } = props;
@@ -57,13 +73,21 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
         </p>
         {application.status === "pending" ? (
           canManageApplication(application) ? (
+            <div className="space-y-3">
+            <AgreedPriceField
+              amountCents={amountCents}
+              hint={opportunity?.budget ? `Suggested from the brief's budget (${opportunity.budget}).` : undefined}
+              onChange={setAmountInput}
+              value={amountInput}
+            />
             <div className="flex flex-col gap-2 sm:flex-row">
-              <PrimaryButton onClick={() => acceptApplication(application.id)}>
+              <PrimaryButton disabled={priceMissing} onClick={() => acceptApplication(application.id, amountCents ?? undefined)}>
                 Accept
               </PrimaryButton>
               <SecondaryButton onClick={() => rejectApplication(application.id)}>
                 Reject
               </SecondaryButton>
+            </div>
             </div>
           ) : (
             <p className="text-xs text-ae-text-muted">
@@ -150,8 +174,14 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
               value={counterNote}
             />
           </div>
+          <AgreedPriceField
+            amountCents={amountCents}
+            hint={`Suggested from the ${negotiation.counterRate ? "counter rate" : "proposed rate"} (${negotiation.counterRate ?? negotiation.rate}).`}
+            onChange={setAmountInput}
+            value={amountInput}
+          />
           <div className="flex flex-col gap-2 sm:flex-row">
-            <PrimaryButton onClick={() => acceptNegotiation(negotiation.id)}>
+            <PrimaryButton disabled={priceMissing} onClick={() => acceptNegotiation(negotiation.id, amountCents ?? undefined)}>
               Accept
             </PrimaryButton>
             <SecondaryButton onClick={() => rejectNegotiation(negotiation.id)}>

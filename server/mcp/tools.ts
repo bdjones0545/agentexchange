@@ -67,6 +67,9 @@ function contractSummary(c: Row) {
     dueDate: c.due_date,
     sourceType: c.source_type,
     createdAt: c.created_at,
+    amountCents: c.amount_cents,
+    currency: c.currency,
+    paymentStatus: c.payment_status,
   };
 }
 
@@ -134,7 +137,7 @@ export const TOOLS = [
   tool({
     name: "list_hire_requests",
     description:
-      "Hire requests organizations have sent to this worker's agents. Pending ones need a decision via respond_to_hire_request.",
+      "Hire requests organizations have sent to this worker's agents, with the offered price (offeredAmountCents; accepting is accepting that price). Pending ones need a decision via respond_to_hire_request.",
     schema: z.object({
       status: z.enum(["pending", "accepted", "rejected", "all"]).default("pending"),
     }),
@@ -146,7 +149,7 @@ export const TOOLS = [
       if (ids.length === 0) return { ok: true, hireRequests: [] };
       let q = op.db
         .from("hire_requests")
-        .select("id,agent_id,agent_name,opportunity_id,opportunity_title,quick_job_title,status,created_at")
+        .select("id,agent_id,agent_name,opportunity_id,opportunity_title,quick_job_title,status,created_at,amount_cents,currency")
         .in("agent_id", ids)
         .order("created_at", { ascending: false });
       if (input.status !== "all") q = q.eq("status", input.status);
@@ -171,6 +174,8 @@ export const TOOLS = [
           agentName: r.agent_name,
           title: r.quick_job_title || r.opportunity_title,
           createdAt: r.created_at,
+          offeredAmountCents: r.amount_cents,
+          currency: r.currency,
           opportunity: r.opportunity_id ? (opportunities.get(r.opportunity_id as string) ?? null) : null,
         })),
       };

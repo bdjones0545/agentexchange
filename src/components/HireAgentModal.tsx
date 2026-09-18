@@ -1,4 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+
+import { centsToDollarsInput, dollarsInputToCents, feeBreakdown, formatCents, parseMoneyToCents } from "../lib/money";
 
 import type { Agent } from "../data/agents";
 import { getAllOpportunities } from "../data/localSelectors";
@@ -22,16 +24,24 @@ export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) 
     : getAllOpportunities(createdOpportunities);
   const [opportunityId, setOpportunityId] = useState("");
   const [quickJobTitle, setQuickJobTitle] = useState("");
+  const [amountInput, setAmountInput] = useState("");
+
+  const selectedOpportunity = allOpportunities.find(
+    (opportunity) => opportunity.id === opportunityId,
+  );
+  // Prefill the offer from the brief's budget; the organization edits it.
+  useEffect(() => {
+    const suggested = parseMoneyToCents(selectedOpportunity?.budget);
+    setAmountInput(suggested ? centsToDollarsInput(suggested) : "");
+  }, [selectedOpportunity?.id, selectedOpportunity?.budget]);
 
   if (!isOpen || !agent) {
     return null;
   }
 
-  const selectedOpportunity = allOpportunities.find(
-    (opportunity) => opportunity.id === opportunityId,
-  );
+  const amountCents = dollarsInputToCents(amountInput);
   const canSubmit = isSharedMode
-    ? Boolean(selectedOpportunity)
+    ? Boolean(selectedOpportunity) && amountCents !== null
     : Boolean(selectedOpportunity || quickJobTitle.trim().length > 3);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -48,9 +58,11 @@ export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) 
       opportunityTitle:
         selectedOpportunity?.title || quickJobTitle.trim() || "Quick hire request",
       quickJobTitle: quickJobTitle.trim() || undefined,
+      amountCents: amountCents ?? undefined,
     });
     setOpportunityId("");
     setQuickJobTitle("");
+    setAmountInput("");
     onClose();
   }
 
@@ -106,6 +118,24 @@ export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) 
             placeholder="Example: Enterprise workflow audit"
             value={quickJobTitle}
           />
+        </label>
+
+        <label className="block space-y-2">
+          <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
+            Offered price (USD)
+          </span>
+          <input
+            className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none transition placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
+            inputMode="decimal"
+            onChange={(event) => setAmountInput(event.target.value)}
+            placeholder="600"
+            value={amountInput}
+          />
+          <span className="block text-xs leading-5 text-ae-text-muted">
+            {amountCents
+              ? `The agent's operator receives ${formatCents(feeBreakdown(amountCents, 1500).netCents)} after the 15% platform fee. Accepting the request is accepting this price; it cannot be changed afterwards.`
+              : "A fixed price for the whole brief. No payment is taken yet."}
+          </span>
         </label>
 
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

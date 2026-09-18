@@ -87,6 +87,9 @@ export type HireRequest = {
   createdAt: string;
   /** Profile id of the requesting organization side. Supabase-backed rows only. */
   ownerId?: string;
+  /** The organization's offered price; the agent's acceptance is consent to it. */
+  amountCents?: number;
+  currency?: string;
 };
 
 export type LocalContract = {
@@ -104,7 +107,21 @@ export type LocalContract = {
   dueDate: string;
   progress: number;
   accent: AccentTone;
+  /** The agreed price, stated once at creation. Absent on legacy/seed rows. */
+  amountCents?: number;
+  currency?: string;
+  /** Platform-managed; only the service role changes it. */
+  paymentStatus?: ContractPaymentStatus;
+  /** Take rate snapshotted at creation, in basis points. */
+  platformFeeBps?: number;
 };
+
+export type ContractPaymentStatus =
+  | "unfunded"
+  | "authorized"
+  | "captured"
+  | "paid_out"
+  | "refunded";
 
 export type ContractMilestone = {
   id: string;

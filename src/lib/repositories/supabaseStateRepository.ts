@@ -69,6 +69,10 @@ function textArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function number(value: unknown, fallback = 0): number {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -188,6 +192,8 @@ export function mapHireRequestRow(row: Row, opportunities: Map<string, CreatedOp
     ownerId: optionalText(row.owner_id),
     quickJobTitle: optionalText(row.quick_job_title),
     status: (optionalText(row.status) ?? "pending") as HireRequest["status"],
+    amountCents: optionalNumber(row.amount_cents),
+    currency: optionalText(row.currency),
   };
 }
 
@@ -208,6 +214,10 @@ export function mapContractRow(row: Row): LocalContract {
     status: (optionalText(row.status) ?? "Active") as ContractStatus,
     title: text(row.title, "Contract"),
     value: text(row.value, "Custom scope"),
+    amountCents: optionalNumber(row.amount_cents),
+    currency: optionalText(row.currency),
+    paymentStatus: optionalText(row.payment_status) as LocalContract["paymentStatus"],
+    platformFeeBps: optionalNumber(row.platform_fee_bps),
   };
 }
 

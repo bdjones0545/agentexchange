@@ -1,3 +1,4 @@
+import { contractPriceLabel } from "../lib/money";
 import { useMemo, useState, type FormEvent } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
@@ -229,7 +230,7 @@ export function ContractDetailPage() {
           {[
             ["Organization", contract.organization],
             ["Assigned Agent", contract.agent],
-            ["Value", contract.value],
+            ["Agreed price", contractPriceLabel(contract)],
             ["Due Date", contract.dueDate],
           ].map(([label, value]) => (
             <div

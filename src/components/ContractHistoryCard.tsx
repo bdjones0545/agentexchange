@@ -1,3 +1,4 @@
+import { contractPriceLabel } from "../lib/money";
 import type { ContractHistory } from "../data/agents";
 import { accentStyles } from "./accentStyles";
 import { GlassCard } from "./GlassCard";
@@ -30,7 +31,7 @@ export function ContractHistoryCard({ contract }: ContractHistoryCardProps) {
           {contract.date}
         </p>
         <p className="font-ae-display text-lg font-semibold text-ae-text">
-          {contract.value}
+          {contractPriceLabel(contract)}
         </p>
       </div>
     </GlassCard>

@@ -104,6 +104,8 @@ type SubmitHireRequestInput = {
   opportunityId?: string;
   opportunityTitle: string;
   quickJobTitle?: string;
+  /** The organization's offered price in cents. Required in shared mode. */
+  amountCents?: number;
 };
 
 type AgentExchangeContextValue = PersistedState & {
@@ -126,9 +128,10 @@ type AgentExchangeContextValue = PersistedState & {
     review: string,
   ) => void;
   toast: LocalActionToastState | null;
-  acceptApplication: (applicationId: string) => void;
+  /** `amountCents` is the agreed price; required in shared mode. */
+  acceptApplication: (applicationId: string, amountCents?: number) => void;
   acceptHireRequest: (hireRequestId: string) => void;
-  acceptNegotiation: (negotiationId: string) => void;
+  acceptNegotiation: (negotiationId: string, amountCents?: number) => void;
   approveSuggestedAgentAction: (action: SuggestedAgentAction) => void;
   clearToast: () => void;
   createAgent: (input: CreateAgentInput) => Promise<CreatedAgent>;
@@ -1634,6 +1637,10 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           showToast("You can only hire against an opportunity you posted.");
           return;
         }
+        if (!input.amountCents) {
+          showToast("Offer a price for this hire request.");
+          return;
+        }
       }
 
       const draftHireRequest = {
@@ -1641,6 +1648,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         createdAt: new Date().toISOString(),
         status: "pending" as const,
         ...input,
+        currency: input.amountCents ? "USD" : undefined,
       };
       const nextHireRequest = isSupabaseConfigured
         ? await createHireRequestRecord(draftHireRequest)
@@ -1679,7 +1687,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const acceptApplication = useCallback(
-    async (applicationId: string) => {
+    async (applicationId: string, amountCents?: number) => {
       if (!requireAuthForPersistentWrite("accept applications")) {
         return;
       }
@@ -1707,10 +1715,16 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         state,
         application.opportunityId,
       );
+      if (isSupabaseConfigured && !amountCents) {
+        showToast("Set the agreed price before accepting.");
+        return;
+      }
       const draftContract: LocalContract = {
         id: createId("contract"),
         sourceId: application.id,
         sourceType: "application",
+        amountCents,
+        currency: amountCents ? "USD" : undefined,
         organizationId:
           opportunity?.organizationId ??
           opportunity?.organization?.toLowerCase().replace(/\s+/g, "-") ??
@@ -1825,7 +1839,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
   );
 
   const acceptNegotiation = useCallback(
-    async (negotiationId: string) => {
+    async (negotiationId: string, amountCents?: number) => {
       if (!requireAuthForPersistentWrite("accept negotiations")) {
         return;
       }
@@ -1857,10 +1871,16 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
               name: negotiation.agentName,
             }
           : getSimulatedAgentForOpportunity(negotiation.opportunityId);
+      if (isSupabaseConfigured && !amountCents) {
+        showToast("Set the agreed price before accepting.");
+        return;
+      }
       const draftContract: LocalContract = {
         id: createId("contract"),
         sourceId: negotiation.id,
         sourceType: "negotiation",
+        amountCents,
+        currency: amountCents ? "USD" : undefined,
         organizationId:
           opportunity?.organizationId ??
           opportunity?.organization?.toLowerCase().replace(/\s+/g, "-") ??
