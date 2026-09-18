@@ -19,7 +19,8 @@ import {
   getSuggestedAgentActions,
 } from "../data/agentRecommendations";
 import {
-  getAgentAverageRating,
+  getAgentRatingLabel,
+  getAgentDisputes,
   getAgentReviews,
   getTrustBreakdown,
   getVerificationStatus,
@@ -48,6 +49,7 @@ export function AgentProfilePage() {
     negotiations,
     savedOpportunities,
     seedContracts,
+    isSharedMode,
     isWorkerAgent,
   } = useAgentExchange();
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
@@ -94,7 +96,32 @@ export function AgentProfilePage() {
     reviews: agentReviews,
   });
   const reviews = getAgentReviews(agent, agentReviews);
-  const averageRating = getAgentAverageRating(agent, agentReviews);
+  // Shared mode shows only signals that come from real records; demo mode keeps
+  // the illustrative breakdown. A tile with no data behind it is left out
+  // rather than shown at a flattering default.
+  const agentContractCount = allContracts.filter((contract) => contract.agent === agent.name).length;
+  const agentWorkspaceDecisions = contractWorkspaces
+    .filter((workspace) => allContracts.some((contract) => contract.id === workspace.contractId && contract.agent === agent.name))
+    .flatMap((workspace) => workspace.deliverables.flatMap((deliverable) => deliverable.decisions ?? []));
+  const decidedDeliverables = agentWorkspaceDecisions.length;
+  const approvedDeliverables = agentWorkspaceDecisions.filter((decision) => decision.status === "approved").length;
+  const openDisputes = getAgentDisputes(agent, allContracts, contractDisputes).filter((dispute) => dispute.status !== "Resolved").length;
+  const trustTiles: Array<[string, number]> = isSharedMode
+    ? [
+        ...(decidedDeliverables > 0
+          ? [["Deliverable acceptance", Math.round((approvedDeliverables / decidedDeliverables) * 100)] as [string, number]]
+          : []),
+        ...(agentContractCount > 0 ? [["Dispute health", trustBreakdown.disputeRate] as [string, number]] : []),
+        ...(reviews.length > 0 ? [["Client satisfaction", trustBreakdown.clientSatisfaction] as [string, number]] : []),
+      ]
+    : [
+        ["Delivery reliability", trustBreakdown.deliveryReliability],
+        ["Approval rate", trustBreakdown.approvalRate],
+        ["Response speed", trustBreakdown.responseSpeed],
+        ["Client satisfaction", trustBreakdown.clientSatisfaction],
+        ["Dispute health", trustBreakdown.disputeRate],
+        ["Repeat contract rate", trustBreakdown.repeatContractRate],
+      ];
   const dashboardMetrics = getAgentDashboardMetrics(agent, intelligenceInput);
   const recentActivity = agentActivities
     .filter(
@@ -137,9 +164,11 @@ export function AgentProfilePage() {
           ) : null}
 
           <div className="mt-4 flex flex-wrap justify-center gap-2">
-            <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
-              {agent.tier}
-            </span>
+            {isSharedMode ? null : (
+              <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
+                {agent.tier}
+              </span>
+            )}
             <VerificationBadge status={verificationStatus} />
             {isWorkerAgent(agent) ? <WorkerBadge detailed /> : null}
             <StatusChip status={status} />
@@ -148,8 +177,8 @@ export function AgentProfilePage() {
 
         <ProfileStats
           revenue={agent.revenue}
-          successRate={`${reputation.approvalRate}%`}
-          trustScore={reputation.trustScore}
+          successRate={isSharedMode ? agent.successRate : `${reputation.approvalRate}%`}
+          trustScore={isSharedMode ? agent.trustScore : reputation.trustScore}
         />
       </GlassCard>
 
@@ -160,20 +189,18 @@ export function AgentProfilePage() {
               Trust Breakdown
             </p>
             <h2 className="mt-2 font-ae-display text-2xl font-semibold text-ae-text">
-              {averageRating.toFixed(1)} average rating
+              {getAgentRatingLabel(agent, agentReviews)}
             </h2>
           </div>
           <VerificationBadge status={verificationStatus} />
         </div>
+        {trustTiles.length === 0 ? (
+          <p className="text-sm leading-6 text-ae-text-muted">
+            No completed contracts, reviews or disputes yet. Trust signals appear here as organizations work with this agent.
+          </p>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[
-            ["Delivery reliability", trustBreakdown.deliveryReliability],
-            ["Approval rate", trustBreakdown.approvalRate],
-            ["Response speed", trustBreakdown.responseSpeed],
-            ["Client satisfaction", trustBreakdown.clientSatisfaction],
-            ["Dispute health", trustBreakdown.disputeRate],
-            ["Repeat contract rate", trustBreakdown.repeatContractRate],
-          ].map(([label, value]) => (
+          {trustTiles.map(([label, value]) => (
             <div
               className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4"
               key={label}
@@ -195,7 +222,7 @@ export function AgentProfilePage() {
           ["Active Contracts", dashboardMetrics.activeContracts],
           ["Pending Reviews", dashboardMetrics.pendingReviews],
           ["Completed Contracts", dashboardMetrics.completedContracts],
-          ["Trust Trend", reputation.trustScoreTrend],
+          ["Trust Trend", isSharedMode ? "—" : reputation.trustScoreTrend],
         ].map(([label, value]) => (
           <GlassCard className="space-y-2 text-center" key={label}>
             <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
@@ -209,11 +236,18 @@ export function AgentProfilePage() {
       </section>
 
       <GlassCard className="grid gap-4 sm:grid-cols-3">
-        {[
-          ["Contracts Completed", reputation.contractsCompleted],
-          ["Deliverable Acceptance", `${reputation.deliverableAcceptanceRate}%`],
-          ["Response Rate", `${reputation.responseRate}%`],
-        ].map(([label, value]) => (
+        {(isSharedMode
+          ? [
+              ["Contracts Completed", reputation.contractsCompleted],
+              ["Deliverables Approved", `${approvedDeliverables} of ${decidedDeliverables}`],
+              ["Open Disputes", openDisputes],
+            ]
+          : [
+              ["Contracts Completed", reputation.contractsCompleted],
+              ["Deliverable Acceptance", `${reputation.deliverableAcceptanceRate}%`],
+              ["Response Rate", `${reputation.responseRate}%`],
+            ]
+        ).map(([label, value]) => (
           <div key={label}>
             <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
               {label}

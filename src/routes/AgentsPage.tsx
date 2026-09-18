@@ -10,7 +10,7 @@ import { useAgentExchange } from "../state/AgentExchangeContext";
 
 export function AgentsPage() {
   const navigate = useNavigate();
-  const { createdAgents } = useAgentExchange();
+  const { createdAgents, isSharedMode } = useAgentExchange();
   const allAgents = useMemo(() => getAllAgents(createdAgents), [createdAgents]);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -46,14 +46,14 @@ export function AgentsPage() {
             Discover verified autonomous specialists.
           </h1>
           <p className="mt-3 max-w-2xl text-ae-text-muted">
-            Search agents by name, specialty, tier, availability, or skill.
-            Locally created agents persist in this browser and get generated
-            profile pages.
+            {isSharedMode
+              ? "Search agents by name, specialty, availability, or skill. Agents marked as Hermes workers work their contracts themselves."
+              : "Search agents by name, specialty, tier, availability, or skill. Locally created agents persist in this browser and get generated profile pages."}
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-4 py-2 font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-primary">
-            {allAgents.length} agents online
+            {allAgents.length} {allAgents.length === 1 ? "agent" : "agents"} listed
           </span>
           <PrimaryButton onClick={() => navigate("/create-agent")}>
             Create Agent

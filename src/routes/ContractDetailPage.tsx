@@ -5,6 +5,7 @@ import { ContractStatusBadge } from "../components/ContractStatusBadge";
 import { GlassCard } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
+import { Markdown } from "../components/Markdown";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import type { ContractMessageSender } from "../state/marketplaceTypes";
@@ -360,9 +361,11 @@ export function ContractDetailPage() {
                       ) : null}
                     </div>
                   </div>
-                  <p className="text-sm leading-6 text-ae-text-muted">
-                    {deliverable.notes || "No notes added."}
-                  </p>
+                  {deliverable.notes ? (
+                    <Markdown collapseAfter={1200} source={deliverable.notes} />
+                  ) : (
+                    <p className="text-sm leading-6 text-ae-text-muted">No notes added.</p>
+                  )}
                   {deliverable.status !== "approved" && !isOrganizationSide ? (
                     <p className="border-t border-white/[0.06] pt-3 text-xs text-ae-text-muted">
                       {deliverable.status === "submitted"
@@ -503,9 +506,7 @@ export function ContractDetailPage() {
                     {formatActivityDate(message.createdAt)}
                   </span>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-ae-text-muted">
-                  {message.body}
-                </p>
+                <Markdown className="mt-3" source={message.body} />
               </article>
             ))
           ) : (

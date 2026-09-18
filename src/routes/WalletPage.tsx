@@ -93,9 +93,11 @@ export function WalletPage() {
       localTotalRevenue > 0
         ? formatMoney(localTotalRevenue)
         : baseSummary.revenueThisMonth,
+    // Demo mode stacks the user's contracts on top of the seed ledger; shared
+    // mode reports only what the user's own contracts say.
     totalRevenue:
       localTotalRevenue > 0
-        ? formatMoney(1840000 + localTotalRevenue)
+        ? formatMoney((isSharedMode ? 0 : 1840000) + localTotalRevenue)
         : baseSummary.totalRevenue,
   };
   const dynamicRevenueMetrics = revenueMetrics.map((metric) => {

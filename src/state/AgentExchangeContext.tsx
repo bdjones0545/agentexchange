@@ -8,7 +8,12 @@ import {
   type PropsWithChildren,
 } from "react";
 
-import { deriveWorkspaceStatus } from "../data/contractWorkspace";
+import {
+  deriveContractRow,
+  deriveWorkspaceStatus,
+  withDeliverableDecision,
+  withMilestoneToggled,
+} from "../data/contractWorkspace";
 import { agents } from "../data/agents";
 import { contracts as seedContractData } from "../data/operations";
 import type { SuggestedAgentAction } from "../data/agentRecommendations";
@@ -29,6 +34,7 @@ import {
   createDeliverable as createDeliverableRecord,
   createMessage as createMessageRecord,
   createMilestone as createMilestoneRecord,
+  updateContractRow as updateContractRowRecord,
   updateDeliverable as updateDeliverableRecord,
   updateMilestone as updateMilestoneRecord,
 } from "../lib/repositories/contractsRepository";
@@ -437,6 +443,26 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
+  // Shared mode: the contract row is the single source of truth for status and
+  // progress. Every decision that changes the derivation writes it to the row
+  // and mirrors it locally, so the screen, the database and the worker agree.
+  const syncContractRow = useCallback(
+    async (contractId: string, nextWorkspace: ContractWorkspace) => {
+      if (!isSupabaseConfigured || !isUuid(contractId)) {
+        return;
+      }
+      const row = deriveContractRow(nextWorkspace);
+      await updateContractRowRecord(contractId, row);
+      setState((current) => ({
+        ...current,
+        localContracts: current.localContracts.map((contract) =>
+          contract.id === contractId ? { ...contract, ...row } : contract,
+        ),
+      }));
+    },
+    [],
+  );
+
   const isWorkerAgent = useCallback(
     (agent: { id: string; ownerId?: string }) =>
       Boolean(agent.ownerId) &&
@@ -811,6 +837,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         isSupabaseConfigured && isUuid(contractId)
           ? await createMilestoneRecord(contractId, milestone)
           : milestone;
+      const currentWorkspace = state.contractWorkspaces.find(
+        (candidate) => candidate.contractId === contractId,
+      );
+      if (currentWorkspace) {
+        await syncContractRow(contractId, {
+          ...currentWorkspace,
+          milestones: [...currentWorkspace.milestones, persistedMilestone],
+        });
+      }
 
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
@@ -832,7 +867,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       );
       showToast("Milestone added.");
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, showToast, state.contractWorkspaces, syncContractRow],
   );
 
   const toggleMilestoneComplete = useCallback(
@@ -852,6 +887,9 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
           completed: !milestone.completed,
           completedAt: milestone.completed ? undefined : new Date().toISOString(),
         });
+        if (workspace) {
+          await syncContractRow(contractId, withMilestoneToggled(workspace, milestoneId));
+        }
       }
 
       setState((current) =>
@@ -891,7 +929,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       );
       showToast("Milestone updated.");
     },
-    [requireAuthForPersistentWrite, showToast, state.contractWorkspaces],
+    [requireAuthForPersistentWrite, showToast, state.contractWorkspaces, syncContractRow],
   );
 
   const updateMilestoneNotes = useCallback(
@@ -955,6 +993,15 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
         isSupabaseConfigured && isUuid(contractId)
           ? await createDeliverableRecord(contractId, deliverable)
           : deliverable;
+      const currentWorkspace = state.contractWorkspaces.find(
+        (candidate) => candidate.contractId === contractId,
+      );
+      if (currentWorkspace) {
+        await syncContractRow(contractId, {
+          ...currentWorkspace,
+          deliverables: [...currentWorkspace.deliverables, persistedDeliverable],
+        });
+      }
 
       setState((current) =>
         withWorkspace(current, contractId, (workspace) => {
@@ -976,7 +1023,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       );
       showToast("Deliverable added.");
     },
-    [requireAuthForPersistentWrite, showToast],
+    [requireAuthForPersistentWrite, showToast, state.contractWorkspaces, syncContractRow],
   );
 
   const setDeliverableStatus = useCallback(
@@ -1018,6 +1065,9 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
               ? deliverable.submittedAt ?? now
               : deliverable.submittedAt,
         });
+        if (workspace) {
+          await syncContractRow(contractId, withDeliverableDecision(workspace, deliverableId, status));
+        }
         if (status === "approved" || status === "rejected") {
           void notifyWorkers({ event: "deliverable_decision", contractId });
         }
@@ -1135,7 +1185,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
             : "Deliverable submitted.",
       );
     },
-    [requireAuthForPersistentWrite, showToast, state.contractWorkspaces],
+    [requireAuthForPersistentWrite, showToast, state.contractWorkspaces, syncContractRow],
   );
 
   const sendContractMessage = useCallback(

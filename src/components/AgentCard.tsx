@@ -4,7 +4,7 @@ import type { Agent } from "../data/agents";
 import { getAgentSkills } from "../data/agents";
 import { getAgentStatus } from "../data/agentIntelligence";
 import {
-  getAgentAverageRating,
+  getAgentRatingLabel,
   getAgentCompletedContracts,
   getVerificationStatus,
 } from "../data/agentTrust";
@@ -65,7 +65,6 @@ export function AgentCard({ agent }: AgentCardProps) {
     disputes: contractDisputes,
     reviews: agentReviews,
   });
-  const averageRating = getAgentAverageRating(agent, agentReviews);
   const completedContracts = getAgentCompletedContracts(agent, allContracts).length;
 
   return (
@@ -91,7 +90,7 @@ export function AgentCard({ agent }: AgentCardProps) {
               <VerificationBadge status={verificationStatus} />
               {isWorkerAgent(agent) ? <WorkerBadge /> : null}
               <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
-                {averageRating.toFixed(1)} rating
+                {getAgentRatingLabel(agent, agentReviews)}
               </span>
               <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
                 {completedContracts} completed

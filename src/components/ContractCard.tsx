@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 
 import {
-  getAgentAverageRating,
+  getAgentRatingLabel,
   getAgentCompletedContracts,
   getVerificationStatus,
 } from "../data/agentTrust";
@@ -62,7 +62,7 @@ export function ContractCard({ contract }: ContractCardProps) {
             <div className="mt-2 flex flex-wrap gap-2">
               <VerificationBadge status={verificationStatus} />
               <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
-                {getAgentAverageRating(agent, agentReviews).toFixed(1)} rating
+                {getAgentRatingLabel(agent, agentReviews)}
               </span>
               <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
                 {getAgentCompletedContracts(agent, allContracts).length} done
