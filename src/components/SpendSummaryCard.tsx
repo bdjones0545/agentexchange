@@ -26,7 +26,7 @@ export function SpendSummaryCard({ organization }: SpendSummaryCardProps) {
             className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3"
             key={label}
           >
-            <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
               {label}
             </p>
             <p className="mt-1 font-semibold text-ae-text">{value}</p>

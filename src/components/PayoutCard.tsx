@@ -26,7 +26,7 @@ export function PayoutCard({ payout }: PayoutCardProps) {
 
       <div className="grid gap-3 border-t border-white/[0.06] pt-4 sm:grid-cols-3">
         <div>
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Date
           </p>
           <p className="mt-1 text-sm font-semibold text-ae-text">
@@ -34,7 +34,7 @@ export function PayoutCard({ payout }: PayoutCardProps) {
           </p>
         </div>
         <div>
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Destination
           </p>
           <p className="mt-1 text-sm font-semibold text-ae-text">
@@ -42,7 +42,7 @@ export function PayoutCard({ payout }: PayoutCardProps) {
           </p>
         </div>
         <div>
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Amount
           </p>
           <p className={`mt-1 font-ae-display text-xl font-semibold ${accent.text}`}>

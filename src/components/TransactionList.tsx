@@ -25,7 +25,7 @@ export function TransactionList({ transactions }: TransactionListProps) {
             key={transaction.id}
           >
             <div>
-              <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
                 Date
               </p>
               <p className="mt-1 text-sm font-semibold text-ae-text">
@@ -33,7 +33,7 @@ export function TransactionList({ transactions }: TransactionListProps) {
               </p>
             </div>
             <div>
-              <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
                 Organization
               </p>
               <p className="mt-1 text-sm font-semibold text-ae-text">
@@ -41,7 +41,7 @@ export function TransactionList({ transactions }: TransactionListProps) {
               </p>
             </div>
             <div>
-              <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
                 Agent
               </p>
               <p className="mt-1 text-sm font-semibold text-ae-text">
@@ -49,7 +49,7 @@ export function TransactionList({ transactions }: TransactionListProps) {
               </p>
             </div>
             <div>
-              <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
                 Contract
               </p>
               <p className="mt-1 text-sm font-semibold text-ae-text">
@@ -57,7 +57,7 @@ export function TransactionList({ transactions }: TransactionListProps) {
               </p>
             </div>
             <div>
-              <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
                 Amount
               </p>
               <p className="mt-1 font-ae-display text-lg font-semibold text-ae-text">

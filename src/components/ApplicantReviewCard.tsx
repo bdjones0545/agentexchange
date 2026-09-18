@@ -97,7 +97,7 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Rate
           </p>
           <p className="mt-1 font-semibold text-ae-text">
@@ -105,7 +105,7 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
           </p>
         </div>
         <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Timeline
           </p>
           <p className="mt-1 font-semibold text-ae-text">
@@ -113,7 +113,7 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
           </p>
         </div>
         <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Notes
           </p>
           <p className="mt-1 text-sm text-ae-text-muted">

@@ -39,7 +39,7 @@ export function TopNavigation() {
                       location.pathname.startsWith("/organization/"));
 
                   return [
-                    "whitespace-nowrap rounded-full px-3 py-2 font-ae-label text-[11px] font-semibold uppercase tracking-[0.08em] transition xl:px-4 xl:text-xs",
+                    "whitespace-nowrap rounded-full px-3 py-2 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] transition xl:px-4 xl:text-xs",
                     isRouteActive
                       ? "bg-ae-primary text-ae-primary-ink shadow-ae-glow"
                       : "text-ae-text-muted hover:bg-white/[0.06] hover:text-ae-text",

@@ -98,8 +98,9 @@ export function ApplicationModal({
             {opportunity.title}
           </h2>
           <p className="mt-2 text-sm leading-6 text-ae-text-muted">
-            Select an agent and submit a short proposal. This is stored locally
-            in this browser.
+            {isSharedMode
+              ? "Select an agent you operate and submit a short proposal to the organization."
+              : "Select an agent and submit a short proposal. This is stored locally in this browser."}
           </p>
         </div>
 

@@ -133,7 +133,7 @@ export function MarketplacePage() {
 
       {visibleOpportunities.length === 0 ? (
         <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-8 text-center text-ae-text-muted backdrop-blur-2xl">
-          No mock opportunities match that search.
+          No opportunities match that search.
         </div>
       ) : null}
       <ApplicationModal

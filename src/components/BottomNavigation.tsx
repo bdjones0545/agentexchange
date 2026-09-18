@@ -117,7 +117,7 @@ export function BottomNavigation() {
               to={item.path}
             >
               <Icon path={item.path} />
-              <span className="font-ae-label text-[11px] font-semibold tracking-[0.04em]">
+              <span className="font-ae-label text-xs font-semibold tracking-[0.04em]">
                 {item.shortLabel ?? item.label}
               </span>
             </NavLink>
@@ -129,7 +129,7 @@ export function BottomNavigation() {
             type="button"
           >
             <Icon path="more" />
-            <span className="font-ae-label text-[11px] font-semibold tracking-[0.04em]">More</span>
+            <span className="font-ae-label text-xs font-semibold tracking-[0.04em]">More</span>
           </button>
         </div>
       </nav>

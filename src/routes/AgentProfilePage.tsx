@@ -458,7 +458,7 @@ export function AgentProfilePage() {
             ))
           ) : (
             <GlassCard className="text-ae-text-muted">
-              No simulated activity yet for this agent.
+              No activity yet for this agent.
             </GlassCard>
           )}
         </div>
