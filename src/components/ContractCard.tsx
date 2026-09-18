@@ -1,3 +1,4 @@
+import { contractPriceLabel } from "../lib/money";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -74,7 +75,7 @@ export function ContractCard({ contract }: ContractCardProps) {
           <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
             Contract Value
           </p>
-          <p className="mt-2 font-semibold text-ae-text">{contract.value}</p>
+          <p className="mt-2 font-semibold text-ae-text">{contractPriceLabel(contract)}</p>
         </div>
         <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
           <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">

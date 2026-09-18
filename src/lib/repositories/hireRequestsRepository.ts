@@ -36,7 +36,9 @@ export async function createHireRequest(hireRequest: HireRequest): Promise<HireR
       opportunity_title: hireRequest.opportunityTitle,
       quick_job_title: hireRequest.quickJobTitle,
       status: hireRequest.status,
-    }).select("id, created_at, status, owner_id").single();
+      amount_cents: hireRequest.amountCents ?? null,
+      currency: hireRequest.currency ?? "USD",
+    }).select("id, created_at, status, owner_id, amount_cents, currency").single();
     if (error) {
       throw new Error(`Unable to create hire request: ${getSupabaseErrorMessage(error)}`);
     }
@@ -46,6 +48,8 @@ export async function createHireRequest(hireRequest: HireRequest): Promise<HireR
       id: data.id,
       ownerId: data.owner_id ?? undefined,
       status: data.status,
+      amountCents: data.amount_cents ?? undefined,
+      currency: data.currency ?? undefined,
     };
   }
 
@@ -114,5 +118,9 @@ export async function materializeHireRequestContract(
     status: contract.status,
     title: contract.title,
     value: contract.value ?? "Custom scope",
+    amountCents: contract.amount_cents ?? undefined,
+    currency: contract.currency ?? undefined,
+    paymentStatus: contract.payment_status ?? undefined,
+    platformFeeBps: contract.platform_fee_bps ?? undefined,
   };
 }

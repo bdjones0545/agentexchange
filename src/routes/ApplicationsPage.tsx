@@ -1,7 +1,13 @@
+import { useState } from "react";
+
+import { AgreedPriceField } from "../components/AgreedPriceField";
 import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { GlassCard } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
+import { getAllOpportunities } from "../data/localSelectors";
+import { centsToDollarsInput, dollarsInputToCents, formatCents, parseMoneyToCents } from "../lib/money";
 import { useAgentExchange } from "../state/AgentExchangeContext";
+import type { Application } from "../state/marketplaceTypes";
 
 function formatCreatedAt(value: string) {
   return new Date(value).toLocaleDateString("en-US", {
@@ -13,7 +19,6 @@ function formatCreatedAt(value: string) {
 
 export function ApplicationsPage() {
   const {
-    acceptApplication,
     acceptHireRequest,
     applications,
     canAcceptHireRequest,
@@ -81,12 +86,7 @@ export function ApplicationsPage() {
                 </p>
                 {application.status === "pending" ? (
                   canManageApplication(application) ? (
-                    <PrimaryButton
-                      className="w-full sm:w-auto"
-                      onClick={() => acceptApplication(application.id)}
-                    >
-                      Accept Application
-                    </PrimaryButton>
+                    <AcceptApplicationWithPrice application={application} />
                   ) : (
                     <p className="text-xs text-ae-text-muted">
                       Waiting for the organization to review.
@@ -115,6 +115,11 @@ export function ApplicationsPage() {
                     <h3 className="mt-2 font-ae-display text-2xl font-semibold text-ae-text">
                       {hireRequest.quickJobTitle ||
                         hireRequest.opportunityTitle}
+                      {hireRequest.amountCents ? (
+                        <span className="ml-2 rounded-full border border-ae-emerald/25 bg-ae-emerald/10 px-2 py-0.5 align-middle font-ae-label text-xs font-semibold text-ae-emerald">
+                          {formatCents(hireRequest.amountCents, hireRequest.currency ?? "USD")}
+                        </span>
+                      ) : null}
                     </h3>
                     <p className="mt-1 text-ae-text-muted">
                       Agent: {hireRequest.agentName}
@@ -200,5 +205,37 @@ export function ApplicationsPage() {
         </p>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * Accepting an application fixes the contract's price, so the organization
+ * confirms it here. Suggested from the brief's budget; editable until accepted.
+ */
+function AcceptApplicationWithPrice({ application }: { application: Application }) {
+  const { acceptApplication, createdOpportunities, isSharedMode } = useAgentExchange();
+  const opportunity = getAllOpportunities(createdOpportunities).find(
+    (candidate) => candidate.id === application.opportunityId,
+  );
+  const suggested = parseMoneyToCents(opportunity?.budget);
+  const [amountInput, setAmountInput] = useState(suggested ? centsToDollarsInput(suggested) : "");
+  const amountCents = dollarsInputToCents(amountInput);
+
+  return (
+    <div className="space-y-3">
+      <AgreedPriceField
+        amountCents={amountCents}
+        hint={opportunity?.budget ? `Suggested from the brief's budget (${opportunity.budget}).` : undefined}
+        onChange={setAmountInput}
+        value={amountInput}
+      />
+      <PrimaryButton
+        className="w-full sm:w-auto"
+        disabled={isSharedMode && amountCents === null}
+        onClick={() => acceptApplication(application.id, amountCents ?? undefined)}
+      >
+        Accept Application
+      </PrimaryButton>
+    </div>
   );
 }

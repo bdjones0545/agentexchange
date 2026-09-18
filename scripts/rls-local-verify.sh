@@ -288,6 +288,50 @@ run_check "X3  the complainant resolves it" legit \
   "select act_as('$A'); update disputes set status='Resolved' where id='e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1';" \
   "select status from disputes where id='e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1'" "Resolved"
 
+# --- Payments phase 0 (P checks): stated once, then platform-managed; ledger is read-only.
+psql -d "$DB" -qAt -c "select act_as('$A'); insert into hire_requests (id, agent_id, agent_name, opportunity_id, opportunity_title, amount_cents, currency) values ('aaaa1111-0000-4000-8000-000000000001','33333333-3333-4333-8333-333333333333','Scout','22222222-2222-4222-8222-222222222222','Market memo', 60000, 'usd');" >/dev/null
+run_check "P1  A offers a price on a hire request; currency is normalised" legit "select 1" \
+  "select amount_cents::text || ' ' || currency from hire_requests where id='aaaa1111-0000-4000-8000-000000000001'" "60000 USD"
+run_check "P2  A cannot change the offered price after issuing it" attack \
+  "select act_as('$A'); update hire_requests set amount_cents=10000 where id='aaaa1111-0000-4000-8000-000000000001';" \
+  "select amount_cents from hire_requests where id='aaaa1111-0000-4000-8000-000000000001'" "60000"
+run_check "P3  B cannot raise the offered price either" attack \
+  "select act_as('$B'); update hire_requests set amount_cents=99900 where id='aaaa1111-0000-4000-8000-000000000001';" \
+  "select amount_cents from hire_requests where id='aaaa1111-0000-4000-8000-000000000001'" "60000"
+psql -d "$DB" -qAt -c "select act_as('$B'); update hire_requests set status='accepted' where id='aaaa1111-0000-4000-8000-000000000001'; select materialize_hire_request_contract('aaaa1111-0000-4000-8000-000000000001');" >/dev/null
+run_check "P4  materialize copies the offer onto the contract, unfunded, at the current fee" legit "select 1" \
+  "select amount_cents::text || ' ' || currency || ' ' || payment_status || ' ' || platform_fee_bps::text from contracts where source_id='aaaa1111-0000-4000-8000-000000000001'" "60000 USD unfunded 1500"
+MC=$(psql -d "$DB" -qAt -c "select id from contracts where source_id='aaaa1111-0000-4000-8000-000000000001'")
+run_check "P5  the organization cannot re-price the contract" attack \
+  "select act_as('$A'); update contracts set amount_cents=1 where id='$MC';" \
+  "select amount_cents from contracts where id='$MC'" "60000"
+run_check "P6  the agent cannot mark the contract paid" attack \
+  "select act_as('$B'); update contracts set payment_status='captured' where id='$MC';" \
+  "select payment_status from contracts where id='$MC'" "unfunded"
+run_check "P7  nobody can lower their own fee" attack \
+  "select act_as('$B'); update contracts set platform_fee_bps=0 where id='$MC';" \
+  "select platform_fee_bps from contracts where id='$MC'" "1500"
+psql -d "$DB" -qAt -c "select act_as('$B'); insert into applications (id, opportunity_id, agent_id, agent_name, proposal) values ('aaaa1111-0000-4000-8000-000000000004','22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333','Scout','Second brief');" >/dev/null
+run_check "P8  a contract inserted with payment_status=captured is born unfunded anyway" legit \
+  "select act_as('$A'); insert into contracts (id, organization_id, agent_id, source_type, source_id, organization_name, agent_name, title, amount_cents, payment_status, platform_fee_bps) values ('aaaa1111-0000-4000-8000-000000000002','11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333','application','aaaa1111-0000-4000-8000-000000000004','Acme','Scout','Memo', 5000, 'captured', 0);" \
+  "select coalesce((select payment_status || ' ' || platform_fee_bps::text from contracts where id='aaaa1111-0000-4000-8000-000000000002'), 'not created')" "unfunded 1500"
+run_check "P9  the agent cannot write a payout to itself" attack \
+  "select act_as('$B'); insert into payouts (contract_id, agent_id, operator_profile_id, gross_cents, fee_cents, net_cents) values ('$MC','33333333-3333-4333-8333-333333333333','$PB',60000,0,60000);" \
+  "select count(*) from payouts" "0"
+run_check "P10 the organization cannot record a payment" attack \
+  "select act_as('$A'); insert into payments (contract_id, kind, amount_cents, status) values ('$MC','charge',60000,'captured');" \
+  "select count(*) from payments" "0"
+psql -d "$DB" -qAt -c "select act_as_admin(); insert into payments (id, contract_id, kind, amount_cents, status) values ('aaaa1111-0000-4000-8000-000000000003','$MC','charge',60000,'captured');" >/dev/null
+run_check "P11a the platform's payment is readable by the organization" legit "select 1" \
+  "select act_as('$A'); select count(*) from payments where contract_id='$MC'" "1"
+run_check "P11b ...and by the agent operator" legit "select 1" \
+  "select act_as('$B'); select count(*) from payments where contract_id='$MC'" "1"
+run_check "P11c ...but not by an unrelated user" attack "select 1" \
+  "select act_as('$C'); select count(*) from payments where contract_id='$MC'" "0"
+run_check "P12 neither party can delete the ledger" attack \
+  "select act_as('$A'); delete from payments where id='aaaa1111-0000-4000-8000-000000000003';" \
+  "select act_as_admin(); select count(*) from payments" "1"
+
 echo
 if [ "$FAILED" -ne 0 ]; then echo "RLS LOCAL VERIFY: FAILED"; exit 1; fi
 echo "RLS LOCAL VERIFY: ALL CHECKS PASSED"

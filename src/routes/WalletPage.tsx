@@ -11,19 +11,8 @@ import {
   transactions,
   walletSummary,
 } from "../data/earnings";
+import { contractPriceLabel, contractValueDollars } from "../lib/money";
 import { useAgentExchange } from "../state/AgentExchangeContext";
-
-function parseMoney(value: string) {
-  const numbers = value.match(/\d+(?:\.\d+)?/g)?.map(Number) ?? [];
-
-  if (numbers.length === 0) {
-    return 0;
-  }
-
-  const average = numbers.reduce((total, number) => total + number, 0) / numbers.length;
-
-  return value.toLowerCase().includes("k") ? average * 1000 : average;
-}
 
 function formatMoney(value: number) {
   if (value >= 1000000) {
@@ -68,15 +57,15 @@ export function WalletPage() {
     (contract) => contract.status !== "Completed",
   );
   const localTotalRevenue = localContractsWithProgress.reduce(
-    (total, contract) => total + parseMoney(contract.value),
+    (total, contract) => total + contractValueDollars(contract),
     0,
   );
   const localCompletedRevenue = completedLocalContracts.reduce(
-    (total, contract) => total + parseMoney(contract.value),
+    (total, contract) => total + contractValueDollars(contract),
     0,
   );
   const localPendingRevenue = pendingLocalContracts.reduce(
-    (total, contract) => total + parseMoney(contract.value),
+    (total, contract) => total + contractValueDollars(contract),
     0,
   );
   const dynamicWalletSummary = {
@@ -129,7 +118,7 @@ export function WalletPage() {
     organization: contract.organization,
     agent: contract.agent,
     contract: contract.title,
-    amount: contract.value,
+    amount: contractPriceLabel(contract),
     status: contract.status === "Completed" ? "Paid" as const : "Pending" as const,
     accent: contract.status === "Completed" ? "emerald" as const : "amber" as const,
   }));
