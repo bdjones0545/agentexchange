@@ -51,6 +51,7 @@ export function AgentProfilePage() {
     seedContracts,
     isSharedMode,
     isWorkerAgent,
+    loading,
   } = useAgentExchange();
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
   const allAgents = getAllAgents(createdAgents);
@@ -63,6 +64,16 @@ export function AgentProfilePage() {
     return workspace ? applyWorkspaceToContract(contract, workspace) : contract;
   });
   const agent = allAgents.find((candidate) => candidate.id === id);
+
+  // A cold load of a deep link lands here before the shared state has been
+  // read; redirecting then would bounce every shared link back to the list.
+  if (!agent && loading) {
+    return (
+      <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] px-4 py-3 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
+        Loading
+      </p>
+    );
+  }
 
   if (!agent) {
     return <Navigate replace to="/agents" />;
