@@ -332,6 +332,60 @@ run_check "P12 neither party can delete the ledger" attack \
   "select act_as('$A'); delete from payments where id='aaaa1111-0000-4000-8000-000000000003';" \
   "select act_as_admin(); select count(*) from payments" "1"
 
+# --- Agent API keys (K checks): operator-owned, hash write-once, revocation irreversible, resolver private.
+psql -d "$DB" -qAt -c "select act_as('$B'); insert into agent_api_keys (id, name, key_hash, key_prefix) values ('bbbb1111-0000-4000-8000-000000000001','prod','hash-b-1','axk_bbbbbbbb');" >/dev/null
+run_check "K1  B mints a key; profile_id defaults to B" legit "select 1" \
+  "select profile_id from agent_api_keys where id='bbbb1111-0000-4000-8000-000000000001'" "$PB"
+run_check "K2  C cannot see B's key" attack "select 1" \
+  "select act_as('$C'); select count(*) from agent_api_keys" "0"
+run_check "K3  B cannot change the hash of an existing key" attack \
+  "select act_as('$B'); update agent_api_keys set key_hash='hash-b-2' where id='bbbb1111-0000-4000-8000-000000000001';" \
+  "select key_hash from agent_api_keys where id='bbbb1111-0000-4000-8000-000000000001'" "hash-b-1"
+run_check "K4  C cannot insert a key under B's profile" attack \
+  "select act_as('$C'); insert into agent_api_keys (name, key_hash, key_prefix, profile_id) values ('steal','hash-c-1','axk_cccccccc','$PB');" \
+  "select count(*) from agent_api_keys where key_hash='hash-c-1'" "0"
+run_check "K5  the resolver is not callable by an authenticated user" attack \
+  "select act_as('$B'); select * from resolve_agent_api_key('hash-b-1');" \
+  "select act_as_admin(); select count(*) from resolve_agent_api_key('hash-b-1')" "1"
+run_check "K6  B revokes the key; the resolver stops returning it" legit \
+  "select act_as('$B'); update agent_api_keys set revoked_at=now() where id='bbbb1111-0000-4000-8000-000000000001';" \
+  "select act_as_admin(); select count(*) from resolve_agent_api_key('hash-b-1')" "0"
+run_check "K7  a revoked key cannot be un-revoked" attack \
+  "select act_as('$B'); update agent_api_keys set revoked_at=null where id='bbbb1111-0000-4000-8000-000000000001';" \
+  "select revoked_at is not null from agent_api_keys where id='bbbb1111-0000-4000-8000-000000000001'" "t"
+
+# --- Negotiation loop (N checks): counters are the organization's; the agent accepts a counter; the RPC prices the contract.
+psql -d "$DB" -qAt -c "select act_as('$B'); insert into negotiations (id, opportunity_id, agent_id, agent_name, rate, timeline, amount_cents, currency) values ('cccc1111-0000-4000-8000-000000000001','22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333','Scout','\$600','3 days', 60000, 'usd');" >/dev/null
+run_check "N1  B proposes terms with a price; currency normalised, accepted_by empty" legit "select 1" \
+  "select amount_cents::text || ' ' || currency || ' ' || coalesce(accepted_by,'-') from negotiations where id='cccc1111-0000-4000-8000-000000000001'" "60000 USD -"
+run_check "N2  B cannot change the proposed price" attack \
+  "select act_as('$B'); update negotiations set amount_cents=90000 where id='cccc1111-0000-4000-8000-000000000001';" \
+  "select amount_cents from negotiations where id='cccc1111-0000-4000-8000-000000000001'" "60000"
+run_check "N3  B cannot counter its own proposal" attack \
+  "select act_as('$B'); update negotiations set status='countered', counter_amount_cents=70000 where id='cccc1111-0000-4000-8000-000000000001';" \
+  "select status from negotiations where id='cccc1111-0000-4000-8000-000000000001'" "pending"
+run_check "N4  B cannot accept its own pending proposal" attack \
+  "select act_as('$B'); update negotiations set status='accepted' where id='cccc1111-0000-4000-8000-000000000001';" \
+  "select status from negotiations where id='cccc1111-0000-4000-8000-000000000001'" "pending"
+run_check "N5  A counters at 45000" legit \
+  "select act_as('$A'); update negotiations set status='countered', counter_rate='\$450', counter_amount_cents=45000, counter_note='budget' where id='cccc1111-0000-4000-8000-000000000001';" \
+  "select status || ' ' || counter_amount_cents::text from negotiations where id='cccc1111-0000-4000-8000-000000000001'" "countered 45000"
+run_check "N6  C cannot accept the countered negotiation" attack \
+  "select act_as('$C'); update negotiations set status='accepted' where id='cccc1111-0000-4000-8000-000000000001';" \
+  "select status from negotiations where id='cccc1111-0000-4000-8000-000000000001'" "countered"
+run_check "N7  B accepts the counter; accepted_by is recorded by the trigger, not the caller" legit \
+  "select act_as('$B'); update negotiations set status='accepted', accepted_by='organization' where id='cccc1111-0000-4000-8000-000000000001';" \
+  "select status || ' ' || accepted_by from negotiations where id='cccc1111-0000-4000-8000-000000000001'" "accepted agent"
+run_check "N8  C cannot materialize it" attack \
+  "select act_as('$C'); select materialize_negotiation_contract('cccc1111-0000-4000-8000-000000000001');" \
+  "select count(*) from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "0"
+run_check "N9  B materializes: contract priced at the COUNTER, unfunded, org derived from the opportunity" legit \
+  "select act_as('$B'); select materialize_negotiation_contract('cccc1111-0000-4000-8000-000000000001');" \
+  "select amount_cents::text || ' ' || payment_status || ' ' || organization_id::text from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "45000 unfunded 11111111-1111-4111-8111-111111111111"
+run_check "N10 materializing again returns the same contract" legit \
+  "select act_as('$A'); select materialize_negotiation_contract('cccc1111-0000-4000-8000-000000000001');" \
+  "select count(*) from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "1"
+
 echo
 if [ "$FAILED" -ne 0 ]; then echo "RLS LOCAL VERIFY: FAILED"; exit 1; fi
 echo "RLS LOCAL VERIFY: ALL CHECKS PASSED"

@@ -176,6 +176,9 @@ export function mapNegotiationRow(row: Row, opportunities: Map<string, CreatedOp
     rate: text(row.rate),
     status: (optionalText(row.status) ?? "pending") as Negotiation["status"],
     timeline: text(row.timeline),
+    amountCents: optionalNumber(row.amount_cents),
+    counterAmountCents: optionalNumber(row.counter_amount_cents),
+    acceptedBy: optionalText(row.accepted_by) as Negotiation["acceptedBy"],
   };
 }
 

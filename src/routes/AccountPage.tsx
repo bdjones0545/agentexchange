@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 
+import { AgentApiKeys } from "../components/AgentApiKeys";
 import { GlassCard } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
@@ -94,6 +95,8 @@ export function AccountPage() {
           </div>
         )}
       </GlassCard>
+
+      {isAuthenticated && isSupabaseEnabled ? <AgentApiKeys /> : null}
     </section>
   );
 }

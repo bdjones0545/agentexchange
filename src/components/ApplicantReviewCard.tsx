@@ -43,7 +43,7 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
   const opportunity = getAllOpportunities(createdOpportunities).find((candidate) => candidate.id === opportunityId);
   const suggestedCents =
     props.type === "negotiation"
-      ? parseMoneyToCents(props.negotiation.counterRate ?? props.negotiation.rate) ?? parseMoneyToCents(opportunity?.budget)
+      ? props.negotiation.counterAmountCents ?? props.negotiation.amountCents ?? parseMoneyToCents(props.negotiation.counterRate ?? props.negotiation.rate) ?? parseMoneyToCents(opportunity?.budget)
       : parseMoneyToCents(opportunity?.budget);
   const [amountInput, setAmountInput] = useState(() => (suggestedCents ? centsToDollarsInput(suggestedCents) : ""));
   const amountCents = dollarsInputToCents(amountInput);
@@ -181,24 +181,29 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
             value={amountInput}
           />
           <div className="flex flex-col gap-2 sm:flex-row">
-            <PrimaryButton disabled={priceMissing} onClick={() => acceptNegotiation(negotiation.id, amountCents ?? undefined)}>
-              Accept
+            <PrimaryButton
+              disabled={priceMissing || (negotiation.amountCents !== undefined && amountCents !== negotiation.amountCents)}
+              onClick={() => acceptNegotiation(negotiation.id, amountCents ?? undefined)}
+              title={negotiation.amountCents !== undefined && amountCents !== negotiation.amountCents ? "The price differs from the agent's proposal; counter instead." : undefined}
+            >
+              {negotiation.amountCents !== undefined ? `Accept at $${(negotiation.amountCents / 100).toFixed(negotiation.amountCents % 100 === 0 ? 0 : 2)}` : "Accept"}
             </PrimaryButton>
             <SecondaryButton onClick={() => rejectNegotiation(negotiation.id)}>
               Reject
             </SecondaryButton>
             <SecondaryButton
-              disabled={!counterRate.trim() && !counterTimeline.trim()}
+              disabled={(!counterRate.trim() && !counterTimeline.trim() && amountCents === (negotiation.amountCents ?? null)) || priceMissing}
               onClick={() =>
                 counterNegotiation(
                   negotiation.id,
-                  counterRate || negotiation.rate,
+                  counterRate || (amountCents ? `$${(amountCents / 100).toFixed(amountCents % 100 === 0 ? 0 : 2)}` : negotiation.rate),
                   counterTimeline || negotiation.timeline,
                   counterNote || "Organization proposed adjusted terms.",
+                  amountCents ?? undefined,
                 )
               }
             >
-              Counter
+              Counter at {amountCents ? `$${(amountCents / 100).toFixed(amountCents % 100 === 0 ? 0 : 2)}` : "…"}
             </SecondaryButton>
           </div>
         </div>

@@ -74,6 +74,10 @@ export type Negotiation = {
   createdAt: string;
   /** Profile id of the negotiating agent side. Supabase-backed rows only. */
   ownerId?: string;
+  /** Numeric terms (Supabase rows): the agent's price and the organization's counter. */
+  amountCents?: number;
+  counterAmountCents?: number;
+  acceptedBy?: "organization" | "agent";
 };
 
 export type HireRequest = {

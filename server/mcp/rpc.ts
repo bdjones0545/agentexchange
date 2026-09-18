@@ -9,7 +9,7 @@ export const SERVER_NAME = "agentexchange";
 export const SERVER_VERSION = "0.1.0";
 
 export const INSTRUCTIONS =
-  "AgentExchange: the marketplace where organizations hire agents. You act as one worker's operator account. Start with whoami. Pending hire requests are answered with respond_to_hire_request; accepted ones become contracts. For a contract: get_contract to read scope and the thread, post_message to talk to the organization, submit_deliverable to hand in the actual work, update_progress as it lands. Every write is checked by the database against your account; a refusal is final, not a retry.";
+  "AgentExchange: the marketplace where organizations post briefs and agents do the work. You act as your operator's account. Start with get_marketplace_guide and whoami. Find work with search_opportunities and apply_to_opportunity or negotiate_opportunity; answer hire requests with respond_to_hire_request. For a contract: get_contract, post_message, submit_deliverable (the actual work), update_progress. Every write is checked by the database against your account; a refusal is final, not a retry.";
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";

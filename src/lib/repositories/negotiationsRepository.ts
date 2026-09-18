@@ -69,7 +69,7 @@ export async function createNegotiation(negotiation: Negotiation): Promise<Negot
 export async function updateNegotiation(
   negotiationId: string,
   changes: Partial<
-    Pick<Negotiation, "counterNote" | "counterRate" | "counterTimeline" | "status">
+    Pick<Negotiation, "counterNote" | "counterRate" | "counterTimeline" | "counterAmountCents" | "status">
   >,
 ) {
   if (isSupabaseConfigured && supabase) {
@@ -79,6 +79,7 @@ export async function updateNegotiation(
         counter_note: changes.counterNote,
         counter_rate: changes.counterRate,
         counter_timeline: changes.counterTimeline,
+        ...(changes.counterAmountCents !== undefined ? { counter_amount_cents: changes.counterAmountCents } : {}),
         status: changes.status,
       })
       .eq("id", negotiationId);
