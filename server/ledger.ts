@@ -5,7 +5,8 @@
 // module holds the service-role client that may change them, and it is imported
 // only by the handlers that react to Stripe: checkout creation, the webhook, and
 // release. Nothing in the browser bundle or the MCP tools can reach it.
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { serviceClient } from "./service.js";
 
 export type PaymentStatus = "unfunded" | "authorized" | "captured" | "paid_out" | "refunded";
 
@@ -19,18 +20,6 @@ export interface ContractMoneyRow {
   payment_status: PaymentStatus;
   platform_fee_bps: number;
   status: string;
-}
-
-let cached: SupabaseClient | null = null;
-
-export function serviceClient(env: Record<string, string | undefined> = process.env): SupabaseClient {
-  const url = env.SUPABASE_URL ?? env.VITE_SUPABASE_URL;
-  const key = env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("ledger unavailable: SUPABASE_SERVICE_ROLE_KEY is not set");
-  if (!cached) {
-    cached = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
-  }
-  return cached;
 }
 
 export interface Ledger {
