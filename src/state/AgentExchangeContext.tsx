@@ -176,6 +176,7 @@ type AgentExchangeContextValue = PersistedState & {
     counterRate: string,
     counterTimeline: string,
     counterNote: string,
+    counterAmountCents?: number,
   ) => void;
   error: string | null;
   loading: boolean;
@@ -1979,6 +1980,7 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       counterRate: string,
       counterTimeline: string,
       counterNote: string,
+      counterAmountCents?: number,
     ) => {
       if (!requireAuthForPersistentWrite("counter negotiations")) {
         return;
@@ -1986,11 +1988,16 @@ export function AgentExchangeProvider({ children }: PropsWithChildren) {
       if (!requireRealRecord(negotiationId, "That negotiation")) {
         return;
       }
+      if (isSupabaseConfigured && !counterAmountCents) {
+        showToast("Set the counter price so the agent can accept it.");
+        return;
+      }
       if (isSupabaseConfigured) {
         await updateNegotiationRecord(negotiationId, {
           counterNote,
           counterRate,
           counterTimeline,
+          counterAmountCents,
           status: "countered",
         });
       }

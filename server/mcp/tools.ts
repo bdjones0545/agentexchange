@@ -418,7 +418,7 @@ export const TOOLS = [
       const mine = (await ownedAgents(op)).map((a) => a.id as string);
       const [apps, negs] = await Promise.all([
         mine.length ? op.db.from("applications").select("id,agent_id,agent_name,status,created_at").eq("opportunity_id", o.id).in("agent_id", mine) : Promise.resolve({ data: [] }),
-        mine.length ? op.db.from("negotiations").select("id,agent_id,agent_name,rate,timeline,counter_rate,counter_timeline,counter_note,status,created_at").eq("opportunity_id", o.id).in("agent_id", mine) : Promise.resolve({ data: [] }),
+        mine.length ? op.db.from("negotiations").select("id,agent_id,agent_name,rate,timeline,amount_cents,counter_rate,counter_timeline,counter_note,counter_amount_cents,accepted_by,status,created_at").eq("opportunity_id", o.id).in("agent_id", mine) : Promise.resolve({ data: [] }),
       ]);
       return { ok: true, opportunity: o, myApplications: apps.data ?? [], myNegotiations: negs.data ?? [] };
     },
@@ -451,11 +451,11 @@ export const TOOLS = [
   tool({
     name: "negotiate_opportunity",
     description:
-      "Propose terms on an open brief with one of your agents: a rate (e.g. \"$450\"), a timeline (e.g. \"3 days\") and optional milestone notes. The organization accepts, counters or rejects; acceptance creates a contract.",
+      "Propose terms on an open brief with one of your agents: a fixed price in cents, a timeline (e.g. \"3 days\") and optional milestone notes. The organization accepts, counters or rejects. If it counters, answer with respond_to_negotiation. Acceptance by either side creates a contract at the accepted price.",
     schema: z.object({
       opportunityId: uuid,
       agentId: uuid,
-      rate: z.string().min(1).max(60),
+      amountCents: z.number().int().min(5000).describe("Your price for the whole brief, in cents (minimum 5000 = $50)"),
       timeline: z.string().min(1).max(60),
       milestoneNotes: z.string().max(2000).optional(),
     }),
@@ -464,13 +464,40 @@ export const TOOLS = [
       const op = await ctx.open();
       const agent = (await ownedAgents(op)).find((a) => a.id === input.agentId);
       if (!agent) return { ok: false, error: "agentId is not one of your agents (see whoami)" };
+      const { data: open } = await op.db.from("negotiations").select("id,status").eq("opportunity_id", input.opportunityId).eq("agent_id", input.agentId).in("status", ["pending", "countered"]).maybeSingle();
+      if (open) return { ok: false, error: `this agent already has an open negotiation (${open.id}, ${open.status}); answer it with respond_to_negotiation` };
+      const rate = `$${(input.amountCents / 100).toFixed(input.amountCents % 100 === 0 ? 0 : 2)}`;
       const { data, error } = await op.db
         .from("negotiations")
-        .insert({ opportunity_id: input.opportunityId, agent_id: input.agentId, agent_name: agent.name, rate: input.rate, timeline: input.timeline, milestone_notes: input.milestoneNotes ?? null })
-        .select("id,status,created_at")
+        .insert({ opportunity_id: input.opportunityId, agent_id: input.agentId, agent_name: agent.name, rate, timeline: input.timeline, milestone_notes: input.milestoneNotes ?? null, amount_cents: input.amountCents, currency: "USD", status: "pending" })
+        .select("id,status,amount_cents,created_at")
         .single();
       if (error) return fail("negotiate_opportunity", error);
       return { ok: true, negotiation: data };
+    },
+  }),
+  tool({
+    name: "respond_to_negotiation",
+    description:
+      "Answer the organization's counter on one of your negotiations: accept it (a contract is created at the counter price) or withdraw. To propose different terms instead, withdraw and open a new negotiation.",
+    schema: z.object({ negotiationId: uuid, decision: z.enum(["accept", "withdraw"]) }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data: neg } = await op.db.from("negotiations").select("id,status,counter_amount_cents,counter_rate,counter_timeline,counter_note").eq("id", input.negotiationId).maybeSingle();
+      if (!neg) return { ok: false, error: "negotiation not found or not visible to this account" };
+      if (input.decision === "withdraw") {
+        const { error } = await op.db.from("negotiations").update({ status: "rejected" }).eq("id", neg.id).in("status", ["pending", "countered"]);
+        if (error) return fail("respond_to_negotiation", error);
+        return { ok: true, negotiationId: neg.id, status: "rejected" };
+      }
+      if (neg.status !== "countered") return { ok: false, error: `negotiation is ${neg.status}; only a countered negotiation can be accepted by the agent` };
+      const { data: updated, error } = await op.db.from("negotiations").update({ status: "accepted" }).eq("id", neg.id).eq("status", "countered").select("id,status,accepted_by").maybeSingle();
+      if (error) return fail("respond_to_negotiation", error);
+      if (!updated) return { ok: false, error: "negotiation changed before acceptance; read it again" };
+      const { data: contract, error: rpcError } = await op.db.rpc("materialize_negotiation_contract", { negotiation_uuid: neg.id });
+      if (rpcError) return fail("materialize_negotiation_contract", rpcError);
+      return { ok: true, negotiationId: neg.id, status: "accepted", acceptedPriceCents: neg.counter_amount_cents, contract: contractSummary(contract as Row) };
     },
   }),
   tool({
@@ -483,7 +510,7 @@ export const TOOLS = [
       const mine = (await ownedAgents(op)).map((a) => a.id as string);
       if (mine.length === 0) return { ok: true, applications: [], negotiations: [] };
       let apps = op.db.from("applications").select("id,opportunity_id,agent_id,agent_name,proposal,status,created_at").in("agent_id", mine).order("created_at", { ascending: false });
-      let negs = op.db.from("negotiations").select("id,opportunity_id,agent_id,agent_name,rate,timeline,counter_rate,counter_timeline,counter_note,status,created_at").in("agent_id", mine).order("created_at", { ascending: false });
+      let negs = op.db.from("negotiations").select("id,opportunity_id,agent_id,agent_name,rate,timeline,amount_cents,counter_rate,counter_timeline,counter_note,counter_amount_cents,accepted_by,status,created_at").in("agent_id", mine).order("created_at", { ascending: false });
       if (input.status !== "all") {
         apps = apps.eq("status", input.status);
         negs = negs.eq("status", input.status);
@@ -509,8 +536,8 @@ export const MARKETPLACE_GUIDE = `AgentExchange is a marketplace where organizat
 
 LIFECYCLE
 1. Publish a listing for your agent (publish_agent). Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
-2. Find work: search_opportunities / get_opportunity. Apply with apply_to_opportunity (a concrete proposal) or propose terms with negotiate_opportunity. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting a hire request is accepting its price.
-3. A contract is created when the organization accepts your application or negotiation (at a price it states) or when you accept its hire request. The price is then fixed.
+2. Find work: search_opportunities / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
+3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
 4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve.
 5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart).
 

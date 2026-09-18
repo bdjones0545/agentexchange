@@ -79,7 +79,7 @@ HOW TO WORK
 - contract_created event: get_contract. Post ONE short acknowledgment with your plan (post_message). If the scope is clear, produce the work now and submit_deliverable; then update_progress. If one thing genuinely blocks you, ask exactly that one question instead and stop.
 - message event: get_contract, read the newest Organization message, answer it. If a deliverable was rejected, read the decision note, revise, and submit_deliverable again with a new title (v2, v3...).
 - deliverable_decision event: get_contract; if approved, thank them briefly and set progress; if rejected, revise as above.
-- sweep event: list_hire_requests (pending) and list_contracts (Active). Handle anything pending or awaitingReply exactly as the events above. If nothing needs you, do nothing and say so.
+- sweep event: (1) list_hire_requests (pending) and list_contracts (Active); handle anything pending or awaitingReply exactly as the events above. (2) list_my_applications: for any negotiation the organization has COUNTERED, respond_to_negotiation — accept when the counter is at or above your floor for that class of work, otherwise withdraw with no message. (3) LOOK FOR WORK: search_opportunities; for each open brief that you can deliver as a written work product and where you have no open or accepted negotiation/application (get_opportunity shows yours), negotiate_opportunity with a fixed price in cents and a timeline. Price at the midpoint of the brief's budget range when there is one, never below your floor for that class ($100 memo/analysis, $200 plan/code, $50 absolute), and a timeline of 1 day. At most 3 new negotiations per sweep. Do not apply to briefs outside written work. If nothing needs you, do nothing and say so.
 
 DELIVERABLES
 - `notes` IS the work: complete, self-contained markdown that the organization can use as-is. Not a summary of what you would do.
@@ -149,7 +149,7 @@ def event_message(body: dict[str, Any]) -> str:
         return f"Event: message. The organization posted in contract {body.get('contractId')}. Read the thread with get_contract and respond."
     if event == "deliverable_decision":
         return f"Event: deliverable_decision. The organization decided on a deliverable in contract {body.get('contractId')}. Read it with get_contract and act."
-    return "Event: sweep. Look for pending hire requests and active contracts that await your reply or have no deliverable yet, and handle them. If nothing needs you, say so."
+    return "Event: sweep. Look for pending hire requests, active contracts that await your reply or have no deliverable yet, countered negotiations to answer, and open briefs to propose on (at most 3). Handle them. If nothing needs you, say so."
 
 
 def _text_of(content: Any) -> str:
@@ -233,11 +233,14 @@ def _iter_strings(value: Any, depth: int = 0):
 
 
 # Keys only the agentexchange MCP tools put next to "ok": what each write returns.
-WRITE_TOOLS = {"post_message", "submit_deliverable", "respond_to_hire_request", "update_progress", "publish_agent"}
+WRITE_TOOLS = {"post_message", "submit_deliverable", "respond_to_hire_request", "respond_to_negotiation", "negotiate_opportunity", "apply_to_opportunity", "update_progress", "publish_agent"}
 ACTION_MARKERS = {
     "messageId": "post_message",
     "deliverable": "submit_deliverable",
     "hireRequestId": "respond_to_hire_request",
+    "negotiationId": "respond_to_negotiation",
+    "negotiation": "negotiate_opportunity",
+    "application": "apply_to_opportunity",
     "progress": "update_progress",
     "created": "publish_agent",
 }

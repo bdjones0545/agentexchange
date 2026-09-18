@@ -65,12 +65,39 @@ describe("supply-side tools", () => {
     expect(mine.myApplications).toHaveLength(1);
   });
 
-  it("negotiate_opportunity records rate and timeline under my agent", async () => {
+  it("negotiate_opportunity records a numeric price under my agent and refuses a second open one", async () => {
     const db = seeded();
-    const r = (await tool("negotiate_opportunity").run({ opportunityId: OPP2, agentId: AGENT, rate: "$180", timeline: "2 days" }, ctx(db))) as { ok: boolean };
+    const r = (await tool("negotiate_opportunity").run({ opportunityId: OPP2, agentId: AGENT, amountCents: 18000, timeline: "2 days" }, ctx(db))) as { ok: boolean };
     expect(r.ok).toBe(true);
-    const list = (await tool("list_my_applications").run({ status: "all" }, ctx(db))) as { negotiations: Array<{ rate: string; agent_name: string }> };
-    expect(list.negotiations[0]).toMatchObject({ rate: "$180", agent_name: "Scout" });
+    const list = (await tool("list_my_applications").run({ status: "all" }, ctx(db))) as { negotiations: Array<{ rate: string; amount_cents: number; agent_name: string }> };
+    expect(list.negotiations[0]).toMatchObject({ rate: "$180", amount_cents: 18000, agent_name: "Scout" });
+    const again = (await tool("negotiate_opportunity").run({ opportunityId: OPP2, agentId: AGENT, amountCents: 20000, timeline: "1 day" }, ctx(db))) as { ok: boolean; error: string };
+    expect(again.ok).toBe(false);
+    expect(again.error).toMatch(/already has an open negotiation/);
+  });
+
+  it("respond_to_negotiation accepts only a countered negotiation and materializes through the RPC", async () => {
+    let rpc: unknown = null;
+    const db = fakeDb({
+      tables: {
+        agents: [{ id: AGENT, owner_id: PROFILE, name: "Scout", created_at: "" }],
+        negotiations: [
+          { id: "aaaa0000-0000-4000-8000-000000000001", opportunity_id: OPP, agent_id: AGENT, status: "pending", amount_cents: 60000 },
+          { id: "aaaa0000-0000-4000-8000-000000000002", opportunity_id: OPP2, agent_id: AGENT, status: "countered", amount_cents: 60000, counter_amount_cents: 45000, counter_rate: "$450" },
+        ],
+      },
+      rpc: (name, args) => { rpc = [name, args]; return { data: { id: "c9", title: "Landing page copy", status: "Active", amount_cents: 45000 }, error: null }; },
+    });
+    const pending = (await tool("respond_to_negotiation").run({ negotiationId: "aaaa0000-0000-4000-8000-000000000001", decision: "accept" }, ctx(db))) as { ok: boolean; error: string };
+    expect(pending.ok).toBe(false);
+    expect(pending.error).toMatch(/only a countered/);
+    const accepted = (await tool("respond_to_negotiation").run({ negotiationId: "aaaa0000-0000-4000-8000-000000000002", decision: "accept" }, ctx(db))) as { ok: boolean; acceptedPriceCents: number; contract: { id: string } };
+    expect(accepted.ok).toBe(true);
+    expect(accepted.acceptedPriceCents).toBe(45000);
+    expect(accepted.contract.id).toBe("c9");
+    expect(rpc).toEqual(["materialize_negotiation_contract", { negotiation_uuid: "aaaa0000-0000-4000-8000-000000000002" }]);
+    const withdraw = (await tool("respond_to_negotiation").run({ negotiationId: "aaaa0000-0000-4000-8000-000000000001", decision: "withdraw" }, ctx(db))) as { ok: boolean; status: string };
+    expect(withdraw).toMatchObject({ ok: true, status: "rejected" });
   });
 
   it("the guide tells an agent the lifecycle and the fee", async () => {
