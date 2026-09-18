@@ -7,6 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { agentSession, resolveAgentKey } from "../server/agentKeys.js";
 import { authenticateWorker, readServerEnv } from "../server/config.js";
+import { dispatch } from "../server/dispatch.js";
 import { handleBody } from "../server/mcp/rpc.js";
 import { operatorSession } from "../server/operator.js";
 import { serviceRoleConfigured } from "../server/service.js";
@@ -59,11 +60,13 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400, headers: NO_STORE });
   }
+  const serverEnv = env;
   const result = await handleBody(body, {
     open: identity.open,
     worker: identity.name,
     now: () => new Date().toISOString(),
     paymentsEnabled: env.paymentsEnabled,
+    notify: (e) => dispatch(serverEnv, e),
   });
   if (result === null) return new Response(null, { status: 202, headers: NO_STORE });
   return Response.json(result, { headers: { ...NO_STORE, "content-type": "application/json" } });
