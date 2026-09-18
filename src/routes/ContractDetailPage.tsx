@@ -39,6 +39,7 @@ export function ContractDetailPage() {
     updateContractDispute,
     updateMilestoneNotes,
     seedContracts,
+    loading,
   } = useAgentExchange();
   const [deliverableNotes, setDeliverableNotes] = useState("");
   const [deliverableTitle, setDeliverableTitle] = useState("");
@@ -49,6 +50,10 @@ export function ContractDetailPage() {
     useState<ContractMessageSender>("Organization");
   const [milestoneNotes, setMilestoneNotes] = useState("");
   const [milestoneTitle, setMilestoneTitle] = useState("");
+  // Creation forms stay folded until asked for: on a phone an organization
+  // reviewing work should reach the deliverable and the thread first.
+  const [showMilestoneForm, setShowMilestoneForm] = useState(false);
+  const [showDeliverableForm, setShowDeliverableForm] = useState(false);
   const [resolutionNotes, setResolutionNotes] = useState<Record<string, string>>({});
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
@@ -62,6 +67,16 @@ export function ContractDetailPage() {
       baseContract ? applyWorkspaceToContract(baseContract, workspace) : undefined,
     [baseContract, workspace],
   );
+
+  // A cold load of a deep link lands here before the shared state has been
+  // read; redirecting then would bounce every shared link back to the list.
+  if (id && !contract && loading) {
+    return (
+      <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] px-4 py-3 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
+        Loading
+      </p>
+    );
+  }
 
   if (!id || !contract) {
     return <Navigate replace to="/contracts" />;
@@ -83,6 +98,7 @@ export function ContractDetailPage() {
     );
     setMilestoneNotes("");
     setMilestoneTitle("");
+    setShowMilestoneForm(false);
   }
 
   function handleAddDeliverable(event: FormEvent<HTMLFormElement>) {
@@ -99,6 +115,7 @@ export function ContractDetailPage() {
     );
     setDeliverableNotes("");
     setDeliverableTitle("");
+    setShowDeliverableForm(false);
   }
 
   function handleSendMessage(event: FormEvent<HTMLFormElement>) {
@@ -232,6 +249,12 @@ export function ContractDetailPage() {
             </h2>
           </div>
 
+          {showMilestoneForm ? null : (
+            <SecondaryButton onClick={() => setShowMilestoneForm(true)}>
+              Add a milestone
+            </SecondaryButton>
+          )}
+          {showMilestoneForm ? (
           <form className="space-y-3" onSubmit={handleAddMilestone}>
             <input
               className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
@@ -245,10 +268,16 @@ export function ContractDetailPage() {
               placeholder="Notes or acceptance criteria"
               value={milestoneNotes}
             />
-            <PrimaryButton disabled={!milestoneTitle.trim()} type="submit">
-              Add Milestone
-            </PrimaryButton>
+            <div className="flex flex-wrap gap-3">
+              <PrimaryButton disabled={!milestoneTitle.trim()} type="submit">
+                Add Milestone
+              </PrimaryButton>
+              <SecondaryButton onClick={() => setShowMilestoneForm(false)}>
+                Cancel
+              </SecondaryButton>
+            </div>
           </form>
+          ) : null}
 
           <div className="space-y-3">
             {workspace.milestones.length > 0 ? (
@@ -311,6 +340,12 @@ export function ContractDetailPage() {
             </h2>
           </div>
 
+          {showDeliverableForm ? null : (
+            <SecondaryButton onClick={() => setShowDeliverableForm(true)}>
+              Add a deliverable
+            </SecondaryButton>
+          )}
+          {showDeliverableForm ? (
           <form className="space-y-3" onSubmit={handleAddDeliverable}>
             <input
               className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
@@ -324,10 +359,16 @@ export function ContractDetailPage() {
               placeholder="Deliverable notes"
               value={deliverableNotes}
             />
-            <PrimaryButton disabled={!deliverableTitle.trim()} type="submit">
-              Add Deliverable
-            </PrimaryButton>
+            <div className="flex flex-wrap gap-3">
+              <PrimaryButton disabled={!deliverableTitle.trim()} type="submit">
+                Add Deliverable
+              </PrimaryButton>
+              <SecondaryButton onClick={() => setShowDeliverableForm(false)}>
+                Cancel
+              </SecondaryButton>
+            </div>
           </form>
+          ) : null}
 
           <div className="space-y-3">
             {workspace.deliverables.length > 0 ? (

@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import { getOpportunityIntelligence } from "../data/agentIntelligence";
 import { getOpportunityRecommendations } from "../data/agentRecommendations";
 import {
@@ -21,14 +23,22 @@ type OpportunityCardProps = {
   opportunity: Opportunity;
   onApply?: (opportunity: Opportunity) => void;
   onNegotiate?: (opportunity: Opportunity) => void;
+  /**
+   * Start with the applicant/match analysis open. Lists leave it folded so a
+   * brief is one screen on a phone (title, summary, budget, actions); the
+   * featured slot on Home opens it.
+   */
+  defaultExpanded?: boolean;
 };
 
 export function OpportunityCard({
+  defaultExpanded = false,
   onApply,
   onNegotiate,
   opportunity,
 }: OpportunityCardProps) {
   const accent = accentStyles[opportunity.accent];
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const {
     applications,
     agentReviews,
@@ -101,12 +111,12 @@ export function OpportunityCard({
         </div>
       </div>
 
-      <p className="max-w-3xl text-sm leading-6 text-ae-text-muted">
+      <p className={`max-w-3xl text-sm leading-6 text-ae-text-muted ${expanded ? "" : "line-clamp-3"}`}>
         {opportunity.summary}
       </p>
 
       <div className="flex flex-wrap gap-2">
-        {opportunity.tags.map((tag) => (
+        {(expanded ? opportunity.tags : opportunity.tags.slice(0, 4)).map((tag) => (
           <span
             className="rounded-full border border-white/[0.06] bg-white/[0.06] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted"
             key={tag}
@@ -116,6 +126,8 @@ export function OpportunityCard({
         ))}
       </div>
 
+      {expanded ? (
+        <>
       <div className="grid gap-3 rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 sm:grid-cols-3">
         <div>
           <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
@@ -178,6 +190,19 @@ export function OpportunityCard({
           ) : null}
         </div>
       ) : null}
+        </>
+      ) : null}
+
+      <button
+        aria-expanded={expanded}
+        className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-primary transition hover:text-ae-text"
+        onClick={() => setExpanded((value) => !value)}
+        type="button"
+      >
+        {expanded
+          ? "Hide details"
+          : `Details · ${intelligence.applicants} applicant${intelligence.applicants === 1 ? "" : "s"} · top match ${topRecommendation?.agent.name ?? intelligence.topMatchingAgent?.name ?? "pending"}`}
+      </button>
 
       <div className="grid gap-3 border-t border-white/[0.06] pt-4 sm:grid-cols-[1fr_auto] sm:items-end">
         <div className="flex flex-wrap gap-6">

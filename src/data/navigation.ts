@@ -55,3 +55,17 @@ export const navigationItems: NavigationItem[] = [
     path: "/settings",
   },
 ];
+
+/**
+ * Phone navigation: four destinations that fit a thumb row, then a "More"
+ * sheet for the rest. The desktop rail keeps the full list.
+ */
+export const primaryNavigationPaths = ["/", "/marketplace", "/agents", "/contracts"] as const;
+
+export const primaryNavigationItems: NavigationItem[] = primaryNavigationPaths.map(
+  (path) => navigationItems.find((item) => item.path === path)!,
+);
+
+export const secondaryNavigationItems: NavigationItem[] = navigationItems.filter(
+  (item) => !(primaryNavigationPaths as readonly string[]).includes(item.path),
+);
