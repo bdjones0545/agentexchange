@@ -1,5 +1,10 @@
 import type { Contract, ContractStatus } from "./operations";
-import type { ContractWorkspace } from "../state/marketplaceTypes";
+import type {
+  ContractDeliverable,
+  ContractMilestone,
+  ContractWorkspace,
+} from "../state/marketplaceTypes";
+import { isSupabaseConfigured } from "../lib/supabase";
 
 export function deriveContractProgress(workspace: ContractWorkspace) {
   const totalItems = workspace.milestones.length + workspace.deliverables.length;
@@ -50,10 +55,21 @@ export function deriveWorkspaceStatus(workspace: ContractWorkspace): ContractSta
   return "Active";
 }
 
+/**
+ * In shared mode the contract row is the truth: status and progress are
+ * written to it at every decision (see syncContractRow) and read back as
+ * stored, so the screen, the database and the worker agree. Demo mode has no
+ * row and derives them from the workspace on the fly.
+ */
 export function applyWorkspaceToContract(
   contract: Contract,
   workspace: ContractWorkspace,
+  { sharedMode = isSupabaseConfigured }: { sharedMode?: boolean } = {},
 ): Contract {
+  if (sharedMode) {
+    return contract;
+  }
+
   const workspaceProgress = deriveContractProgress(workspace);
   const hasWorkspaceItems =
     workspace.milestones.length > 0 || workspace.deliverables.length > 0;
@@ -66,5 +82,46 @@ export function applyWorkspaceToContract(
     ...contract,
     progress: workspaceProgress,
     status: deriveWorkspaceStatus(workspace),
+  };
+}
+
+/** The derived (status, progress) pair a decision should persist. */
+export function deriveContractRow(workspace: ContractWorkspace): {
+  progress: number;
+  status: ContractStatus;
+} {
+  return {
+    progress: deriveContractProgress(workspace),
+    status: deriveWorkspaceStatus(workspace),
+  };
+}
+
+type DecisionStatus = "submitted" | "approved" | "rejected";
+
+/** The workspace after an organization's decision on one deliverable. */
+export function withDeliverableDecision(
+  workspace: ContractWorkspace,
+  deliverableId: string,
+  status: DecisionStatus,
+): ContractWorkspace {
+  const nextStatus: ContractDeliverable["status"] = status === "rejected" ? "draft" : status;
+  return {
+    ...workspace,
+    deliverables: workspace.deliverables.map((deliverable) =>
+      deliverable.id === deliverableId ? { ...deliverable, status: nextStatus } : deliverable,
+    ),
+  };
+}
+
+/** The workspace after a milestone is toggled. */
+export function withMilestoneToggled(
+  workspace: ContractWorkspace,
+  milestoneId: string,
+): ContractWorkspace {
+  return {
+    ...workspace,
+    milestones: workspace.milestones.map((milestone: ContractMilestone) =>
+      milestone.id === milestoneId ? { ...milestone, completed: !milestone.completed } : milestone,
+    ),
   };
 }

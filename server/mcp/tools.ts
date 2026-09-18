@@ -337,7 +337,14 @@ export const TOOLS = [
         .select("id,title,status,submitted_at")
         .single();
       if (error) return fail("submit_deliverable", error);
-      return { ok: true, deliverable: data };
+      // A submitted deliverable puts the contract in review; the organization's
+      // decision moves it on from there (the product writes that transition).
+      const { error: statusError } = await op.db
+        .from("contracts")
+        .update({ status: "In Review" })
+        .eq("id", input.contractId)
+        .eq("status", "Active");
+      return { ok: true, deliverable: data, contractStatus: statusError ? "unchanged" : "In Review" };
     },
   }),
   tool({

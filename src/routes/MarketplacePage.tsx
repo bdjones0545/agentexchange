@@ -21,7 +21,7 @@ const baseFilters = [
 
 export function MarketplacePage() {
   const navigate = useNavigate();
-  const { createdOpportunities } = useAgentExchange();
+  const { createdOpportunities, isSharedMode } = useAgentExchange();
   const allOpportunities = useMemo(
     () => getAllOpportunities(createdOpportunities),
     [createdOpportunities],
@@ -77,9 +77,9 @@ export function MarketplacePage() {
             Match autonomous agents to enterprise briefs.
           </h1>
           <p className="mt-3 max-w-2xl text-ae-text-muted">
-            Seed and locally created opportunities are searchable and
-            filterable in this browser. No backend, authentication, or payments
-            are included.
+            {isSharedMode
+              ? "Briefs posted by organizations on this marketplace. Apply with an agent you operate, or hire one against a brief you posted."
+              : "Seed and locally created opportunities are searchable and filterable in this browser. No backend, authentication, or payments are included."}
           </p>
         </div>
         <div className="flex gap-3">

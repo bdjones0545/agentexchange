@@ -20,6 +20,7 @@ import {
   hubMetrics,
   networkNodes,
 } from "../data/operations";
+import { getLiveHubMetrics, getLiveTimeline } from "../data/liveMetrics";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
 export function HubPage() {
@@ -32,6 +33,7 @@ export function HubPage() {
     createdAgents,
     createdOpportunities,
     hireRequests,
+    isSharedMode,
     localContracts,
     negotiations,
     savedOpportunities,
@@ -58,6 +60,16 @@ export function HubPage() {
     workspaces: contractWorkspaces,
   };
   const hubInsights = getHubAgentInsights(intelligenceInput);
+  // Shared mode: every tile and timeline entry comes from the user's own rows.
+  const metrics = isSharedMode
+    ? getLiveHubMetrics({
+        agents: createdAgents,
+        contracts: localContracts,
+        hireRequests,
+        opportunities: createdOpportunities,
+      })
+    : hubMetrics;
+  const timeline = isSharedMode ? getLiveTimeline(agentActivities) : activityFeed;
   const suggestedActions = getHubSuggestedActions(intelligenceInput);
 
   return (
@@ -71,27 +83,28 @@ export function HubPage() {
             Operational center for autonomous execution.
           </h1>
           <p className="mt-3 max-w-2xl text-ae-text-muted">
-            Monitor revenue, contract activity, pending actions, trust, and
-            simulated autonomous agent performance.
+            {isSharedMode
+              ? "Your contracts, hire requests and agent activity, as recorded."
+              : "Monitor revenue, contract activity, pending actions, trust, and simulated autonomous agent performance."}
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <PrimaryButton onClick={() => navigate("/contracts")}>
             View Contracts
           </PrimaryButton>
-          <SecondaryButton>Sync Network</SecondaryButton>
+          {isSharedMode ? null : <SecondaryButton>Sync Network</SecondaryButton>}
         </div>
       </div>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {hubMetrics.map((metric) => (
+        {metrics.map((metric) => (
           <LiveActivityCard key={metric.id} metric={metric} />
         ))}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-        <ActivityTimeline events={activityFeed} />
-        <AgentNetworkGraph nodes={networkNodes} />
+      <section className={isSharedMode ? "grid gap-4" : "grid gap-4 lg:grid-cols-[1fr_0.9fr]"}>
+        <ActivityTimeline events={timeline} />
+        {isSharedMode ? null : <AgentNetworkGraph nodes={networkNodes} />}
       </section>
 
       <section className="space-y-4">
@@ -226,25 +239,27 @@ export function HubPage() {
         </div>
       </section>
 
-      <section className="space-y-4">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Collaboration Feed
-          </p>
-          <h2 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text">
-            Active, completed, and shared work
-          </h2>
-        </div>
+      {isSharedMode ? null : (
+        <section className="space-y-4">
+          <div>
+            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+              Collaboration Feed
+            </p>
+            <h2 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text">
+              Active, completed, and shared work
+            </h2>
+          </div>
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          {collaborations.map((collaboration) => (
-            <CollaborationCard
-              collaboration={collaboration}
-              key={collaboration.id}
-            />
-          ))}
-        </div>
-      </section>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {collaborations.map((collaboration) => (
+              <CollaborationCard
+                collaboration={collaboration}
+                key={collaboration.id}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </section>
   );
 }

@@ -28,7 +28,7 @@ const sections: { title: string; status: ContractStatus; description: string }[]
   ];
 
 export function ContractsPage() {
-  const { getContractWorkspace, localContracts, seedContracts } = useAgentExchange();
+  const { getContractWorkspace, isSharedMode, localContracts, seedContracts } = useAgentExchange();
   const allContracts = [...localContracts, ...seedContracts].map((contract) =>
     applyWorkspaceToContract(contract, getContractWorkspace(contract.id)),
   );
@@ -44,8 +44,9 @@ export function ContractsPage() {
             Enterprise agreements across the agent network.
           </h1>
           <p className="mt-3 max-w-2xl text-ae-text-muted">
-            Seed contracts appear alongside contracts created when local
-            applications or hire requests are accepted in this browser.
+            {isSharedMode
+              ? "Every contract you are a party to, with its deliverables and thread."
+              : "Seed contracts appear alongside contracts created when local applications or hire requests are accepted in this browser."}
           </p>
         </div>
         <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-4 py-2 font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-primary">

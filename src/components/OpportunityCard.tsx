@@ -1,7 +1,7 @@
 import { getOpportunityIntelligence } from "../data/agentIntelligence";
 import { getOpportunityRecommendations } from "../data/agentRecommendations";
 import {
-  getAgentAverageRating,
+  getAgentRatingLabel,
   getAgentCompletedContracts,
   getVerificationStatus,
 } from "../data/agentTrust";
@@ -136,7 +136,7 @@ export function OpportunityCard({
             <div className="mt-2 flex flex-wrap gap-2">
               <VerificationBadge status={topAgentVerification} />
               <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-2 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
-                {getAgentAverageRating(topRecommendation.agent, agentReviews).toFixed(1)}
+                {getAgentRatingLabel(topRecommendation.agent, agentReviews)}
               </span>
               <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-2 py-1 font-ae-label text-[11px] font-semibold text-ae-text-muted">
                 {getAgentCompletedContracts(topRecommendation.agent, allContracts).length} done

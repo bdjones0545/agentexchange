@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
-import type { Contract } from "../../data/operations";
+import type { Contract, ContractStatus } from "../../data/operations";
 import type {
   ContractDeliverable,
   ContractMilestone,
@@ -87,6 +87,27 @@ export async function createContract(
     localContracts: [localContract, ...state.localContracts],
   });
   return localContract;
+}
+
+/**
+ * Persist the derived status/progress on the contract row (shared mode only;
+ * demo mode derives at render time). Either party may write these two columns;
+ * the database refuses everything else on the row.
+ */
+export async function updateContractRow(
+  contractId: string,
+  patch: { progress: number; status: ContractStatus },
+) {
+  if (!isSupabaseConfigured || !supabase) {
+    return;
+  }
+  const { error } = await supabase
+    .from("contracts")
+    .update({ progress: patch.progress, status: patch.status })
+    .eq("id", contractId);
+  if (error) {
+    throw new Error(`Unable to update contract: ${getSupabaseErrorMessage(error)}`);
+  }
 }
 
 export async function updateContractWorkspace(workspace: ContractWorkspace) {

@@ -1,5 +1,6 @@
 import type { Agent } from "./agents";
 import type { Contract } from "./operations";
+import { isSupabaseConfigured } from "../lib/supabase";
 import type {
   AgentReview,
   ContractDispute,
@@ -14,6 +15,24 @@ type AgentTrustInput = {
   reviews: AgentReview[];
 };
 
+export type TrustOptions = {
+  /**
+   * In shared (Supabase) mode trust is platform-managed: `verification_status`
+   * and `trust_score` are columns only the platform can write, so the UI must
+   * show them as stored instead of inferring them from local activity. Demo
+   * mode has no database and keeps the local heuristics.
+   */
+  sharedMode?: boolean;
+};
+
+const VERIFICATION_VALUES: VerificationStatus[] = [
+  "Unverified",
+  "Verified",
+  "Enterprise Verified",
+  "Top Rated",
+  "Rising Agent",
+];
+
 export function getAgentReviews(agent: Agent, reviews: AgentReview[]) {
   return reviews.filter(
     (review) => review.agentId === agent.id || review.agentName === agent.name,
@@ -27,6 +46,52 @@ export function getAgentCompletedContracts(agent: Agent, contracts: Contract[]) 
   );
 }
 
+export type AgentRatingSummary = {
+  /** Mean of real reviews, or null when there are none. */
+  average: number | null;
+  count: number;
+};
+
+/** The honest rating: null until an organization has actually left a review. */
+export function getAgentRatingSummary(agent: Agent, reviews: AgentReview[]): AgentRatingSummary {
+  const agentReviews = getAgentReviews(agent, reviews);
+  if (agentReviews.length === 0) {
+    return { average: null, count: 0 };
+  }
+  return {
+    average: Number(
+      (agentReviews.reduce((total, review) => total + review.rating, 0) / agentReviews.length).toFixed(1),
+    ),
+    count: agentReviews.length,
+  };
+}
+
+export function formatAgentRating(summary: AgentRatingSummary) {
+  return summary.average === null ? "No reviews yet" : `${summary.average.toFixed(1)} rating`;
+}
+
+/**
+ * The rating label a card shows. Shared mode never shows a number an
+ * organization did not give; demo mode keeps the seed 5.0 default.
+ */
+export function getAgentRatingLabel(
+  agent: Agent,
+  reviews: AgentReview[],
+  { sharedMode = isSupabaseConfigured }: TrustOptions = {},
+) {
+  if (sharedMode) {
+    const summary = getAgentRatingSummary(agent, reviews);
+    return summary.average === null
+      ? "No reviews yet"
+      : `${summary.average.toFixed(1)} rating (${summary.count})`;
+  }
+  return `${getAgentAverageRating(agent, reviews).toFixed(1)} rating`;
+}
+
+/**
+ * Demo-mode rating with the seed default of 5.0 for unreviewed agents. Shared
+ * mode must not use this for display; see getAgentRatingSummary.
+ */
 export function getAgentAverageRating(agent: Agent, reviews: AgentReview[]) {
   const agentReviews = getAgentReviews(agent, reviews);
 
@@ -99,7 +164,16 @@ export function getTrustBreakdown({
   };
 }
 
-export function getVerificationStatus(input: AgentTrustInput): VerificationStatus {
+export function getVerificationStatus(
+  input: AgentTrustInput,
+  { sharedMode = isSupabaseConfigured }: TrustOptions = {},
+): VerificationStatus {
+  if (sharedMode) {
+    // Stored `verification_status` rides in `tier` for Supabase rows.
+    const stored = input.agent.tier as VerificationStatus;
+    return VERIFICATION_VALUES.includes(stored) ? stored : "Unverified";
+  }
+
   const completedContracts = getAgentCompletedContracts(
     input.agent,
     input.contracts,
