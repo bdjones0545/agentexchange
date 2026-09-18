@@ -22,10 +22,23 @@ export interface ContractMoneyRow {
   status: string;
 }
 
+export interface BillingAccount {
+  profile_id: string;
+  stripe_customer_id: string | null;
+  default_payment_method_id: string | null;
+  card_brand: string | null;
+  card_last4: string | null;
+  agent_daily_cap_cents: number;
+}
+
 export interface Ledger {
   getContract(contractId: string): Promise<ContractMoneyRow | null>;
+  getBillingAccount(profileId: string): Promise<BillingAccount | null>;
+  upsertBillingAccount(profileId: string, patch: Partial<Omit<BillingAccount, "profile_id">> & { card_exp_month?: number | null; card_exp_year?: number | null }): Promise<void>;
+  /** Cents authorized by agents on this operator's contracts in the last 24 hours. */
+  agentSpendLast24h(profileId: string): Promise<number>;
   setPaymentStatus(contractId: string, status: PaymentStatus): Promise<void>;
-  recordPayment(input: { contractId: string; providerRef: string; kind: "charge" | "refund"; amountCents: number; currency: string; status: "pending" | "authorized" | "captured" | "refunded" | "failed"; metadata?: Record<string, unknown> }): Promise<void>;
+  recordPayment(input: { contractId: string; providerRef: string; kind: "charge" | "refund"; amountCents: number; currency: string; status: "pending" | "authorized" | "captured" | "refunded" | "failed"; metadata?: Record<string, unknown>; authorizedBy?: "human" | "agent" }): Promise<void>;
   updatePayment(providerRef: string, patch: { status?: "pending" | "authorized" | "captured" | "refunded" | "failed"; providerRef?: string; metadata?: Record<string, unknown> }): Promise<void>;
   findPaymentByRef(providerRef: string): Promise<{ contract_id: string; status: string } | null>;
   recordPayout(input: { contractId: string; agentId: string | null; operatorProfileId: string | null; grossCents: number; feeCents: number; currency: string }): Promise<void>;
@@ -52,6 +65,35 @@ export function supabaseLedger(client: SupabaseClient = serviceClient()): Ledger
       if (error) throw fail("getContract", error);
       return (data as ContractMoneyRow) ?? null;
     },
+    async getBillingAccount(profileId) {
+      const { data, error } = await client.from("billing_accounts").select("profile_id,stripe_customer_id,default_payment_method_id,card_brand,card_last4,agent_daily_cap_cents").eq("profile_id", profileId).maybeSingle();
+      if (error) throw fail("getBillingAccount", error);
+      return (data as BillingAccount) ?? null;
+    },
+    async upsertBillingAccount(profileId, patch) {
+      const { error } = await client.from("billing_accounts").upsert({ profile_id: profileId, ...patch }, { onConflict: "profile_id" });
+      if (error) throw fail("upsertBillingAccount", error);
+    },
+    async agentSpendLast24h(profileId) {
+      // Contracts whose organization this operator owns, payments authorized by an agent in the window.
+      const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+      const { data: orgs } = await client.from("organizations").select("id").eq("owner_id", profileId);
+      const orgIds = ((orgs ?? []) as Array<{ id: string }>).map((o) => o.id);
+      if (orgIds.length === 0) return 0;
+      const { data: contracts } = await client.from("contracts").select("id").in("organization_id", orgIds);
+      const contractIds = ((contracts ?? []) as Array<{ id: string }>).map((c) => c.id);
+      if (contractIds.length === 0) return 0;
+      const { data, error } = await client
+        .from("payments")
+        .select("amount_cents")
+        .in("contract_id", contractIds)
+        .eq("kind", "charge")
+        .eq("authorized_by", "agent")
+        .in("status", ["authorized", "captured"])
+        .gte("created_at", since);
+      if (error) throw fail("agentSpendLast24h", error);
+      return ((data ?? []) as Array<{ amount_cents: number }>).reduce((t, p) => t + p.amount_cents, 0);
+    },
     async setPaymentStatus(contractId, status) {
       const { error } = await client.from("contracts").update({ payment_status: status }).eq("id", contractId);
       if (error) throw fail("setPaymentStatus", error);
@@ -66,6 +108,7 @@ export function supabaseLedger(client: SupabaseClient = serviceClient()): Ledger
         currency: input.currency,
         status: input.status,
         metadata: input.metadata ?? {},
+        authorized_by: input.authorizedBy ?? null,
       });
       if (error) throw fail("recordPayment", error);
     },

@@ -67,8 +67,86 @@ export async function createFunding(
     currency: quote.currency,
     status: "pending",
     metadata: { quote, checkoutSessionId: session.id },
+    authorizedBy: "human",
   });
   return { url: session.url, quote, sessionId: session.id };
+}
+
+// ── Saved card: the human step (once) and the agent step (many) ─────────────
+
+/** A Stripe-hosted page where the operator saves a card to their Customer. */
+export async function createCardSetup(deps: FundingDeps, input: { profileId: string; email?: string }): Promise<{ url: string }> {
+  let account = await deps.ledger.getBillingAccount(input.profileId);
+  if (!account?.stripe_customer_id) {
+    const customer = await deps.stripe.createCustomer({ email: input.email, profileId: input.profileId });
+    await deps.ledger.upsertBillingAccount(input.profileId, { stripe_customer_id: customer.id });
+    account = await deps.ledger.getBillingAccount(input.profileId);
+  }
+  const session = await deps.stripe.createSetupSession({
+    customerId: account!.stripe_customer_id!,
+    profileId: input.profileId,
+    successUrl: `${deps.appUrl}/account?card=saved`,
+    cancelUrl: `${deps.appUrl}/account?card=cancelled`,
+  });
+  if (!session.url) throw new FundingError(502, "Stripe returned no setup URL");
+  return { url: session.url };
+}
+
+/**
+ * An agent funds a contract with the operator's saved card: a manual-capture
+ * hold placed off-session, within the operator's rolling 24-hour cap. Same
+ * ledger effect as a completed Checkout, authorized_by = 'agent'.
+ */
+export async function fundWithSavedCard(
+  deps: FundingDeps,
+  input: { contractId: string; callerProfileId: string },
+): Promise<{ paymentStatus: PaymentStatus; quote: Quote; paymentIntentId: string }> {
+  const contract = await requireOrgSide(deps.ledger, input.contractId, input.callerProfileId);
+  if (contract.payment_status !== "unfunded") throw new FundingError(409, `contract is already ${contract.payment_status}`);
+  if (!contract.amount_cents) throw new FundingError(409, "contract has no agreed price");
+  const account = await deps.ledger.getBillingAccount(input.callerProfileId);
+  if (!account?.stripe_customer_id || !account.default_payment_method_id) {
+    throw new FundingError(409, "no saved card: the operator must add one at /account before agents can fund contracts");
+  }
+  let quote: Quote;
+  try {
+    quote = quoteContract(contract.amount_cents, contract.platform_fee_bps, contract.currency);
+  } catch (e) {
+    throw new FundingError(409, e instanceof Error ? e.message : "invalid price");
+  }
+  const spent = await deps.ledger.agentSpendLast24h(input.callerProfileId);
+  if (spent + quote.totalCents > account.agent_daily_cap_cents) {
+    throw new FundingError(
+      429,
+      `agent spend cap: ${spent} of ${account.agent_daily_cap_cents} cents used in the last 24h; this contract needs ${quote.totalCents}. The operator can raise the cap at /account.`,
+    );
+  }
+  const hold = await deps.stripe.createOffSessionHold({
+    contractId: contract.id,
+    customerId: account.stripe_customer_id,
+    paymentMethodId: account.default_payment_method_id,
+    currency: quote.currency,
+    amountCents: quote.totalCents,
+    description: `AgentExchange contract ${contract.title}`,
+  });
+  if (hold.status !== "requires_capture") throw new FundingError(502, `card hold returned ${hold.status}`);
+  await deps.ledger.recordPayment({
+    contractId: contract.id,
+    providerRef: hold.id,
+    kind: "charge",
+    amountCents: quote.totalCents,
+    currency: quote.currency,
+    status: "authorized",
+    metadata: { quote, offSession: true },
+    authorizedBy: "agent",
+  });
+  await deps.ledger.setPaymentStatus(contract.id, "authorized");
+  try {
+    await deps.notify?.({ event: "contract_funded", contractId: contract.id });
+  } catch {
+    // best-effort
+  }
+  return { paymentStatus: "authorized", quote, paymentIntentId: hold.id };
 }
 
 type StripeLikeEvent = {
@@ -96,6 +174,28 @@ export async function handleStripeEvent(deps: FundingDeps, event: StripeLikeEven
 
   switch (event.type) {
     case "checkout.session.completed": {
+      if (str(obj.mode) === "setup") {
+        // The operator saved a card. Record the payment method for their agents.
+        const profileId = str(metadata.profileId);
+        const setupIntent = obj.setup_intent as unknown;
+        const paymentMethodId =
+          typeof setupIntent === "string"
+            ? await deps.stripe.retrieveSetupIntentPaymentMethod(setupIntent)
+            : typeof setupIntent === "object" && setupIntent !== null
+              ? str((setupIntent as Record<string, unknown>).payment_method)
+              : null;
+        if (!profileId) return finish("ignored: setup without profile");
+        if (!paymentMethodId) return finish("ignored: setup without payment method", profileId);
+        const pm = await deps.stripe.retrievePaymentMethod(paymentMethodId);
+        await deps.ledger.upsertBillingAccount(profileId, {
+          default_payment_method_id: pm.id,
+          card_brand: pm.brand,
+          card_last4: pm.last4,
+          card_exp_month: pm.expMonth,
+          card_exp_year: pm.expYear,
+        });
+        return finish("card saved");
+      }
       const sessionId = str(obj.id);
       const paymentIntentId = str(obj.payment_intent);
       const contractId = contractIdHint;

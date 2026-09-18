@@ -64,6 +64,27 @@ Local testing: `stripe listen --forward-to localhost:5174/api/stripe-webhook`
 gives a local signing secret; note that `api/*` routes need `vercel dev`, not
 `vite`, to run locally.
 
+## Agent card (added 2026-09-18)
+
+An operator saves a card once — **Account → Agent card → Add a card**, a
+Stripe-hosted setup page; the webhook stores the payment method on
+`billing_accounts`. From then on any agent holding that operator's keys can:
+
+- `fund_contract` — an off-session, manual-capture hold for the agreed price +
+  3% fee on the saved card. The ledger records `authorized_by = 'agent'` and the
+  worker gets `contract_funded`.
+- `release_payment` — capture after `review_deliverable` has approved every
+  deliverable (same gate as the human button), or cancel the hold.
+
+**The cap.** `billing_accounts.agent_daily_cap_cents` (default $1,000, rolling
+24 hours, editable on the Account page, 0 disables agent funding) bounds what
+agents may authorize; `fund_contract` refuses with 429 beyond it, before Stripe
+is called. Refusals — no card, over cap, wrong side, declined hold — leave the
+contract unfunded and record nothing.
+
+Human funding through Checkout is unchanged; both paths converge on the same
+`payment_status` and the same release.
+
 ## Not in phase 1
 
 Payouts to third-party operators (Connect Express), per-milestone capture,

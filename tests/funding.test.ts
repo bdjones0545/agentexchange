@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createFunding, FundingError, handleStripeEvent, releaseFunds } from "../server/funding";
+import { createCardSetup, createFunding, FundingError, fundWithSavedCard, handleStripeEvent, releaseFunds } from "../server/funding";
 import type { ContractMoneyRow, Ledger, PaymentStatus } from "../server/ledger";
 import { quoteContract } from "../server/pricing";
 import { realStripe, signTestEvent, type StripeGateway } from "../server/stripe";
@@ -17,7 +17,12 @@ function fakeLedger(overrides: Partial<ContractMoneyRow> = {}) {
   const payouts: Array<Record<string, unknown>> = [];
   const events = new Map<string, { type: string; outcome?: string }>();
   let deliverables = { total: 1, approved: 1, submitted: 0 };
+  let billing: { profile_id: string; stripe_customer_id: string | null; default_payment_method_id: string | null; card_brand: string | null; card_last4: string | null; agent_daily_cap_cents: number } | null = null;
+  let agentSpent = 0;
   const ledger: Ledger = {
+    async getBillingAccount(profileId) { return billing && billing.profile_id === profileId ? { ...billing } : null; },
+    async upsertBillingAccount(profileId, patch) { billing = { profile_id: profileId, stripe_customer_id: null, default_payment_method_id: null, card_brand: null, card_last4: null, agent_daily_cap_cents: 100000, ...(billing ?? {}), ...patch } as typeof billing; },
+    async agentSpendLast24h() { return agentSpent; },
     async getContract(id) { return id === contract.id ? { ...contract } : null; },
     async setPaymentStatus(_id, status: PaymentStatus) { contract.payment_status = status; },
     async recordPayment(p) { payments.push({ contract_id: p.contractId, provider_ref: p.providerRef, kind: p.kind, amount_cents: p.amountCents, status: p.status, metadata: p.metadata ?? {} }); },
@@ -31,12 +36,17 @@ function fakeLedger(overrides: Partial<ContractMoneyRow> = {}) {
     async authorizedPaymentRef(id) { const p = payments.find((x) => x.contract_id === id && x.kind === "charge" && x.status === "authorized"); return p?.provider_ref ?? null; },
     async deliverableSummary() { return deliverables; },
   };
-  return { ledger, contract, payments, payouts, events, setDeliverables: (d: typeof deliverables) => { deliverables = d; } };
+  return { ledger, contract, payments, payouts, events, setDeliverables: (d: typeof deliverables) => { deliverables = d; }, setBilling: (b: typeof billing) => { billing = b; }, setAgentSpent: (c: number) => { agentSpent = c; } };
 }
 
-function fakeStripe(log: string[] = []): StripeGateway & { log: string[] } {
+function fakeStripe(log: string[] = [], holdStatus = "requires_capture"): StripeGateway & { log: string[] } {
   return {
     log,
+    async createCustomer(input) { log.push(`customer ${input.profileId}`); return { id: "cus_1" }; },
+    async createSetupSession(input) { log.push(`setup ${input.customerId}`); return { id: "cs_setup_1", url: "https://checkout.stripe.test/setup" }; },
+    async retrieveSetupIntentPaymentMethod(id) { log.push(`setupintent ${id}`); return "pm_1"; },
+    async retrievePaymentMethod(id) { return { id, brand: "visa", last4: "4242", expMonth: 12, expYear: 2030 }; },
+    async createOffSessionHold(input) { log.push(`hold ${input.amountCents} ${input.customerId} ${input.paymentMethodId}`); return { id: "pi_agent_1", status: holdStatus }; },
     async createCheckoutSession(input) { log.push(`checkout ${input.amountCents}+${input.buyerFeeCents} ${input.currency} ${input.successUrl}`); return { id: "cs_test_1", url: "https://checkout.stripe.test/cs_test_1" }; },
     async capturePaymentIntent(id) { log.push(`capture ${id}`); return { id, status: "succeeded", amountReceived: 18540 }; },
     async cancelPaymentIntent(id) { log.push(`cancel ${id}`); return { id, status: "canceled" }; },
@@ -149,5 +159,62 @@ describe("releaseFunds", () => {
     expect((await releaseFunds(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER, action: "cancel" })).paymentStatus).toBe("unfunded");
     expect(s.log).toEqual(["cancel pi_1"]);
     expect(f.payments[0].status).toBe("failed");
+  });
+});
+
+describe("agent card", () => {
+  it("card setup creates the customer once and returns the Stripe page", async () => {
+    const f = fakeLedger();
+    const s = fakeStripe();
+    const r = await createCardSetup(deps(f.ledger, s), { profileId: ORG_OWNER, email: "org@test" });
+    expect(r.url).toBe("https://checkout.stripe.test/setup");
+    await createCardSetup(deps(f.ledger, s), { profileId: ORG_OWNER });
+    expect(s.log.filter((l) => l.startsWith("customer"))).toHaveLength(1);
+  });
+
+  it("the setup webhook saves the payment method for the operator", async () => {
+    const f = fakeLedger();
+    const s = fakeStripe();
+    f.setBilling({ profile_id: ORG_OWNER, stripe_customer_id: "cus_1", default_payment_method_id: null, card_brand: null, card_last4: null, agent_daily_cap_cents: 100000 });
+    const r = await handleStripeEvent(deps(f.ledger, s), { id: "evt_setup", type: "checkout.session.completed", data: { object: { id: "cs_setup_1", mode: "setup", setup_intent: "seti_1", metadata: { profileId: ORG_OWNER, purpose: "agent_card" } } } });
+    expect(r.outcome).toBe("card saved");
+    expect(await f.ledger.getBillingAccount(ORG_OWNER)).toMatchObject({ default_payment_method_id: "pm_1", card_brand: "visa", card_last4: "4242" });
+  });
+
+  it("an agent funds a contract off-session within the cap; the ledger marks it authorized_by agent", async () => {
+    const f = fakeLedger();
+    const s = fakeStripe();
+    const notified: string[] = [];
+    f.setBilling({ profile_id: ORG_OWNER, stripe_customer_id: "cus_1", default_payment_method_id: "pm_1", card_brand: "visa", card_last4: "4242", agent_daily_cap_cents: 100000 });
+    const r = await fundWithSavedCard(deps(f.ledger, s, async (e) => { notified.push(e.event); }), { contractId: CONTRACT, callerProfileId: ORG_OWNER });
+    expect(r.paymentStatus).toBe("authorized");
+    expect(r.quote.totalCents).toBe(18540);
+    expect(s.log).toEqual(["hold 18540 cus_1 pm_1"]);
+    expect(f.contract.payment_status).toBe("authorized");
+    expect(f.payments[0]).toMatchObject({ provider_ref: "pi_agent_1", status: "authorized", amount_cents: 18540 });
+    expect(notified).toEqual(["contract_funded"]);
+  });
+
+  it("refuses without a saved card, over the cap, from the agent side, and when the hold is declined", async () => {
+    const noCard = fakeLedger();
+    await expect(fundWithSavedCard(deps(noCard.ledger, fakeStripe()), { contractId: CONTRACT, callerProfileId: ORG_OWNER })).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/no saved card/) });
+
+    const capped = fakeLedger();
+    capped.setBilling({ profile_id: ORG_OWNER, stripe_customer_id: "cus_1", default_payment_method_id: "pm_1", card_brand: "visa", card_last4: "4242", agent_daily_cap_cents: 20000 });
+    capped.setAgentSpent(5000);
+    const s = fakeStripe();
+    await expect(fundWithSavedCard(deps(capped.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER })).rejects.toMatchObject({ status: 429 });
+    expect(s.log).toEqual([]);
+    expect(capped.contract.payment_status).toBe("unfunded");
+
+    const wrongSide = fakeLedger();
+    wrongSide.setBilling({ profile_id: OPERATOR, stripe_customer_id: "cus_2", default_payment_method_id: "pm_2", card_brand: "visa", card_last4: "1111", agent_daily_cap_cents: 100000 });
+    await expect(fundWithSavedCard(deps(wrongSide.ledger, fakeStripe()), { contractId: CONTRACT, callerProfileId: OPERATOR })).rejects.toMatchObject({ status: 403 });
+
+    const declined = fakeLedger();
+    declined.setBilling({ profile_id: ORG_OWNER, stripe_customer_id: "cus_1", default_payment_method_id: "pm_1", card_brand: "visa", card_last4: "4242", agent_daily_cap_cents: 100000 });
+    await expect(fundWithSavedCard(deps(declined.ledger, fakeStripe([], "requires_payment_method")), { contractId: CONTRACT, callerProfileId: ORG_OWNER })).rejects.toMatchObject({ status: 502 });
+    expect(declined.contract.payment_status).toBe("unfunded");
+    expect(declined.payments).toEqual([]);
   });
 });

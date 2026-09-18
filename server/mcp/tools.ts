@@ -6,6 +6,9 @@
 // ok=false with the database's reason and changes nothing.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { FundingError, fundWithSavedCard, releaseFunds } from "../funding.js";
+import { supabaseLedger } from "../ledger.js";
+import { realStripe } from "../stripe.js";
 
 export interface OperatorHandle {
   db: SupabaseClient;
@@ -22,6 +25,18 @@ export interface ToolContext {
   now: () => string;
   /** When true, a contract must be funded (payment_status authorized) before work starts. */
   paymentsEnabled: boolean;
+  /** Tell workers something happened (identifiers only). Best-effort. */
+  notify?: (event: { event: "contract_funded" | "deliverable_decision"; contractId: string }) => Promise<unknown>;
+}
+
+/** The money plumbing the two payment tools use; real Stripe and the service-role ledger. */
+function moneyDeps(ctx: ToolContext) {
+  return {
+    ledger: supabaseLedger(),
+    stripe: realStripe(process.env.STRIPE_SECRET_KEY ?? ""),
+    appUrl: (process.env.APP_URL ?? "https://www.agentsexchange.ai").replace(/\/$/, ""),
+    notify: ctx.notify,
+  };
 }
 
 function fundingOf(ctx: ToolContext, c: Row) {
@@ -785,6 +800,43 @@ export const TOOLS = [
       return { ok: true, deliverableId: d.id, decision: input.decision, contractCompleted: completed };
     },
   }),
+
+  tool({
+    name: "fund_contract",
+    description:
+      "Fund a contract you hold as the organization, using the operator's saved card: a hold for the agreed price plus the 3% service fee, released when you approve the work. Requires the operator to have saved a card at /account and stays within the operator's rolling 24-hour agent spend cap. Work on the contract begins once this succeeds.",
+    schema: z.object({ contractId: uuid }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      if (!ctx.paymentsEnabled) return { ok: false, error: "payments are not enabled on this marketplace yet" };
+      const op = await ctx.open();
+      try {
+        const r = await fundWithSavedCard(moneyDeps(ctx), { contractId: input.contractId, callerProfileId: op.profileId });
+        return { ok: true, contractId: input.contractId, paymentStatus: r.paymentStatus, chargedCents: r.quote.totalCents, quote: r.quote };
+      } catch (e) {
+        if (e instanceof FundingError) return { ok: false, error: e.message, httpStatus: e.status };
+        return { ok: false, error: `fund_contract: ${e instanceof Error ? e.message : String(e)}` };
+      }
+    },
+  }),
+  tool({
+    name: "release_payment",
+    description:
+      "Release the held funds on a contract you hold as the organization, after every deliverable is approved (review_deliverable). Captures the charge and records the operator's payout (price minus the 15% platform fee). Or cancel the hold if the work will not go ahead.",
+    schema: z.object({ contractId: uuid, action: z.enum(["capture", "cancel"]).default("capture") }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      if (!ctx.paymentsEnabled) return { ok: false, error: "payments are not enabled on this marketplace yet" };
+      const op = await ctx.open();
+      try {
+        const r = await releaseFunds(moneyDeps(ctx), { contractId: input.contractId, callerProfileId: op.profileId, action: input.action });
+        return { ok: true, contractId: input.contractId, ...r };
+      } catch (e) {
+        if (e instanceof FundingError) return { ok: false, error: e.message, httpStatus: e.status };
+        return { ok: false, error: `release_payment: ${e instanceof Error ? e.message : String(e)}` };
+      }
+    },
+  }),
 ];
 
 export type AnyTool = (typeof TOOLS)[number];
@@ -799,7 +851,7 @@ LIFECYCLE
 5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart).
 
 FOR ORGANIZATIONS (an agent acting as a buyer)
-post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; review_deliverable to approve or reject work. Funding a contract (a card charge) is a human step on the contract page for now.
+post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work; release_payment to pay the operator after approval.
 
 RULES
 - Every write is checked by the database against your account; a refusal is final, not a retry.
