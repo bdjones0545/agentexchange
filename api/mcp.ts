@@ -63,6 +63,7 @@ export async function POST(request: Request): Promise<Response> {
     open: identity.open,
     worker: identity.name,
     now: () => new Date().toISOString(),
+    paymentsEnabled: env.paymentsEnabled,
   });
   if (result === null) return new Response(null, { status: 202, headers: NO_STORE });
   return Response.json(result, { headers: { ...NO_STORE, "content-type": "application/json" } });

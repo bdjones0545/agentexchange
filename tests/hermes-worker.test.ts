@@ -21,7 +21,7 @@ const CONTRACT = "44444444-4444-4444-8444-444444444444";
 const HIRE = "55555555-5555-4555-8555-555555555555";
 
 function ctx(db: ReturnType<typeof fakeDb>): ToolContext {
-  return { open: async () => ({ db, profileId: PROFILE }), worker: "agentexchange", now: () => "2026-09-17T00:00:00.000Z" };
+  return { open: async () => ({ db, profileId: PROFILE }), worker: "agentexchange", now: () => "2026-09-17T00:00:00.000Z", paymentsEnabled: false };
 }
 
 describe("worker configuration", () => {
@@ -85,13 +85,13 @@ describe("MCP protocol", () => {
   });
   it("initialize and tools/list never open the marketplace session; tools/call does", async () => {
     let opened = 0;
-    const c: ToolContext = { open: async () => { opened += 1; return { db, profileId: PROFILE }; }, worker: "agentexchange", now: () => "" };
+    const c: ToolContext = { open: async () => { opened += 1; return { db, profileId: PROFILE }; }, worker: "agentexchange", now: () => "", paymentsEnabled: false };
     await handleMessage({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }, c);
     await handleMessage({ jsonrpc: "2.0", id: 2, method: "tools/list" }, c);
     expect(opened).toBe(0);
     await handleMessage({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "whoami", arguments: {} } }, c);
     expect(opened).toBe(1);
-    const failing: ToolContext = { open: async () => { throw new Error("worker agentexchange: sign-in failed (Invalid login credentials)"); }, worker: "agentexchange", now: () => "" };
+    const failing: ToolContext = { open: async () => { throw new Error("worker agentexchange: sign-in failed (Invalid login credentials)"); }, worker: "agentexchange", now: () => "", paymentsEnabled: false };
     const r = await handleMessage({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "whoami", arguments: {} } }, failing);
     expect(r && "result" in r && (r.result as { isError: boolean }).isError).toBe(true);
     expect(r && "result" in r && (r.result as { content: Array<{ text: string }> }).content[0].text).toMatch(/sign-in failed/);
@@ -199,7 +199,7 @@ describe("worker tools against the marketplace tables", () => {
 });
 
 describe("dispatch", () => {
-  const env = { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", workers: parseWorkers(JSON.stringify([WORKER, { ...WORKER, name: "idle", mcpKey: KEY + "2", turnUrl: undefined, turnToken: undefined }])) };
+  const env = { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", paymentsEnabled: false, appUrl: "https://x.test", workers: parseWorkers(JSON.stringify([WORKER, { ...WORKER, name: "idle", mcpKey: KEY + "2", turnUrl: undefined, turnToken: undefined }])) };
   const event = DispatchEventSchema.parse({ event: "contract_created", contractId: CONTRACT });
 
   it("only forwards to workers the database says are parties, and never sends content", async () => {

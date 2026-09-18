@@ -55,13 +55,22 @@ export interface ServerEnv {
   supabaseUrl: string;
   supabaseAnonKey: string;
   workers: Worker[];
+  /** Stripe is configured and the ledger can be written: contracts must be funded before work. */
+  paymentsEnabled: boolean;
+  appUrl: string;
 }
 
 export function readServerEnv(env: Record<string, string | undefined> = process.env): ServerEnv | null {
   const supabaseUrl = env.SUPABASE_URL ?? env.VITE_SUPABASE_URL;
   const supabaseAnonKey = env.SUPABASE_ANON_KEY ?? env.VITE_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseAnonKey) return null;
-  return { supabaseUrl, supabaseAnonKey, workers: parseWorkers(env.AGENTEXCHANGE_WORKERS) };
+  return {
+    supabaseUrl,
+    supabaseAnonKey,
+    workers: parseWorkers(env.AGENTEXCHANGE_WORKERS),
+    paymentsEnabled: Boolean(env.STRIPE_SECRET_KEY && env.STRIPE_WEBHOOK_SECRET && env.SUPABASE_SERVICE_ROLE_KEY),
+    appUrl: (env.APP_URL ?? "https://www.agentsexchange.ai").replace(/\/$/, ""),
+  };
 }
 
 function constantTimeEqual(a: string, b: string): boolean {

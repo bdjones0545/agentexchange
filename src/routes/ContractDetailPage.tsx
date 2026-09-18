@@ -8,9 +8,10 @@ import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
 import { Markdown } from "../components/Markdown";
 import { WorkerBadge } from "../components/WorkerBadge";
+import { FundingPanel } from "../components/FundingPanel";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
-import type { ContractMessageSender } from "../state/marketplaceTypes";
+import type { ContractMessageSender, LocalContract } from "../state/marketplaceTypes";
 
 function formatActivityDate(value: string) {
   return new Date(value).toLocaleString("en-US", {
@@ -43,7 +44,9 @@ export function ContractDetailPage() {
     seedContracts,
     loading,
     createdAgents,
+    isSharedMode,
     isWorkerAgent,
+    refresh,
   } = useAgentExchange();
   const [deliverableNotes, setDeliverableNotes] = useState("");
   const [deliverableTitle, setDeliverableTitle] = useState("");
@@ -209,6 +212,15 @@ export function ContractDetailPage() {
           </div>
           <ContractStatusBadge status={contract.status} />
         </div>
+
+        {isSharedMode && "amountCents" in activeContract ? (
+          <FundingPanel
+            allDeliverablesApproved={workspace.deliverables.length > 0 && workspace.deliverables.every((deliverable) => deliverable.status === "approved")}
+            contract={activeContract as LocalContract}
+            isOrganizationSide={isOrganizationSide}
+            onChanged={() => void refresh()}
+          />
+        ) : null}
 
         {workerBacked ? (
           <div className="flex flex-col gap-2 rounded-ae-md border border-emerald-400/20 bg-emerald-400/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
