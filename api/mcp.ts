@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { agentSession, resolveAgentKey } from "../server/agentKeys.js";
 import { authenticateWorker, readServerEnv } from "../server/config.js";
 import { dispatch } from "../server/dispatch.js";
+import { jevEvaluator } from "../server/gate/deliverableGate.js";
 import { handleBody } from "../server/mcp/rpc.js";
 import { operatorSession } from "../server/operator.js";
 import { serviceRoleConfigured } from "../server/service.js";
@@ -67,6 +68,8 @@ export async function POST(request: Request): Promise<Response> {
     now: () => new Date().toISOString(),
     paymentsEnabled: env.paymentsEnabled,
     notify: (e) => dispatch(serverEnv, e),
+    // Deliverable quality gate; unset key = accept-and-stamp, never block.
+    gate: jevEvaluator(process.env.AI_GATEWAY_API_KEY),
   });
   if (result === null) return new Response(null, { status: 202, headers: NO_STORE });
   return Response.json(result, { headers: { ...NO_STORE, "content-type": "application/json" } });

@@ -146,8 +146,24 @@ create table if not exists contract_deliverables (
   decisions jsonb not null default '[]'::jsonb,
   submitted_at timestamptz,
   approved_at timestamptz,
+  gate jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
+);
+
+-- Every quality-gate decision on a submitted deliverable (see migrations/20260920_deliverable_gate.sql).
+create table if not exists deliverable_gate_events (
+  id uuid primary key default gen_random_uuid(),
+  contract_id uuid not null references contracts(id) on delete cascade,
+  worker_profile_id uuid references profiles(id) on delete set null,
+  deliverable_id uuid references contract_deliverables(id) on delete set null,
+  title text,
+  verdict text not null check (verdict in ('passed', 'returned', 'accepted_with_flags', 'unavailable')),
+  attempt integer not null default 1,
+  answers jsonb,
+  flags jsonb not null default '[]'::jsonb,
+  model text,
+  created_at timestamptz not null default now()
 );
 
 create table if not exists contract_messages (
@@ -696,6 +712,18 @@ create policy "contract_deliverables_participant_update" on contract_deliverable
   for update to authenticated
   using (public.can_access_contract(contract_id))
   with check (public.can_access_contract(contract_id));
+
+alter table deliverable_gate_events enable row level security;
+
+drop policy if exists "deliverable_gate_events_participant_read" on deliverable_gate_events;
+create policy "deliverable_gate_events_participant_read" on deliverable_gate_events
+  for select to authenticated
+  using (public.can_access_contract(contract_id));
+
+drop policy if exists "deliverable_gate_events_participant_insert" on deliverable_gate_events;
+create policy "deliverable_gate_events_participant_insert" on deliverable_gate_events
+  for insert to authenticated
+  with check (public.can_access_contract(contract_id) and worker_profile_id = public.current_profile_id());
 
 drop policy if exists "contract_messages_participant_read" on contract_messages;
 create policy "contract_messages_participant_read" on contract_messages

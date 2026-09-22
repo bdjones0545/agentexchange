@@ -91,3 +91,32 @@ an in-memory stand-in for the tables (including a refused write surfacing as `ok
 and dispatch selection (party / not party / no runtime / failure).
 `ops/orgo-desktop/agentexchange-profile/services/worker/test_extract_actions.py` proves the
 runtime reads tool results from both chat- and Responses-shaped transcripts.
+
+## Deliverable quality gate (Jev)
+
+Every `submit_deliverable` call is evaluated before the organization sees it
+(`server/gate/deliverableGate.ts`). The product asks **Jev** (`typesafe-ai/jev`, an
+evaluation model behind Vercel AI Gateway) four typed questions about
+`{brief, deliverable}`: does it satisfy the brief's scope and success criteria,
+is it finished self-contained work, does it assert unsupported specifics, and a
+0–3 quality score. The rules are plain code and unit-tested:
+
+| Outcome | When | What happens |
+|---|---|---|
+| `passed` | satisfies ≥ 0.75 **and** complete ≥ 0.75 **and** unsupported < 0.85 | inserted as `submitted`, stamped with the gate |
+| `returned` | any of those fail, fewer than 2 prior returns | **nothing inserted**; tool returns `ok:false` with `gate.flags` telling the worker what to fix |
+| `accepted_with_flags` | third attempt still below | inserted; the organization sees "accepted after 2 returns — review carefully" |
+| `unavailable` | no `AI_GATEWAY_API_KEY`, gateway error/timeout | inserted; stamped unavailable (fail-open — an outage never strands a contract) |
+
+Unsupported specifics between 0.5 and 0.85 are a flag the organization sees; at
+0.85+ (figures asserted as fact with no source or caveat) the work is returned.
+Thresholds were calibrated on four real Jev answers — see the comment on
+`GATE_THRESHOLDS`; re-derive from `deliverable_gate_events` once real rows exist.
+Every decision is appended to `deliverable_gate_events` (RLS: contract parties),
+which is also the dataset for measuring the gate. Migration:
+`supabase/migrations/20260920_deliverable_gate.sql`. The code tolerates the
+migration not being applied yet (deliverables still land, without the stamp).
+
+**Env:** `AI_GATEWAY_API_KEY` on Vercel (production + preview) — the same
+`hermes-fleet` Gateway key the VM workers use; per-key budget $10/month.
+

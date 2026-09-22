@@ -7,6 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { FundingError, fundWithSavedCard, releaseFunds } from "../funding.js";
+import { decide, type Brief, type DeliverableEvaluator, type GateResult } from "../gate/deliverableGate.js";
 import { supabaseLedger } from "../ledger.js";
 import { realStripe } from "../stripe.js";
 
@@ -27,6 +28,12 @@ export interface ToolContext {
   paymentsEnabled: boolean;
   /** Tell workers something happened (identifiers only). Best-effort. */
   notify?: (event: { event: "contract_funded" | "deliverable_decision"; contractId: string }) => Promise<unknown>;
+  /**
+   * Quality gate for submit_deliverable (server/gate/deliverableGate.ts). null or
+   * undefined means no evaluator is configured: deliverables are accepted and
+   * stamped "unavailable" rather than blocked.
+   */
+  gate?: DeliverableEvaluator | null;
 }
 
 /** The money plumbing the two payment tools use; real Stripe and the service-role ledger. */
@@ -77,6 +84,77 @@ async function ownedAgents(op: OperatorHandle): Promise<Row[]> {
     .order("created_at", { ascending: true });
   if (error) throw new Error(`agents: ${error.message}`);
   return (data ?? []) as Row[];
+}
+
+/** The brief a contract came from, when it came from one. */
+async function opportunityOf(db: SupabaseClient, c: Row): Promise<Row | null> {
+  if (!c.source_type || !c.source_id) return null;
+  const table = c.source_type === "application" ? "applications" : c.source_type === "negotiation" ? "negotiations" : c.source_type === "hire-request" ? "hire_requests" : null;
+  if (!table) return null;
+  const { data: src } = await db.from(table).select("opportunity_id").eq("id", c.source_id).maybeSingle();
+  if (!src?.opportunity_id) return null;
+  const { data: opp } = await db
+    .from("opportunities")
+    .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria")
+    .eq("id", src.opportunity_id)
+    .maybeSingle();
+  return (opp as Row) ?? null;
+}
+
+/**
+ * Run the deliverable through the quality gate. Never throws: an evaluator
+ * failure is an "unavailable" verdict, and the count of earlier returns is read
+ * from deliverable_gate_events so a worker cannot loop forever.
+ */
+async function gateDeliverable(
+  ctx: ToolContext,
+  db: SupabaseClient,
+  c: Row,
+  input: { title: string; notes: string },
+): Promise<GateResult> {
+  // Returns since the last deliverable that actually landed on this contract.
+  const { data: latest } = await db
+    .from("contract_deliverables")
+    .select("created_at")
+    .eq("contract_id", c.id)
+    .order("created_at", { ascending: false });
+  const since = (latest as Row[] | null)?.[0]?.created_at as string | undefined;
+  const { data: events } = await db.from("deliverable_gate_events").select("id,verdict,created_at").eq("contract_id", c.id).eq("verdict", "returned");
+  const priorReturns = ((events as Row[] | null) ?? []).filter((e) => !since || String(e.created_at) > since).length;
+
+  if (!ctx.gate) return decide(null, priorReturns, ctx.now);
+  const opp = await opportunityOf(db, c);
+  const brief: Brief = {
+    contractTitle: String(c.title ?? ""),
+    title: (opp?.title as string | null) ?? null,
+    category: (opp?.category as string | null) ?? null,
+    description: (opp?.description as string | null) ?? null,
+    successCriteria: (opp?.success_criteria as string | null) ?? null,
+    requiredSkills: (opp?.required_skills as string[] | null) ?? null,
+  };
+  try {
+    const answers = await ctx.gate({ brief, title: input.title, notes: input.notes });
+    return decide(answers, priorReturns, ctx.now);
+  } catch (e) {
+    console.warn("[gate] evaluator failed; accepting without evaluation:", e instanceof Error ? e.message : e);
+    return decide(null, priorReturns, ctx.now);
+  }
+}
+
+/** Append-only record of every gate decision; best-effort so it can never block a submission. */
+async function recordGate(db: SupabaseClient, c: Row, profileId: string, title: string, gate: GateResult, deliverableId: string | null) {
+  const { error } = await db.from("deliverable_gate_events").insert({
+    contract_id: c.id,
+    worker_profile_id: profileId,
+    deliverable_id: deliverableId,
+    title,
+    verdict: gate.verdict,
+    attempt: gate.attempt,
+    answers: gate.answers,
+    flags: gate.flags,
+    model: gate.model,
+  });
+  if (error) console.warn("[gate] could not record gate event:", error.message);
 }
 
 function contractSummary(c: Row) {
@@ -303,21 +381,7 @@ export const TOOLS = [
         op.db.from("contract_deliverables").select("id,title,notes,status,decisions,submitted_at,approved_at,created_at").eq("contract_id", c.id).order("created_at"),
         op.db.from("contract_messages").select("id,sender_type,author,body,created_at").eq("contract_id", c.id).order("created_at"),
       ]);
-      let opportunity: Row | null = null;
-      if (c.source_type && c.source_id) {
-        const table = c.source_type === "application" ? "applications" : c.source_type === "negotiation" ? "negotiations" : c.source_type === "hire-request" ? "hire_requests" : null;
-        if (table) {
-          const { data: src } = await op.db.from(table).select("opportunity_id").eq("id", c.source_id).maybeSingle();
-          if (src?.opportunity_id) {
-            const { data: opp } = await op.db
-              .from("opportunities")
-              .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria")
-              .eq("id", src.opportunity_id)
-              .maybeSingle();
-            opportunity = (opp as Row) ?? null;
-          }
-        }
-      }
+      const opportunity = await opportunityOf(op.db, c as Row);
       return {
         ok: true,
         contract: contractSummary(c as Row),
@@ -351,7 +415,7 @@ export const TOOLS = [
   tool({
     name: "submit_deliverable",
     description:
-      "Submit a deliverable for the organization's review. `notes` IS the work product (markdown is fine): the memo, plan, analysis, copy, code or report the contract asked for, complete and self-contained. Only the organization can approve it; you cannot.",
+      "Submit a deliverable for the organization's review. `notes` IS the work product (markdown is fine): the memo, plan, analysis, copy, code or report the contract asked for, complete and self-contained. Every submission passes a quality gate that checks it against the brief's scope and success criteria; if it comes back ok=false with gate.verdict \"returned\", read gate.flags, revise, and submit again. Only the organization can approve it; you cannot.",
     schema: z.object({
       contractId: uuid,
       title: z.string().min(2).max(160),
@@ -360,18 +424,39 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
-      const { data, error } = await op.db
+      const { data: c, error: contractError } = await op.db.from("contracts").select("*").eq("id", input.contractId).maybeSingle();
+      if (contractError) return fail("submit_deliverable", contractError);
+      if (!c) return { ok: false, error: "contract not found or not visible to this worker" };
+
+      const gate = await gateDeliverable(ctx, op.db, c as Row, input);
+      if (gate.verdict === "returned") {
+        await recordGate(op.db, c as Row, op.profileId, input.title, gate, null);
+        const remaining = gate.thresholds.maxReturns - gate.attempt + 1;
+        return {
+          ok: false,
+          error: `Quality gate returned this deliverable (attempt ${gate.attempt}; ${remaining} more return${remaining === 1 ? "" : "s"} before it is accepted with flags). Fix: ${gate.flags.join("; ")}. Nothing was submitted.`,
+          gate,
+        };
+      }
+
+      const row = {
+        contract_id: input.contractId,
+        title: input.title,
+        notes: input.notes,
+        status: "submitted",
+        submitted_at: ctx.now(),
+      };
+      let { data, error } = await op.db
         .from("contract_deliverables")
-        .insert({
-          contract_id: input.contractId,
-          title: input.title,
-          notes: input.notes,
-          status: "submitted",
-          submitted_at: ctx.now(),
-        })
+        .insert({ ...row, gate })
         .select("id,title,status,submitted_at")
         .single();
+      if (error && /gate/i.test(error.message)) {
+        // The gate column has not been migrated yet: the deliverable still lands.
+        ({ data, error } = await op.db.from("contract_deliverables").insert(row).select("id,title,status,submitted_at").single());
+      }
       if (error) return fail("submit_deliverable", error);
+      await recordGate(op.db, c as Row, op.profileId, input.title, gate, String((data as Row).id));
       // A submitted deliverable puts the contract in review; the organization's
       // decision moves it on from there (the product writes that transition).
       const { error: statusError } = await op.db
@@ -379,7 +464,7 @@ export const TOOLS = [
         .update({ status: "In Review" })
         .eq("id", input.contractId)
         .eq("status", "Active");
-      return { ok: true, deliverable: data, contractStatus: statusError ? "unchanged" : "In Review" };
+      return { ok: true, deliverable: data, gate, contractStatus: statusError ? "unchanged" : "In Review" };
     },
   }),
   tool({
@@ -847,7 +932,7 @@ LIFECYCLE
 1. Publish a listing for your agent (publish_agent). Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
 2. Find work: search_opportunities / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
 3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
-4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve.
+4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve. submit_deliverable runs a quality gate against the brief: an ok=false result with gate.verdict "returned" means revise per gate.flags and resubmit — do not argue with it and do not resubmit unchanged.
 5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart).
 
 FOR ORGANIZATIONS (an agent acting as a buyer)

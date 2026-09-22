@@ -11,6 +11,7 @@ import { WorkerBadge } from "../components/WorkerBadge";
 import { FundingPanel } from "../components/FundingPanel";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
+import type { ContractDeliverable } from "../state/marketplaceTypes";
 import type { ContractMessageSender, LocalContract } from "../state/marketplaceTypes";
 
 function formatActivityDate(value: string) {
@@ -20,6 +21,21 @@ function formatActivityDate(value: string) {
     minute: "2-digit",
     month: "short",
   });
+}
+
+/** One line the organization can read: did the worker's submission clear the quality gate, and what was flagged. */
+function gateLabel(gate: NonNullable<ContractDeliverable["gate"]>): string {
+  const q = gate.answers ? ` · quality ${gate.answers.quality.toFixed(1)}/3` : "";
+  switch (gate.verdict) {
+    case "passed":
+      return `Quality gate: passed${q}${gate.flags.length ? ` · note: ${gate.flags.join("; ")}` : ""}`;
+    case "accepted_with_flags":
+      return `Quality gate: accepted after ${gate.attempt - 1} returns — review carefully. ${gate.flags.join("; ")}`;
+    case "unavailable":
+      return "Quality gate: not evaluated (gate unavailable at submission)";
+    default:
+      return `Quality gate: ${gate.verdict}`;
+  }
 }
 
 export function ContractDetailPage() {
@@ -422,6 +438,14 @@ export function ContractDetailPage() {
                       <p className="mt-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
                         {deliverable.status}
                       </p>
+                      {deliverable.gate ? (
+                        <p
+                          className={`mt-1 text-xs leading-5 ${deliverable.gate.verdict === "accepted_with_flags" ? "text-ae-amber" : "text-ae-text-muted"}`}
+                          data-testid="deliverable-gate"
+                        >
+                          {gateLabel(deliverable.gate)}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex flex-col gap-2 sm:flex-row">
                       {deliverable.status === "draft" ? (

@@ -30,6 +30,7 @@ import type {
   LocalContract,
   Negotiation,
   SavedOpportunity,
+  DeliverableGate,
 } from "../../state/marketplaceTypes";
 import { getSupabaseErrorMessage, isSupabaseConfigured, supabase } from "../supabase";
 import { emptyAgentExchangeState } from "./localStateRepository";
@@ -237,15 +238,33 @@ export function mapMilestoneRow(row: Row): ContractMilestone {
 
 export function mapDeliverableRow(row: Row): ContractDeliverable {
   const decisions = Array.isArray(row.decisions) ? (row.decisions as ContractDeliverable["decisions"]) : [];
+  const gate = mapGate(row.gate);
   return {
     approvedAt: optionalText(row.approved_at),
     createdAt: text(row.created_at),
     decisions,
+    ...(gate ? { gate } : {}),
     id: text(row.id),
     notes: text(row.notes),
     status: (optionalText(row.status) ?? "draft") as ContractDeliverable["status"],
     submittedAt: optionalText(row.submitted_at),
     title: text(row.title, "Deliverable"),
+  };
+}
+
+const GATE_VERDICTS = new Set(["passed", "returned", "accepted_with_flags", "unavailable"]);
+
+function mapGate(value: unknown): DeliverableGate | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const g = value as Record<string, unknown>;
+  if (typeof g.verdict !== "string" || !GATE_VERDICTS.has(g.verdict)) return undefined;
+  const a = g.answers && typeof g.answers === "object" ? (g.answers as Record<string, unknown>) : null;
+  const num = (v: unknown) => (typeof v === "number" ? v : 0);
+  return {
+    verdict: g.verdict as DeliverableGate["verdict"],
+    attempt: typeof g.attempt === "number" ? g.attempt : 1,
+    flags: Array.isArray(g.flags) ? g.flags.filter((f): f is string => typeof f === "string") : [],
+    answers: a ? { satisfiesBrief: num(a.satisfiesBrief), complete: num(a.complete), unsupportedClaims: num(a.unsupportedClaims), quality: num(a.quality) } : null,
   };
 }
 
