@@ -150,12 +150,22 @@ export type DeliverableDecision = {
   decidedAt: string;
 };
 
+/** The quality-gate result a worker-submitted deliverable was admitted with (server/gate/deliverableGate.ts). */
+export type DeliverableGate = {
+  verdict: "passed" | "returned" | "accepted_with_flags" | "unavailable";
+  attempt: number;
+  flags: string[];
+  answers: { satisfiesBrief: number; complete: number; unsupportedClaims: number; quality: number } | null;
+};
+
 export type ContractDeliverable = {
   id: string;
   title: string;
   notes: string;
   status: ContractDeliverableStatus;
   decisions: DeliverableDecision[];
+  /** Absent for deliverables the organization added itself. */
+  gate?: DeliverableGate;
   createdAt: string;
   submittedAt?: string;
   approvedAt?: string;
