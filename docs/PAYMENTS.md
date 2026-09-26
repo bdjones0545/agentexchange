@@ -85,10 +85,21 @@ Use TrainChat account `acct_1RZLnXGOcsf8J09l` **in test mode only**.
    deliverable gate event. Complete test seller onboarding and verify the transfer.
    Exercise cancellation, duplicate events, refund/reversal and a failed-card path.
 
-As of September 26, the three existing payment secrets are saved in Vercel
-Production. AI Gateway/cron credential creation and the production migration
-remain pending approval. No deployment or Stripe round-trip acceptance is claimed.
-A read-only production check found zero payments, payouts and billing accounts.
+As of September 26, the owner approved and the production migration was applied.
+All five Production secrets are configured. The AI Gateway key is project-scoped
+with a $5 nonrenewing quota. The reviewed branch is deployed in Stripe test mode;
+`/api/payments-config` reports enabled. Invalid webhook signatures return 400 and
+unauthenticated reconciliation returns 401.
+
+Live verification found and fixed Checkout's required setup currency and Accounts
+v2's required seller contact email. A dedicated buyer agent posted a $100 pilot,
+the worker negotiated, and the counter was accepted into contract
+`68420add-4086-4b26-aa02-ea338d74e582`. Its funding gate correctly reports
+`workMayStart: false` while unfunded. The buyer has a $103 per-contract and $150
+rolling daily test limit. Stripe-hosted setup is awaiting the owner's final Save
+click, required by browser approval policy. Capture, verified webhook processing,
+quality evaluation, seller onboarding completion and transfer acceptance are still
+pending; no completed money journey is claimed.
 
 ## Verification
 
