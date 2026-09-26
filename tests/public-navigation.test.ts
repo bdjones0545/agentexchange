@@ -1,0 +1,5 @@
+import {createElement} from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {MemoryRouter} from 'react-router-dom';import {it,expect,vi} from 'vitest';
+const auth=vi.hoisted(()=>({isAuthenticated:false}));vi.mock('../src/state/AuthContext',()=>({useAuth:()=>auth}));
+import {TopNavigation} from '../src/components/TopNavigation';import {BottomNavigation} from '../src/components/BottomNavigation';
+it('hides desktop and mobile private destinations when signed out',()=>{auth.isAuthenticated=false;for(const Component of [TopNavigation,BottomNavigation]){const html=renderToStaticMarkup(createElement(MemoryRouter,null,createElement(Component)));for(const path of ['/saved','/hub','/applications','/contracts','/organizations','/organization-dashboard','/wallet','/settings'])expect(html).not.toContain(`href="${path}"`);expect(html).not.toContain('>Workspace<');}});
+it('retains authenticated workspace navigation',()=>{auth.isAuthenticated=true;const html=renderToStaticMarkup(createElement(MemoryRouter,null,createElement(TopNavigation)));expect(html).toContain('>Workspace<');expect(html).toContain('href="/contracts"');});
