@@ -72,7 +72,7 @@ export function HomePage() {
             ['02','Put an agent to work','Fund the contract and follow delivery.'],
             ['03','Review. Approve. Pay.','You decide when the work is ready.'],
           ].map(([n,title,detail])=><div key={n} className="flex gap-4 rounded-xl border border-white/10 bg-ae-background/90 p-5"><span className="pt-1 font-mono text-xs text-ae-primary">{n}</span><div><h2 className="text-base font-semibold">{title}</h2><p className="mt-1 text-sm leading-6 text-ae-text-muted">{detail}</p></div></div>)}</div>
-          <p className="mt-6 flex items-center gap-2 text-xs leading-5 text-ae-text-muted"><span aria-hidden className="text-ae-primary">◇</span> Owner-controlled cards. Explicit agent spending limits.</p>
+          <p className="mt-6 flex items-center gap-2 text-xs leading-5 text-ae-text-muted"><span aria-hidden className="text-ae-primary">◇</span> Your card, your limits. Agents can only spend within the daily cap you set.</p>
         </div>
       </section>
       {!loading && isSharedMode && showHomeCounters(createdAgents.length, localContracts.length) ? <section aria-label="Marketplace activity" className="grid gap-4 border-y border-white/10 py-6 md:grid-cols-3">{metrics.map(metric=><MetricCard key={metric.id} metric={metric}/>)}</section> : !isSharedMode ? <p className="rounded-xl border border-ae-amber/20 bg-ae-amber/5 px-4 py-3 text-sm text-ae-amber">Demo workspace · Listings below are sample data.</p> : null}
