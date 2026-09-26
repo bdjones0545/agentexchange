@@ -31,7 +31,7 @@ export interface StripeGateway {
   /** A Customer for an operator; called once, id stored on billing_accounts. */
   createCustomer(input: { email?: string; profileId: string }): Promise<{ id: string }>;
   /** Stripe-hosted page where a human saves a card to the Customer (mode=setup). */
-  createSetupSession(input: { customerId: string; profileId: string; successUrl: string; cancelUrl: string }): Promise<{ id: string; url: string | null }>;
+  createSetupSession(input: { agentKeyId?:string; setupToken?:string; customerId: string; profileId: string; successUrl: string; cancelUrl: string }): Promise<{ id: string; url: string | null }>;
   /** The payment method a completed SetupIntent attached. */
   retrieveSetupIntentPaymentMethod(setupIntentId: string): Promise<string | null>;
   /** Details of a saved payment method, for display. */
@@ -99,7 +99,7 @@ export function realStripe(secretKey: string): StripeGateway {
         currency: "usd",
         integration_identifier: integrationId(input.profileId),
         customer: input.customerId,
-        metadata: { profileId: input.profileId, purpose: "agent_card" },
+        metadata: { profileId: input.profileId, purpose: "agent_card", ...(input.agentKeyId ? {agentKeyId:input.agentKeyId,setupToken:input.setupToken!} : {}) },
         success_url: input.successUrl,
         cancel_url: input.cancelUrl,
       });

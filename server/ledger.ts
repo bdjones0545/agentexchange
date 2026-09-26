@@ -1,3 +1,4 @@
+import {readAgentCard, type AgentCard} from './agentCards.js';
 // The only writer of money state.
 //
 // payment_status on contracts, and every row in payments / payouts /
@@ -33,6 +34,9 @@ export interface BillingAccount {
 }
 
 export interface Ledger {
+  getAgentCard?(profileId:string,keyId:string):Promise<AgentCard|null>;
+  saveAgentCard?(profileId:string,keyId:string,setupToken:string,card:{id:string;brand:string|null;last4:string|null}):Promise<boolean>;
+
   getContract(contractId: string): Promise<ContractMoneyRow | null>;
   getBillingAccount(profileId: string): Promise<BillingAccount | null>;
   upsertBillingAccount(profileId: string, patch: Partial<Omit<BillingAccount, "profile_id">> & { card_exp_month?: number | null; card_exp_year?: number | null }): Promise<void>;
@@ -65,6 +69,15 @@ export function supabaseLedger(client: SupabaseClient = serviceClient(), reader:
         .maybeSingle();
       if (error) throw fail("getContract", error);
       return (data as ContractMoneyRow) ?? null;
+    },
+    async getAgentCard(profileId,keyId) {return readAgentCard(client,profileId,keyId,true);},
+    async saveAgentCard(profileId,keyId,setupToken,card) {
+      const {data:key,error:keyError}=await client.from('agent_api_keys').select('id,revoked_at').eq('id',keyId).eq('profile_id',profileId).maybeSingle();
+      if(keyError) throw new Error('Could not verify agent card owner');
+      if(!key || key.revoked_at) return false;
+      const {data,error}=await client.from('agent_payment_cards').update({payment_method_id:card.id,card_brand:card.brand,card_last4:card.last4,updated_at:new Date().toISOString()}).eq('key_id',keyId).eq('profile_id',profileId).eq('setup_token',setupToken).eq('mode','dedicated').select('key_id').maybeSingle();
+      if(error) throw new Error('Could not save agent card');
+      return !!data;
     },
     async getBillingAccount(profileId) {
       const { data, error } = await client.from("billing_accounts").select("profile_id,stripe_customer_id,default_payment_method_id,card_brand,card_last4,agent_daily_cap_cents,agent_per_contract_cap_cents").eq("profile_id", profileId).maybeSingle();

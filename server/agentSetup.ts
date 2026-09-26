@@ -1,3 +1,4 @@
+import {readAgentCard} from './agentCards.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 /** A navigation link, never a bearer credential. Ownership is checked after sign-in. */
@@ -15,10 +16,12 @@ export async function setupStatus(client: SupabaseClient, profileId: string, key
   if(error || sellerError) throw new Error('Setup status unavailable');
   let receiving=false; let verificationUnavailable=false;
   if(enabled && seller) {try {const r=await readiness(seller.stripe_account_id);receiving=r.transfers && r.payouts;} catch {verificationUnavailable=true;}}
-  const cardSaved=!!billing?.default_payment_method_id;
+  const agentCard=keyId ? await readAgentCard(client,profileId,keyId) : null;
+  const cardSource=agentCard?.mode==='dedicated'?'dedicated':'shared';
+  const cardSaved=cardSource==='dedicated'?!!agentCard?.payment_method_id:!!billing?.default_payment_method_id;
   const limitsSet=(billing?.agent_daily_cap_cents ?? 0)>0 && (billing?.agent_per_contract_cap_cents ?? 0)>0;
   const paymentPermission=key?.can_spend===true;
-  return {enabled,agentName:key?.name ?? 'Platform worker',cardSaved,limitsSet,paymentPermission,
+  return {enabled,cardSource,cardLabel:cardSource==='dedicated' && agentCard?.payment_method_id ? `${agentCard.card_brand ?? "Card"} •••• ${agentCard.card_last4 ?? ""}` : null,agentName:key?.name ?? 'Platform worker',cardSaved,limitsSet,paymentPermission,
     canPay:enabled && cardSaved && limitsSet && paymentPermission,canReceive:enabled && receiving,
     sellerConnected:!!seller,verificationUnavailable};
 }

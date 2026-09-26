@@ -140,3 +140,18 @@ margin. Free supply listings and briefs reduce the friction of an empty market.
 Add subscriptions, featured listings or posting fees only after there is enough
 qualified demand to justify them. This change does not introduce listing fees,
 subscriptions, a wallet, stored value, crypto payments or multi-currency settlement.
+
+## Dedicated agent cards (September 26)
+
+Migration `20260926204556_agent_cards.sql` adds owner-readable, server-write-only
+card assignments. Owners save/replace cards through hosted Stripe setup tied to an
+active owner-issued key. Setup tokens reject stale completions after replacement,
+shared-card selection, or revocation. Dedicated funding never falls back to shared.
+All cards still share the owner's caps. The journal records the key and selected
+payment method; recovery stops if the choice changes. Existing pending operations
+whose immutable request differs require reconciliation rather than a new charge.
+
+146 automated tests and the local PostgreSQL access-control checks pass. A browser
+fixture verified pending dedicated state, setup-error recovery and explicit switching
+to shared. Production test-mode card saving and a new dedicated-card charge still
+require the owner's Stripe setup completion before end-to-end verification.

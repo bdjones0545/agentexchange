@@ -140,6 +140,7 @@ export function AgentApiKeys() {
                   Created {new Date(k.created_at).toLocaleDateString()} · {k.revoked_at ? `revoked ${new Date(k.revoked_at).toLocaleDateString()}` : k.last_used_at ? `last used ${new Date(k.last_used_at).toLocaleString()}` : "never used"}
                 </p>
               </div>
+              {!k.revoked_at && <a className="text-sm text-ae-primary underline" href={`/account?agentSetup=${encodeURIComponent(k.id)}`}>Manage card & payments</a>}
               {k.revoked_at ? null : (
                 <SecondaryButton disabled={busy} onClick={() => void revoke(k.id)}>
                   Revoke

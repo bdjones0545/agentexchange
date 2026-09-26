@@ -1,3 +1,4 @@
+import {selectAgentPaymentMethod} from './agentCards.js';
 // Fund on hire, hold, release on approval.
 //
 // Three operations, each pure over a Ledger and a StripeGateway so they can be
@@ -78,7 +79,7 @@ async function createFundingCore(
 // ── Saved card: the human step (once) and the agent step (many) ─────────────
 
 /** A Stripe-hosted page where the operator saves a card to their Customer. */
-export async function createCardSetup(deps: FundingDeps, input: { profileId: string; email?: string }): Promise<{ url: string }> {
+export async function createCardSetup(deps: FundingDeps, input: { profileId: string; email?: string; agentKeyId?:string; setupToken?:string }): Promise<{ url: string }> {
   let account = await deps.ledger.getBillingAccount(input.profileId);
   if (!account?.stripe_customer_id) {
     const customer = await deps.stripe.createCustomer({ email: input.email, profileId: input.profileId });
@@ -88,8 +89,9 @@ export async function createCardSetup(deps: FundingDeps, input: { profileId: str
   const session = await deps.stripe.createSetupSession({
     customerId: account!.stripe_customer_id!,
     profileId: input.profileId,
-    successUrl: `${deps.appUrl}/account?card=saved`,
-    cancelUrl: `${deps.appUrl}/account?card=cancelled`,
+    agentKeyId:input.agentKeyId, setupToken:input.setupToken,
+    successUrl: `${deps.appUrl}/account?card=saved${input.agentKeyId ? `&agentSetup=${encodeURIComponent(input.agentKeyId)}` : ""}`,
+    cancelUrl: `${deps.appUrl}/account?card=cancelled${input.agentKeyId ? `&agentSetup=${encodeURIComponent(input.agentKeyId)}` : ""}`,
   });
   if (!session.url) throw new FundingError(502, "Stripe returned no setup URL");
   return { url: session.url };
@@ -102,7 +104,7 @@ export async function createCardSetup(deps: FundingDeps, input: { profileId: str
  */
 async function fundWithSavedCardCore(
   deps: FundingDeps,
-  input: { contractId: string; callerProfileId: string },
+  input: { contractId: string; callerProfileId: string; selectedPaymentMethod?:string },
 ): Promise<{ paymentStatus: PaymentStatus; quote: Quote; paymentIntentId: string }> {
   const contract = await requireOrgSide(deps.ledger, input.contractId, input.callerProfileId);
   if (contract.payment_status === 'authorized' || contract.payment_status === 'captured') {
@@ -113,7 +115,7 @@ async function fundWithSavedCardCore(
   if (contract.payment_status !== "unfunded") throw new FundingError(409, `contract is already ${contract.payment_status}`);
   if (!contract.amount_cents) throw new FundingError(409, "contract has no agreed price");
   const account = await deps.ledger.getBillingAccount(input.callerProfileId);
-  if (!account?.stripe_customer_id || !account.default_payment_method_id) {
+  if (!account?.stripe_customer_id || !(input.selectedPaymentMethod ?? account.default_payment_method_id)) {
     throw new FundingError(409, "no saved card: the operator must add one at /account before agents can fund contracts");
   }
   let quote: Quote;
@@ -126,7 +128,7 @@ async function fundWithSavedCardCore(
     idempotencyKey: `fund:${contract.id}`,
     contractId: contract.id,
     customerId: account.stripe_customer_id,
-    paymentMethodId: account.default_payment_method_id,
+    paymentMethodId: input.selectedPaymentMethod ?? account.default_payment_method_id!,
     currency: quote.currency,
     amountCents: quote.totalCents,
     description: `AgentExchange contract ${contract.title}`,
@@ -193,6 +195,11 @@ async function handleStripeEventCore(deps: FundingDeps, event: StripeLikeEvent):
         if (!profileId) return finish("ignored: setup without profile");
         if (!paymentMethodId) return finish("ignored: setup without payment method", profileId);
         const pm = await deps.stripe.retrievePaymentMethod(paymentMethodId);
+        if(metadata.agentKeyId) {
+          if(!metadata.setupToken || !deps.ledger.saveAgentCard) throw new FundingError(409,'Agent card setup metadata is incomplete');
+          const saved=await deps.ledger.saveAgentCard(profileId,str(metadata.agentKeyId)!,str(metadata.setupToken)!,pm);
+          return finish(saved ? 'agent card saved' : 'ignored: superseded or revoked agent card setup');
+        }
         await deps.ledger.upsertBillingAccount(profileId, {
           default_payment_method_id: pm.id,
           card_brand: pm.brand,
@@ -328,19 +335,28 @@ async function ensurePayout(deps: FundingDeps, contract: Awaited<ReturnType<Ledg
     grossCents: quote.amountCents, feeCents: quote.platformFeeCents, currency: quote.currency, paymentIntentId });
 }
 
-async function fundingOperation<T>(deps: FundingDeps, input: {contractId: string; callerProfileId: string}, kind: string, run: () => Promise<T>): Promise<T> {
+async function fundingOperation<T>(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; selectedPaymentMethod?:string}, kind: string, run: () => Promise<T>): Promise<T> {
   const contract = await requireOrgSide(deps.ledger, input.contractId, input.callerProfileId);
   let quote: Quote;
   try { quote = quoteContract(contract.amount_cents ?? 0, contract.platform_fee_bps, contract.currency); }
   catch { throw new FundingError(409, 'Contract has no valid agreed price'); }
   if (quote.currency !== 'USD') throw new FundingError(409, 'Payment launch supports USD contracts only');
   return runMoneyOperation(deps.operations, { key: `fund:${contract.id}`, kind, profileId: input.callerProfileId,
-    contractId: contract.id, amountCents: quote.totalCents, request: {contractId: contract.id, quote} }, run);
+    contractId: contract.id, amountCents: quote.totalCents, request: {contractId: contract.id, quote, ...(input.agentKeyId ? {agentKeyId:input.agentKeyId,selectedPaymentMethod:input.selectedPaymentMethod} : {})} }, run);
 }
 export async function createFunding(deps: FundingDeps, input: {contractId: string; callerProfileId: string; customerEmail?: string}) {
   return fundingOperation(deps, input, 'fund_human', () => createFundingCore(deps, input));
 }
-export async function fundWithSavedCard(deps: FundingDeps, input: {contractId: string; callerProfileId: string}) {
+export async function fundWithSavedCard(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; selectedPaymentMethod?:string}) {
+  if(input.agentKeyId) {
+    if(!deps.ledger.getAgentCard) throw new FundingError(503,'Agent card storage unavailable');
+    const card=await deps.ledger.getAgentCard(input.callerProfileId,input.agentKeyId);
+    const account=await deps.ledger.getBillingAccount(input.callerProfileId);
+    let selected:string;
+    try {selected=selectAgentPaymentMethod(account?.default_payment_method_id ?? null,card);} catch(e) {throw new FundingError(409,(e as Error).message);}
+    if(input.selectedPaymentMethod && input.selectedPaymentMethod!==selected) throw new FundingError(409,'Card changed during funding; operator reconciliation required');
+    input={...input,selectedPaymentMethod:selected};
+  }
   const result = await fundingOperation(deps, input, 'fund_agent', () => fundWithSavedCardCore(deps, input));
   const current = await requireOrgSide(deps.ledger,input.contractId,input.callerProfileId);
   if (!['authorized','captured'].includes(current.payment_status)) throw new FundingError(409, 'Previous funding is no longer active; operator reconciliation required');

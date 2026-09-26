@@ -913,7 +913,7 @@ export const TOOLS = [
       if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission; the owner must issue a payment-enabled key"};
       const op = await ctx.open();
       try {
-        const r = await fundWithSavedCard(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId });
+        const r = await fundWithSavedCard(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, agentKeyId:ctx.agentKeyId });
         return { ok: true, contractId: input.contractId, paymentStatus: r.paymentStatus, chargedCents: r.quote.totalCents, quote: r.quote };
       } catch (e) {
         if ((e instanceof FundingError || e instanceof MoneyOperationError)) return { ok: false, error: e.message, httpStatus: e.status };

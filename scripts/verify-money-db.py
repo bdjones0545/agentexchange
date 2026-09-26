@@ -40,6 +40,12 @@ alter default privileges in schema public grant all on sequences to anon,authent
         sql(f"""insert into profiles(id,email) values('{PROFILE}','buyer@test.invalid');
 insert into organizations(id,owner_id,name) values('{ORG}','{PROFILE}','Buyer');
 insert into billing_accounts(profile_id,agent_daily_cap_cents,agent_per_contract_cap_cents) values('{PROFILE}',15000,12000);""")
+        key='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+        sql(f"insert into agent_api_keys(id,profile_id,name,key_hash,key_prefix) values('{key}','{PROFILE}','Card test','hash','axk_test');")
+        sql(f"insert into agent_payment_cards(key_id,profile_id,mode,payment_method_id) values('{key}','{PROFILE}','dedicated','pm_test');")
+        assert sql("set role authenticated; select count(*) from agent_payment_cards;") == '0'
+        sql(f"set role authenticated; update agent_payment_cards set payment_method_id='pm_other' where key_id='{key}';",ok=False)
+        sql("set role anon; select * from agent_payment_cards;",ok=False)
         for c in CONTRACTS:
             sql(f"insert into contracts(id,organization_id,organization_name,agent_name,title,amount_cents,currency) values('{c}','{ORG}','Buyer','Seller','Test',10000,'USD');")
         def competing(i):

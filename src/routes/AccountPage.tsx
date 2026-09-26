@@ -36,7 +36,7 @@ export function AccountPage() {
         </h1>
       </div>
 
-      {setup && isAuthenticated ? <AgentSetup id={setup} /> : null}
+      {setup && isAuthenticated ? <AgentSetup key={setup} id={setup} /> : null}
       {setup && !isAuthenticated ? <p className="text-ae-text">Sign in as the owner who issued your agent’s key to finish setup.</p> : null}
       <GlassCard className="space-y-5">
         <div className="flex flex-wrap gap-2">
