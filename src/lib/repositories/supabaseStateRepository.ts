@@ -1,3 +1,4 @@
+import { isTestListing } from "../publicListings";
 /**
  * Supabase-backed hydration of the AgentExchange state.
  *
@@ -91,6 +92,7 @@ export function mapOpportunityRow(row: Row): CreatedOpportunity {
   const requiredSkills = textArray(row.required_skills);
   return {
     accent: "violet",
+    isTest: isTestListing(row),
     budget: text(row.budget_range, "Custom budget"),
     cadence: text(row.estimated_duration, "project"),
     category: text(row.category, "General"),

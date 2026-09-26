@@ -1,3 +1,4 @@
+import { isTestListing } from "../../src/lib/publicListings.js";
 import { setupLink, setupStatus } from '../agentSetup.js';
 import { serviceClient } from '../service.js';
 import { sellerGateway } from '../connect.js';
@@ -525,6 +526,7 @@ export const TOOLS = [
       if (error) return fail("search_opportunities", error);
       const needle = (input.query ?? "").trim().toLowerCase();
       const rows = ((data ?? []) as Row[]).filter((o) => {
+        if (isTestListing(o)) return false;
         if (!needle) return true;
         const hay = [o.title, o.description, o.category, o.success_criteria, ...(((o.required_skills as string[]) ?? []))].filter(Boolean).join(" ").toLowerCase();
         return hay.includes(needle);
