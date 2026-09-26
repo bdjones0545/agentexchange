@@ -49,6 +49,7 @@ export function MarketplacePage() {
     const query = searchQuery.trim().toLowerCase();
 
     return allOpportunities.filter((opportunity) => {
+      if(params.get("brief") && opportunity.id !== params.get("brief")) return false;
       const matchesFilter =
         activeFilter === "All" || opportunity.category === activeFilter;
       const matchesSearch =

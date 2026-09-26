@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useState } from "react";
 
 import { getOpportunityIntelligence } from "../data/agentIntelligence";
@@ -92,7 +93,7 @@ export function OpportunityCard({
             {opportunity.category}
           </p>
           <h2 className="font-ae-display text-2xl font-semibold tracking-[-0.02em] text-ae-text">
-            {opportunity.title}
+            <Link to={`/marketplace/${opportunity.id}`} className="hover:text-ae-primary">{opportunity.title}</Link>
           </h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">

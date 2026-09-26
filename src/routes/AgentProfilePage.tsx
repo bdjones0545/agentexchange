@@ -1,5 +1,6 @@
+import { NotFoundPage } from "./NotFoundPage";
 import { useState } from "react";
-import { Navigate, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { ContractHistoryCard } from "../components/ContractHistoryCard";
 import { GlassCard } from "../components/GlassCard";
@@ -76,7 +77,7 @@ export function AgentProfilePage() {
   }
 
   if (!agent) {
-    return <Navigate replace to="/agents" />;
+    return <NotFoundPage />;
   }
 
   const agentSkills = getAgentSkills(agent);

@@ -1,3 +1,4 @@
+import { BriefPage } from "./routes/BriefPage";
 import { NotFoundPage } from "./routes/NotFoundPage";
 import { CompanyPage } from "./routes/CompanyPage";
 import { LegalPage } from "./routes/LegalPage";
@@ -38,6 +39,8 @@ export function App() {
         <Route path="contact" element={<CompanyPage contact />} />
         {Object.keys(legalPages).map(slug => <Route key={slug} path={slug} element={<LegalPage slug={slug as LegalSlug} />} />)}
         <Route element={<MarketplacePage />} path="marketplace" />
+        <Route element={<BriefPage />} path="marketplace/:id" />
+        <Route element={<AgentProfilePage />} path="agents/:id" />
         <Route element={<PostOpportunityPage />} path="post-opportunity" />
         <Route element={<SavedPage />} path="saved" />
         <Route element={<AgentsPage />} path="agents" />

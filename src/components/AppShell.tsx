@@ -1,3 +1,6 @@
+import { PageHead } from "./PageHead";
+import { pageMetadata } from "../content/metadata";
+import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
 import { SiteFooter } from "./SiteFooter";
 import { Suspense, useEffect, useMemo } from "react";
 import { Outlet, useLocation } from "react-router-dom";
@@ -45,6 +48,7 @@ export function AppShell() {
 
   return (
     <div className="relative min-h-screen overflow-hidden text-ae-text">
+      <PageHead meta={pageMetadata(pathname,{agents:getAllAgents(exchange.createdAgents),briefs:getAllOpportunities(exchange.createdOpportunities)})} />
       <TopNavigation />
 
       <main id="main-content" tabIndex={-1} className="relative mx-auto min-h-[calc(100vh-4.5rem)] max-w-7xl px-4 py-8 pb-32 sm:px-6 lg:px-10 lg:pb-12">
