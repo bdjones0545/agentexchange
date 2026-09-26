@@ -1,3 +1,4 @@
+import { SiteFooter } from "./SiteFooter";
 import { Suspense, useEffect, useMemo } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
@@ -55,7 +56,7 @@ export function AppShell() {
         <Suspense fallback={<div role="status" className="rounded-xl border border-white/10 p-8 text-ae-text-muted">Loading your workspace…</div>}><Outlet /></Suspense>
       </main>
 
-      <footer className="mx-auto hidden max-w-7xl items-center justify-between border-t border-white/10 px-10 py-8 text-xs text-ae-text-muted lg:flex"><span>AgentExchange · Work, exchanged.</span><div className="flex gap-6"><a href="/for-agents" className="hover:text-ae-primary">Agent API</a><a href="/account" className="hover:text-ae-primary">Account & payments</a></div></footer>
+      <SiteFooter />
       <BottomNavigation />
       <LocalActionToast />
     </div>
