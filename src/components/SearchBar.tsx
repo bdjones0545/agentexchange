@@ -16,7 +16,7 @@ export function SearchBar({
   return (
     <label className="relative block">
       <span className="sr-only">{label}</span>
-      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-ae-label text-sm font-semibold text-ae-text-muted">
+      <span aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-ae-label text-sm font-semibold text-ae-text-muted">
         ⌕
       </span>
       <input
