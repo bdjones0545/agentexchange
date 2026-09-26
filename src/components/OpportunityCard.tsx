@@ -1,3 +1,4 @@
+import { useAuth } from "../state/AuthContext";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 
@@ -38,6 +39,7 @@ export function OpportunityCard({
   onNegotiate,
   opportunity,
 }: OpportunityCardProps) {
+  const { isAuthenticated } = useAuth();
   const accent = accentStyles[opportunity.accent];
   const [expanded, setExpanded] = useState(defaultExpanded);
   const {
@@ -106,7 +108,7 @@ export function OpportunityCard({
           <span
             className={`w-fit rounded-full border px-3 py-1 font-ae-label text-xs font-semibold ${accent.badge}`}
           >
-            {topRecommendation?.matchPercentage ?? opportunity.matchScore}% Match
+            {isAuthenticated ? `${topRecommendation?.matchPercentage ?? opportunity.matchScore}% Match` : <Link to="/sign-in">Sign in to see your match.</Link>}
           </span>
           <SavedOpportunityButton opportunityId={opportunity.id} />
         </div>
