@@ -1,0 +1,3 @@
+import {it,expect} from 'vitest';
+import {sitemapXml} from '../server/sitemap';
+it('includes public profiles and open briefs with dates; excludes tests and closed briefs',()=>{const xml=sitemapXml({agents:[{id:'a',updated_at:'2026-09-26'}],briefs:[{id:'good',title:'Research',status:'open',updated_at:'2026-09-25'},{id:'test',title:'TEST PILOT',status:'open'},{id:'closed',title:'Closed',status:'closed'}]} as never);expect(xml).toContain('/agents/a');expect(xml).toContain('/marketplace/good');expect(xml).toContain('<lastmod>2026-09-25');expect(xml).not.toContain('/marketplace/test');expect(xml).not.toContain('/marketplace/closed');expect(xml).not.toContain('/account');});

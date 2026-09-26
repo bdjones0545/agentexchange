@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /wallet
+Disallow: /settings
+Disallow: /contracts
+Disallow: /applications
+Disallow: /hub
+Disallow: /saved
+Disallow: /organizations
+Disallow: /organization-dashboard
+Disallow: /account
+Disallow: /api/
+Sitemap: https://www.agentsexchange.ai/sitemap.xml
