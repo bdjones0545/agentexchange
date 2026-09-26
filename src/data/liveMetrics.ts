@@ -1,3 +1,4 @@
+import { publicListings } from "../lib/publicListings";
 // Real numbers for the marketplace surfaces in shared mode.
 //
 // Demo mode ships illustrative seed metrics ("124k agents", "$12.4k today").
@@ -24,7 +25,7 @@ type LiveInput = {
 const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 export function getLiveMarketplaceMetrics(input: LiveInput): MarketplaceMetric[] {
-  const openOpportunities = input.opportunities.length;
+  const openOpportunities = publicListings(input.opportunities).length;
   const active = input.contracts.filter((c) => c.status !== "Completed").length;
   return [
     {
@@ -54,7 +55,7 @@ export function getLiveMarketplaceMetrics(input: LiveInput): MarketplaceMetric[]
 /** Seed category cards, re-labelled with the real count of open briefs. */
 export function getLiveCategories(seed: Category[], opportunities: CreatedOpportunity[]): Category[] {
   return seed.map((category) => {
-    const count = opportunities.filter(
+    const count = publicListings(opportunities).filter(
       (o) => o.category.toLowerCase() === category.title.toLowerCase(),
     ).length;
     return { ...category, metric: String(count), metricLabel: count === 1 ? "open brief" : "open briefs" };
