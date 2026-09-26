@@ -4,12 +4,12 @@
     "api/reconcile-payments.ts": {
       "maxDuration": 60
     },
-    "api/*.ts": {
-      "maxDuration": 30
-    },
     "api/public-page.ts": {
       "maxDuration": 30,
       "includeFiles": "{dist,dist-server}/**"
+    },
+    "api/*.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [
