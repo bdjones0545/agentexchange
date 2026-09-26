@@ -24,6 +24,7 @@ Same shape as the trainchat coach runtime, deliberately.
 """
 from __future__ import annotations
 
+import errno
 import hmac
 import json
 import logging
@@ -102,10 +103,65 @@ class Cache:
     model: str = ""
     provider: str | None = None
     provider_error = False
+    # Set when a failure is attributable to OS resource exhaustion rather than
+    # to credentials. FD exhaustion surfaces as an auth.json read failure, which
+    # reads as "provider credential resolution failed" and sends the next person
+    # looking at the wrong thing (that is exactly what happened on 2026-09-24).
+    resource_error: str | None = None
     runtime_kwargs: dict[str, Any] | None = None
     mcp_tools: list[str] = []
     mcp_servers: list[str] = []
     lock = threading.Lock()
+
+
+def fd_usage() -> dict[str, int]:
+    """Open descriptors and the soft limit for this process. Cheap; /health calls it."""
+    try:
+        open_fds = len(os.listdir("/proc/self/fd"))
+    except OSError:
+        open_fds = -1
+    soft = -1
+    try:
+        import resource
+
+        soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+    except Exception:  # noqa: BLE001
+        pass
+    pct = int(100 * open_fds / soft) if open_fds >= 0 and soft > 0 else -1
+    return {"open": open_fds, "limit": soft, "pct": pct}
+
+
+_RESOURCE_ERRNOS = {
+    errno.EMFILE: "FILE_DESCRIPTOR_EXHAUSTION",
+    errno.ENFILE: "FILE_DESCRIPTOR_EXHAUSTION",
+    errno.ENOSPC: "DISK_EXHAUSTION",
+    errno.ENOMEM: "MEMORY_EXHAUSTION",
+}
+
+
+def classify_failure(exc: BaseException) -> tuple[str | None, str]:
+    """Return (RESOURCE_CLASS or None, human detail) for an exception.
+
+    Two independent signals, because the OSError is not always in the chain:
+    Hermes's auth loader catches EMFILE and logs it, then raises a plain
+    RuntimeError, so the original errno can be lost. The fd headroom probe
+    catches that case.  The underlying OS error is never hidden - it is
+    reported alongside the classification.
+    """
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, OSError) and cur.errno in _RESOURCE_ERRNOS:
+            return _RESOURCE_ERRNOS[cur.errno], f"{type(cur).__name__}: [Errno {cur.errno}] {cur.strerror}"
+        cur = cur.__cause__ or cur.__context__
+    usage = fd_usage()
+    if usage["pct"] >= 90:
+        return "FILE_DESCRIPTOR_EXHAUSTION", (
+            f"{type(exc).__name__} while file descriptors were exhausted "
+            f"({usage['open']}/{usage['limit']}, {usage['pct']}%)"
+        )
+    return None, f"{type(exc).__name__}"
 
 
 def discover_mcp() -> None:
@@ -311,16 +367,37 @@ def run_turn(body: dict[str, Any]) -> dict[str, Any]:
             Cache.runtime_kwargs = kwargs
             Cache.provider = kwargs.get("provider")
     except Exception as e:  # noqa: BLE001
+        resource_class, detail = classify_failure(e)
         with Cache.lock:
             Cache.provider_error = True
-        log.error("provider credential resolution failed: %s", type(e).__name__)
+            Cache.resource_error = resource_class
+        if resource_class:
+            # NOT a credential problem. Say so, and keep the OS error visible.
+            log.error(
+                "%s: credential resolution could not run (%s); fds=%s",
+                resource_class, detail, fd_usage(),
+            )
+            return {
+                "ok": False,
+                "error": "resource_error",
+                "resourceClass": resource_class,
+                "detail": detail,
+                "fds": fd_usage(),
+                "text": "resource exhaustion prevented credential resolution",
+            }
+        log.error("provider credential resolution failed: %s", detail)
         return {"ok": False, "error": "provider_error", "text": "model credentials unavailable"}
     session_db = None
     try:
         from hermes_state import SessionDB
 
         session_db = SessionDB()
-    except Exception:
+    except Exception as e:  # noqa: BLE001
+        resource_class, detail = classify_failure(e)
+        if resource_class:
+            with Cache.lock:
+                Cache.resource_error = resource_class
+            log.error("%s opening the session database (%s); fds=%s", resource_class, detail, fd_usage())
         session_db = None
     agent_kwargs: dict[str, Any] = dict(
         model=Cache.model,
@@ -337,6 +414,25 @@ def run_turn(body: dict[str, Any]) -> dict[str, Any]:
     )
     if session_db is not None:
         agent_kwargs["session_db"] = session_db
+    # SessionDB holds two descriptors (state.db + state.db-wal) and, once it has
+    # queued a token delta, is pinned by its own writer thread and an atexit
+    # hook - so scope exit and GC never reclaim it. One unclosed instance per
+    # turn is what consumed 1023 of 1024 descriptors by 2026-09-24. The finally
+    # covers the normal return, every early return and every exception path.
+    try:
+        return _run_turn_inner(agent_kwargs, message, t0, body)
+    finally:
+        if session_db is not None:
+            try:
+                session_db.close()
+            except Exception as e:  # noqa: BLE001
+                # Never let a close failure mask the turn's own result or error.
+                log.warning("session_db close failed: %s", type(e).__name__)
+
+
+def _run_turn_inner(agent_kwargs: dict[str, Any], message: str, t0: float, body: dict[str, Any]) -> dict[str, Any]:
+    from run_agent import AIAgent
+
     agent = AIAgent(**agent_kwargs)
     result = agent.run_conversation(message)
     model_ms = int((time.time() - t0) * 1000)
@@ -456,7 +552,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?")[0]
         if path in ("/health", "/"):
-            self._json(200, {"ok": not Cache.provider_error, "ready": Cache.ready and not Cache.provider_error, "providerError": Cache.provider_error, "model": Cache.model, "provider": Cache.provider, "toolsets": TOOLSETS, "mcpServers": Cache.mcp_servers, "mcpTools": len(Cache.mcp_tools), "queue": Jobs.counts(), "sweepSeconds": SWEEP_SECONDS})
+            usage = fd_usage()
+            # A descriptor leak is invisible until it is fatal, so report headroom
+            # before it bites: degraded at 80%, unhealthy at 95%.
+            fd_critical = usage["pct"] >= 95
+            self._json(200, {"ok": (not Cache.provider_error) and not fd_critical, "ready": Cache.ready and not Cache.provider_error and not fd_critical, "providerError": Cache.provider_error, "resourceError": Cache.resource_error or ("FILE_DESCRIPTOR_EXHAUSTION" if fd_critical else None), "fds": usage, "fdPressure": ("critical" if fd_critical else "warn" if usage["pct"] >= 80 else "ok"), "model": Cache.model, "provider": Cache.provider, "toolsets": TOOLSETS, "mcpServers": Cache.mcp_servers, "mcpTools": len(Cache.mcp_tools), "queue": Jobs.counts(), "sweepSeconds": SWEEP_SECONDS})
             return
         if path.startswith("/jobs/"):
             if not self._authorized():
@@ -502,7 +602,30 @@ class Handler(BaseHTTPRequestHandler):
         self._json(202, {"ok": True, "accepted": True, "jobId": job_id, "queue": Jobs.counts()})
 
 
+def raise_fd_soft_limit() -> dict[str, int]:
+    """Lift the soft descriptor limit to the hard limit at startup.
+
+    Defence in depth only - the leak itself is fixed in run_turn. This buys
+    headroom (1024 -> 4096 here) so a future regression degrades slowly enough
+    for the monitor to alert instead of failing the service outright.
+    """
+    try:
+        import resource
+
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < hard:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+            soft = hard
+        return {"soft": soft, "hard": hard}
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not raise fd soft limit: %s", type(e).__name__)
+        return {}
+
+
 def main() -> None:
+    limits = raise_fd_soft_limit()
+    if limits:
+        log.info("fd limits soft=%s hard=%s", limits.get("soft"), limits.get("hard"))
     try:
         warm()
     except Exception as e:  # noqa: BLE001
