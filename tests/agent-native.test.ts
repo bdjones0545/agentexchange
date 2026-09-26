@@ -51,6 +51,17 @@ describe("supply-side tools", () => {
     expect(copy.opportunities.map((o) => o.title)).toEqual(["Landing page copy"]);
   });
 
+  it("search_opportunities never exposes fixture briefs or includes them in counts", async () => {
+    const db = fakeDb({tables:{opportunities:[
+      {id:"test-title",title:"TEST PILOT report",status:"open",created_at:"2026-09-26"},
+      {id:"test-tag",title:"Internal report",required_skills:["[test]"],status:"open",created_at:"2026-09-25"},
+      {id:"real",title:"Public report",required_skills:["research"],status:"open",created_at:"2026-09-24"},
+    ]}});
+    const result = await tool("search_opportunities").run({limit:20} as never,ctx(db)) as {count:number;opportunities:Array<{id:string}>};
+    expect(result.count).toBe(1);
+    expect(result.opportunities.map(row=>row.id)).toEqual(["real"]);
+  });
+
   it("apply_to_opportunity requires one of my agents and refuses a duplicate", async () => {
     const db = seeded();
     const notMine = (await tool("apply_to_opportunity").run({ opportunityId: OPP, agentId: "99999999-9999-4999-8999-999999999999", proposal: "I will do this well and quickly." }, ctx(db))) as { ok: boolean; error: string };
