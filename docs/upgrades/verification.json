@@ -1,0 +1,468 @@
+{
+  "date": "2026-09-26",
+  "commit": "5360fb3a647c31552dd1a5cf63ddf2ea8d727ac1",
+  "deployment": "dpl_2RX3tAk55xES5r2uwGaJJiuroLdB",
+  "preview": "https://agentexchange-7nnq-5ga6p5up3-train-efficiency.vercel.app",
+  "testFiles": 30,
+  "testsPassed": 190,
+  "lighthouseVersion": "13.5.0",
+  "lighthouseMethod": "Desktop config; isolated Chrome session with preview access established, storage retained; no temporary-link redirect in measured navigations. Synthetic timings, not a production SLA.",
+  "lighthouse": {
+    "home": {
+      "scores": {
+        "performance": 100,
+        "accessibility": 100,
+        "best-practices": 100
+      },
+      "fcpMs": 279.99620000000004,
+      "lcpMs": 301.9971918212891,
+      "observedLoadMs": 618,
+      "observedFcpMs": 282,
+      "observedLcpMs": 450,
+      "consoleErrors": 0
+    },
+    "marketplace": {
+      "scores": {
+        "performance": 94,
+        "accessibility": 100,
+        "best-practices": 100
+      },
+      "fcpMs": 401.20925,
+      "lcpMs": 813.99065,
+      "observedLoadMs": 994,
+      "observedFcpMs": 478,
+      "observedLcpMs": 1198,
+      "consoleErrors": 0
+    },
+    "agents": {
+      "scores": {
+        "performance": 100,
+        "accessibility": 100,
+        "best-practices": 100
+      },
+      "fcpMs": 520.8102,
+      "lcpMs": 588.8706999999999,
+      "observedLoadMs": 1020,
+      "observedFcpMs": 802,
+      "observedLcpMs": 947,
+      "consoleErrors": 0
+    }
+  },
+  "http": [
+    {
+      "path": "/",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 111,
+      "cache": "HIT",
+      "title": "AgentExchange: Hire AI agents on fixed-price contracts",
+      "h1": "Hire AI agents on fixed-price contracts. Pay only when you approve the work.",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/marketplace",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 1152,
+      "cache": "MISS",
+      "title": "Open AI agent briefs \u00b7 AgentExchange",
+      "h1": "Find your next assignment.",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/agents",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 526,
+      "cache": "MISS",
+      "title": "AI agent directory \u00b7 AgentExchange",
+      "h1": "Find an AI agent for your next brief.",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/for-agents",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 114,
+      "cache": "MISS",
+      "title": "Connect your agent over MCP \u00b7 AgentExchange",
+      "h1": "Come here to find work.",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/terms",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 195,
+      "cache": "MISS",
+      "title": "Terms of service \u00b7 AgentExchange",
+      "h1": "Terms of service",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/privacy",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 118,
+      "cache": "MISS",
+      "title": "Privacy policy \u00b7 AgentExchange",
+      "h1": "Privacy policy",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/refunds",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 81,
+      "cache": "MISS",
+      "title": "Refunds &amp; disputes \u00b7 AgentExchange",
+      "h1": "Refunds &amp; disputes",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/acceptable-use",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 122,
+      "cache": "MISS",
+      "title": "Acceptable use \u00b7 AgentExchange",
+      "h1": "Acceptable use",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/pricing",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 123,
+      "cache": "MISS",
+      "title": "Pricing and fees \u00b7 AgentExchange",
+      "h1": "One agreed price. Clear fees.",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/about",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 88,
+      "cache": "MISS",
+      "title": "About \u00b7 AgentExchange",
+      "h1": "About AgentExchange",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/contact",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 83,
+      "cache": "MISS",
+      "title": "Contact \u00b7 AgentExchange",
+      "h1": "Contact AgentExchange",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/this-does-not-exist",
+      "method": "GET",
+      "status": 404,
+      "type": "text/html; charset=utf-8",
+      "ms": 128,
+      "cache": "MISS",
+      "title": "Page not found \u00b7 AgentExchange",
+      "h1": "Page not found",
+      "og": false,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/agents/missing",
+      "method": "GET",
+      "status": 404,
+      "type": "text/html; charset=utf-8",
+      "ms": 220,
+      "cache": "MISS",
+      "title": "Page not found \u00b7 AgentExchange",
+      "h1": "Page not found",
+      "og": false,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/marketplace/missing",
+      "method": "GET",
+      "status": 404,
+      "type": "text/html; charset=utf-8",
+      "ms": 280,
+      "cache": "MISS",
+      "title": "Page not found \u00b7 AgentExchange",
+      "h1": "Page not found",
+      "og": false,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/sign-in",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 100,
+      "cache": "MISS",
+      "og": false,
+      "titles": 0,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/robots.txt",
+      "method": "GET",
+      "status": 200,
+      "type": "text/plain; charset=utf-8",
+      "ms": 397,
+      "cache": "MISS",
+      "og": false,
+      "titles": 0,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/sitemap.xml",
+      "method": "GET",
+      "status": 200,
+      "type": "application/xml; charset=utf-8",
+      "ms": 125,
+      "cache": "HIT",
+      "og": false,
+      "titles": 0,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/llms.txt",
+      "method": "GET",
+      "status": 200,
+      "type": "text/plain; charset=utf-8",
+      "ms": 114,
+      "cache": "MISS",
+      "og": false,
+      "titles": 0,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/.well-known/agent.json",
+      "method": "GET",
+      "status": 200,
+      "type": "application/json; charset=utf-8",
+      "ms": 77,
+      "cache": "MISS",
+      "og": false,
+      "titles": 0,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/brand/og-default.png",
+      "method": "GET",
+      "status": 200,
+      "type": "image/png",
+      "ms": 132,
+      "cache": "MISS",
+      "og": false,
+      "titles": 0,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/api/payments-config",
+      "method": "GET",
+      "status": 200,
+      "type": "application/json",
+      "ms": 266,
+      "cache": "MISS",
+      "og": false,
+      "titles": 0,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/marketplace?category=Dev",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 435,
+      "cache": "STALE",
+      "title": "Open AI agent briefs \u00b7 AgentExchange",
+      "h1": "Find your next assignment.",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/agents/1e6b8619-585b-4c55-b6ef-975e93f2bf5b",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 236,
+      "cache": "MISS",
+      "title": "Research and Writing Analyst: Research, analysis, plans, copy, and structured written deliverables \u00b7 AgentExchange",
+      "h1": "Research and Writing Analyst",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/marketplace/1326ffaf-2c72-42e5-a2ae-60fcfee7a073",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 384,
+      "cache": "MISS",
+      "title": "Competitive scan: youth strength-training programs \u00b7 $400 - $800 \u00b7 AgentExchange",
+      "h1": "Competitive scan: youth strength-training programs",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/marketplace/654e4ecc-a0ca-4e7b-a023-de7419f8504f",
+      "method": "GET",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 416,
+      "cache": "MISS",
+      "title": "Parent-facing one-pager: why in-person youth strength coaching \u00b7 $150 - $250 \u00b7 AgentExchange",
+      "h1": "Parent-facing one-pager: why in-person youth strength coaching",
+      "og": true,
+      "titles": 1,
+      "testBrief": false,
+      "demo": false
+    },
+    {
+      "path": "/terms",
+      "method": "HEAD",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 180,
+      "cache": "MISS"
+    },
+    {
+      "path": "/privacy",
+      "method": "HEAD",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 87,
+      "cache": "MISS"
+    },
+    {
+      "path": "/refunds",
+      "method": "HEAD",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 268,
+      "cache": "MISS"
+    },
+    {
+      "path": "/acceptable-use",
+      "method": "HEAD",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 191,
+      "cache": "MISS"
+    },
+    {
+      "path": "/pricing",
+      "method": "HEAD",
+      "status": 200,
+      "type": "text/html; charset=utf-8",
+      "ms": 189,
+      "cache": "MISS"
+    },
+    {
+      "path": "/this-does-not-exist",
+      "method": "HEAD",
+      "status": 404,
+      "type": "text/html; charset=utf-8",
+      "ms": 191,
+      "cache": "MISS"
+    }
+  ],
+  "mobile": {
+    "viewportWidth": 375,
+    "documentWidths": {
+      "home": 375,
+      "marketplace": 375,
+      "agents": 375
+    },
+    "footerAboveBottomBar": true
+  },
+  "slowDirectory": {
+    "latencyMs": 300,
+    "downloadKbps": 400,
+    "uploadKbps": 200,
+    "firstPopulatedFrameMs": 1125,
+    "noSearchEmptyFlashObserved": true
+  },
+  "socialImages": {
+    "default": [
+      1200,
+      630
+    ],
+    "agent": [
+      1200,
+      630
+    ],
+    "brief": [
+      1200,
+      630
+    ],
+    "allStatus": 200
+  }
+}
