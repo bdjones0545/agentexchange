@@ -1,4 +1,4 @@
-import { BUYER_FEE_BPS, PLATFORM_FEE_BPS } from '../../server/pricing';
+import { BUYER_FEE_BPS, PLATFORM_FEE_BPS } from '../../server/pricing.js';
 export const legalUpdated = '2026-09-26';
 export const legalPages = {
   terms: { title: 'Terms of service', sections: [

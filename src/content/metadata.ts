@@ -1,5 +1,5 @@
-import {legalPages, type LegalSlug} from './legal';
-import {siteOrigin} from './publicRoutes';
+import {legalPages, type LegalSlug} from './legal.js';
+import {siteOrigin} from './publicRoutes.js';
 export type PageMetadata={title:string;description:string;canonical:string;noindex?:boolean};
 export type MetadataData={agents?:{id:string;name:string;specialty:string;description?:string|null}[];briefs?:{id:string;title:string;budget?:string;budget_range?:string|null;summary?:string;description?:string|null}[]};
 const pages:Record<string,[string,string]>={
