@@ -1,3 +1,4 @@
+import { operationStore } from "../server/moneyOperations.js";
 // POST /api/stripe-webhook — Stripe's word on what happened to the money. The
 // signature is verified over the raw body; each event id is claimed once in
 // stripe_events before anything changes, so redeliveries are no-ops.
@@ -20,12 +21,12 @@ export async function POST(request: Request): Promise<Response> {
   try {
     event = stripe.constructEvent(raw, signature, process.env.STRIPE_WEBHOOK_SECRET!);
   } catch (e) {
-    return Response.json({ ok: false, error: `invalid signature: ${e instanceof Error ? e.message : "unknown"}` }, { status: 400, headers: NO_STORE });
+    return Response.json({ ok: false, error: "invalid signature" }, { status: 400, headers: NO_STORE });
   }
   try {
     const result = await handleStripeEvent(
       {
-        ledger: supabaseLedger(),
+        ledger: supabaseLedger(), operations: operationStore(),
         stripe,
         appUrl: env.appUrl,
         notify: (e) => dispatch(env, e),
@@ -35,7 +36,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ ok: true, ...result }, { headers: NO_STORE });
   } catch (e) {
     // A 5xx makes Stripe retry, which is what we want for a transient ledger failure.
-    console.error("webhook failed", event.id, event.type, e);
+    console.error("webhook failed", event.id, event.type, e instanceof Error ? e.name : "unknown");
     return Response.json({ ok: false, error: "webhook handling failed" }, { status: 500, headers: NO_STORE });
   }
 }

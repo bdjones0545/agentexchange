@@ -1,3 +1,4 @@
+import { MoneyOperationError, operationStore } from "../server/moneyOperations.js";
 // POST /api/checkout {contractId} — the organization funds a contract. Returns a
 // Stripe Checkout URL for a manual-capture hold of the agreed price + 3% fee.
 import { bearerToken, callerProfile } from "../server/caller.js";
@@ -25,13 +26,13 @@ export async function POST(request: Request): Promise<Response> {
   if (typeof body.contractId !== "string") return Response.json({ ok: false, error: "contractId required" }, { status: 400, headers: NO_STORE });
   try {
     const result = await createFunding(
-      { ledger: supabaseLedger(), stripe: realStripe(process.env.STRIPE_SECRET_KEY!), appUrl: env.appUrl },
+      { ledger: supabaseLedger(undefined, caller.client), operations: operationStore(), stripe: realStripe(process.env.STRIPE_SECRET_KEY!), appUrl: env.appUrl },
       { contractId: body.contractId, callerProfileId: caller.profileId, customerEmail: caller.email ?? undefined },
     );
     return Response.json({ ok: true, url: result.url, quote: result.quote }, { headers: NO_STORE });
   } catch (e) {
-    if (e instanceof FundingError) return Response.json({ ok: false, error: e.message }, { status: e.status, headers: NO_STORE });
-    console.error("checkout failed", e);
+    if ((e instanceof FundingError || e instanceof MoneyOperationError)) return Response.json({ ok: false, error: e.message }, { status: e.status, headers: NO_STORE });
+    console.error("checkout failed", e instanceof Error ? e.name : "unknown");
     return Response.json({ ok: false, error: "checkout failed" }, { status: 500, headers: NO_STORE });
   }
 }

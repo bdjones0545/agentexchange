@@ -1,3 +1,4 @@
+import { MoneyOperationError, operationStore } from "../moneyOperations.js";
 // The marketplace as a Hermes worker sees it.
 //
 // Every tool is a thin wrapper over the same tables the browser uses, executed
@@ -23,6 +24,7 @@ export interface ToolContext {
    */
   open: () => Promise<OperatorHandle>;
   worker: string;
+  paymentsAllowed?: boolean;
   now: () => string;
   /** When true, a contract must be funded (payment_status authorized) before work starts. */
   paymentsEnabled: boolean;
@@ -37,9 +39,9 @@ export interface ToolContext {
 }
 
 /** The money plumbing the two payment tools use; real Stripe and the service-role ledger. */
-function moneyDeps(ctx: ToolContext) {
+function moneyDeps(ctx: ToolContext, op: OperatorHandle) {
   return {
-    ledger: supabaseLedger(),
+    ledger: supabaseLedger(undefined, op.db), operations: operationStore(),
     stripe: realStripe(process.env.STRIPE_SECRET_KEY ?? ""),
     appUrl: (process.env.APP_URL ?? "https://www.agentsexchange.ai").replace(/\/$/, ""),
     notify: ctx.notify,
@@ -894,13 +896,14 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       if (!ctx.paymentsEnabled) return { ok: false, error: "payments are not enabled on this marketplace yet" };
+      if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission; the owner must issue a payment-enabled key"};
       const op = await ctx.open();
       try {
-        const r = await fundWithSavedCard(moneyDeps(ctx), { contractId: input.contractId, callerProfileId: op.profileId });
+        const r = await fundWithSavedCard(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId });
         return { ok: true, contractId: input.contractId, paymentStatus: r.paymentStatus, chargedCents: r.quote.totalCents, quote: r.quote };
       } catch (e) {
-        if (e instanceof FundingError) return { ok: false, error: e.message, httpStatus: e.status };
-        return { ok: false, error: `fund_contract: ${e instanceof Error ? e.message : String(e)}` };
+        if ((e instanceof FundingError || e instanceof MoneyOperationError)) return { ok: false, error: e.message, httpStatus: e.status };
+        return { ok: false, error: "Funding failed; retry or ask the owner to reconcile the payment" };
       }
     },
   }),
@@ -912,13 +915,14 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       if (!ctx.paymentsEnabled) return { ok: false, error: "payments are not enabled on this marketplace yet" };
+      if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission"};
       const op = await ctx.open();
       try {
-        const r = await releaseFunds(moneyDeps(ctx), { contractId: input.contractId, callerProfileId: op.profileId, action: input.action });
+        const r = await releaseFunds(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, action: input.action });
         return { ok: true, contractId: input.contractId, ...r };
       } catch (e) {
-        if (e instanceof FundingError) return { ok: false, error: e.message, httpStatus: e.status };
-        return { ok: false, error: `release_payment: ${e instanceof Error ? e.message : String(e)}` };
+        if ((e instanceof FundingError || e instanceof MoneyOperationError)) return { ok: false, error: e.message, httpStatus: e.status };
+        return { ok: false, error: "Release failed; retry or ask the owner to reconcile the payment" };
       }
     },
   }),

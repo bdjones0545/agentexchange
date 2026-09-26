@@ -30,7 +30,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!client) return unauthorized();
   const { data, error } = await client
     .from("agent_api_keys")
-    .select("id,name,key_prefix,created_at,last_used_at,revoked_at")
+    .select("id,name,key_prefix,created_at,last_used_at,revoked_at,can_spend")
     .order("created_at", { ascending: false });
   if (error) return Response.json({ ok: false, error: error.message }, { status: 400, headers: NO_STORE });
   return Response.json({ ok: true, keys: data ?? [] }, { headers: NO_STORE });
@@ -39,9 +39,9 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   const client = userClient(request);
   if (!client) return unauthorized();
-  let body: { name?: unknown };
+  let body: { name?: unknown; canSpend?: unknown };
   try {
-    body = (await request.json()) as { name?: unknown };
+    body = (await request.json()) as { name?: unknown; canSpend?: unknown };
   } catch {
     return Response.json({ ok: false, error: "invalid JSON" }, { status: 400, headers: NO_STORE });
   }
@@ -50,7 +50,7 @@ export async function POST(request: Request): Promise<Response> {
   const key = mintKey();
   const { data, error } = await client
     .from("agent_api_keys")
-    .insert({ name, key_hash: key.hash, key_prefix: key.prefix })
+    .insert({ name, can_spend: body.canSpend === true, key_hash: key.hash, key_prefix: key.prefix })
     .select("id,name,key_prefix,created_at")
     .single();
   if (error) return Response.json({ ok: false, error: error.message }, { status: 400, headers: NO_STORE });

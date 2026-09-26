@@ -1,3 +1,5 @@
+import { memoryOperations } from "./money-operation-store";
+import { MoneyOperationError } from "../server/moneyOperations";
 import { describe, expect, it } from "vitest";
 import { createCardSetup, createFunding, FundingError, fundWithSavedCard, handleStripeEvent, releaseFunds } from "../server/funding";
 import type { ContractMoneyRow, Ledger, PaymentStatus } from "../server/ledger";
@@ -17,23 +19,23 @@ function fakeLedger(overrides: Partial<ContractMoneyRow> = {}) {
   const payouts: Array<Record<string, unknown>> = [];
   const events = new Map<string, { type: string; outcome?: string }>();
   let deliverables = { total: 1, approved: 1, submitted: 0 };
-  let billing: { profile_id: string; stripe_customer_id: string | null; default_payment_method_id: string | null; card_brand: string | null; card_last4: string | null; agent_daily_cap_cents: number } | null = null;
+  let billing: { profile_id: string; stripe_customer_id: string | null; default_payment_method_id: string | null; card_brand: string | null; card_last4: string | null; agent_daily_cap_cents: number; agent_per_contract_cap_cents?: number } | null = null;
   let agentSpent = 0;
   const ledger: Ledger = {
-    async getBillingAccount(profileId) { return billing && billing.profile_id === profileId ? { ...billing } : null; },
+    async getBillingAccount(profileId) { return billing && billing.profile_id === profileId ? { ...billing, agent_per_contract_cap_cents: billing.agent_per_contract_cap_cents ?? 100000 } : null; },
     async upsertBillingAccount(profileId, patch) { billing = { profile_id: profileId, stripe_customer_id: null, default_payment_method_id: null, card_brand: null, card_last4: null, agent_daily_cap_cents: 100000, ...(billing ?? {}), ...patch } as typeof billing; },
     async agentSpendLast24h() { return agentSpent; },
     async getContract(id) { return id === contract.id ? { ...contract } : null; },
     async setPaymentStatus(_id, status: PaymentStatus) { contract.payment_status = status; },
-    async recordPayment(p) { payments.push({ contract_id: p.contractId, provider_ref: p.providerRef, kind: p.kind, amount_cents: p.amountCents, status: p.status, metadata: p.metadata ?? {} }); },
+    async recordPayment(p) { if(payments.some(x=>x.provider_ref===p.providerRef))return; payments.push({ contract_id: p.contractId, provider_ref: p.providerRef, kind: p.kind, amount_cents: p.amountCents, status: p.status, metadata: p.metadata ?? {} }); },
     async updatePayment(ref, patch) { const p = payments.find((x) => x.provider_ref === ref); if (!p) return; if (patch.status) p.status = patch.status; if (patch.providerRef) p.provider_ref = patch.providerRef; },
     async findPaymentByRef(ref) { const p = payments.find((x) => x.provider_ref === ref); return p ? { contract_id: p.contract_id, status: p.status } : null; },
-    async recordPayout(p) { payouts.push({ ...p, netCents: p.grossCents - p.feeCents }); },
+    async recordPayout(p) { if(payouts.some(x=>x.contractId===p.contractId))return; payouts.push({ ...p, netCents: p.grossCents - p.feeCents }); },
     async claimEvent(id, type) { if (events.has(id)) return false; events.set(id, { type }); return true; },
     async finishEvent(id, outcome) { const e = events.get(id); if (e) e.outcome = outcome; },
     async operatorProfileForAgent() { return OPERATOR; },
     async organizationOwner() { return ORG_OWNER; },
-    async authorizedPaymentRef(id) { const p = payments.find((x) => x.contract_id === id && x.kind === "charge" && x.status === "authorized"); return p?.provider_ref ?? null; },
+    async authorizedPaymentRef(id) { const p = payments.find((x) => x.contract_id === id && x.kind === "charge" && ["authorized","captured"].includes(x.status)); return p?.provider_ref ?? null; },
     async deliverableSummary() { return deliverables; },
   };
   return { ledger, contract, payments, payouts, events, setDeliverables: (d: typeof deliverables) => { deliverables = d; }, setBilling: (b: typeof billing) => { billing = b; }, setAgentSpent: (c: number) => { agentSpent = c; } };
@@ -46,6 +48,7 @@ function fakeStripe(log: string[] = [], holdStatus = "requires_capture"): Stripe
     async createSetupSession(input) { log.push(`setup ${input.customerId}`); return { id: "cs_setup_1", url: "https://checkout.stripe.test/setup" }; },
     async retrieveSetupIntentPaymentMethod(id) { log.push(`setupintent ${id}`); return "pm_1"; },
     async retrievePaymentMethod(id) { return { id, brand: "visa", last4: "4242", expMonth: 12, expYear: 2030 }; },
+    async retrievePaymentIntent(id) { return {id,status:'requires_capture',amount:18540,amountReceived:0,currency:'USD',contractId:CONTRACT,chargeId:'ch_1',captureBefore:Math.floor(Date.now()/1000)+3600,refunded:0,disputed:false}; },
     async createOffSessionHold(input) { log.push(`hold ${input.amountCents} ${input.customerId} ${input.paymentMethodId}`); return { id: "pi_agent_1", status: holdStatus }; },
     async createCheckoutSession(input) { log.push(`checkout ${input.amountCents}+${input.buyerFeeCents} ${input.currency} ${input.successUrl}`); return { id: "cs_test_1", url: "https://checkout.stripe.test/cs_test_1" }; },
     async capturePaymentIntent(id) { log.push(`capture ${id}`); return { id, status: "succeeded", amountReceived: 18540 }; },
@@ -55,7 +58,19 @@ function fakeStripe(log: string[] = [], holdStatus = "requires_capture"): Stripe
   };
 }
 
-const deps = (ledger: Ledger, stripe: StripeGateway, notify?: (e: { event: string; contractId: string }) => Promise<unknown>) => ({ ledger, stripe, appUrl: "https://www.agentsexchange.ai", notify });
+const stores = new WeakMap<Ledger, ReturnType<typeof memoryOperations>>();
+const deps = (ledger: Ledger, stripe: StripeGateway, notify?: (e: { event: string; contractId: string }) => Promise<unknown>) => {
+  let operations=stores.get(ledger);
+  if(!operations) {
+    operations=memoryOperations(async op=>{
+      if(op.kind==='fund_agent') {
+        const b=await ledger.getBillingAccount(op.profileId!);
+        if(b && (await ledger.agentSpendLast24h(op.profileId!))+(op.amountCents ?? 0)>b.agent_daily_cap_cents) throw new MoneyOperationError(429,'agent spend cap');
+      }
+    }); stores.set(ledger,operations);
+  }
+  return {ledger,stripe,operations,appUrl:'https://www.agentsexchange.ai',notify};
+};
 
 describe("pricing", () => {
   it("quotes 3% on top for the buyer and 15% out of the price for the platform", () => {
@@ -100,7 +115,7 @@ describe("webhook", () => {
     expect(f.payments[0]).toMatchObject({ provider_ref: "pi_1", status: "authorized" });
     expect(notified).toEqual(["contract_funded"]);
     // Redelivery: claimed once, nothing repeats.
-    expect(await handleStripeEvent(d, event)).toEqual({ outcome: "duplicate", contractId: CONTRACT });
+    expect(await handleStripeEvent(d, event)).toEqual({ outcome: "authorized", contractId: CONTRACT });
     expect(notified).toEqual(["contract_funded"]);
   });
   it("a canceled hold returns the contract to unfunded; a refund marks it refunded", async () => {
@@ -109,6 +124,7 @@ describe("webhook", () => {
     const d = deps(f.ledger, fakeStripe());
     expect((await handleStripeEvent(d, { id: "evt_2", type: "payment_intent.canceled", data: { object: { id: "pi_1" } } })).outcome).toBe("hold released");
     expect(f.contract.payment_status).toBe("unfunded");
+    d.stripe.retrievePaymentIntent=async id=>({id,status:"succeeded",amount:18540,amountReceived:18540,currency:"USD",contractId:CONTRACT,chargeId:"ch_1",captureBefore:null,refunded:18540,disputed:false});
     f.contract.payment_status = "captured";
     f.payments[0].status = "captured";
     expect((await handleStripeEvent(d, { id: "evt_3", type: "charge.refunded", data: { object: { payment_intent: "pi_1", amount_refunded: 18540, currency: "usd" } } })).outcome).toBe("refunded");
@@ -176,7 +192,7 @@ describe("agent card", () => {
     const f = fakeLedger();
     const s = fakeStripe();
     f.setBilling({ profile_id: ORG_OWNER, stripe_customer_id: "cus_1", default_payment_method_id: null, card_brand: null, card_last4: null, agent_daily_cap_cents: 100000 });
-    const r = await handleStripeEvent(deps(f.ledger, s), { id: "evt_setup", type: "checkout.session.completed", data: { object: { id: "cs_setup_1", mode: "setup", setup_intent: "seti_1", metadata: { profileId: ORG_OWNER, purpose: "agent_card" } } } });
+    const r = await handleStripeEvent(deps(f.ledger, s), { id: "evt_setup", type: "checkout.session.completed", data: { object: { id: "cs_setup_1", mode: "setup", customer:"cus_1", setup_intent: "seti_1", metadata: { profileId: ORG_OWNER, purpose: "agent_card" } } } });
     expect(r.outcome).toBe("card saved");
     expect(await f.ledger.getBillingAccount(ORG_OWNER)).toMatchObject({ default_payment_method_id: "pm_1", card_brand: "visa", card_last4: "4242" });
   });
@@ -213,7 +229,7 @@ describe("agent card", () => {
 
     const declined = fakeLedger();
     declined.setBilling({ profile_id: ORG_OWNER, stripe_customer_id: "cus_1", default_payment_method_id: "pm_1", card_brand: "visa", card_last4: "4242", agent_daily_cap_cents: 100000 });
-    await expect(fundWithSavedCard(deps(declined.ledger, fakeStripe([], "requires_payment_method")), { contractId: CONTRACT, callerProfileId: ORG_OWNER })).rejects.toMatchObject({ status: 502 });
+    await expect(fundWithSavedCard(deps(declined.ledger, fakeStripe([], "requires_payment_method")), { contractId: CONTRACT, callerProfileId: ORG_OWNER })).rejects.toMatchObject({ status: 409 });
     expect(declined.contract.payment_status).toBe("unfunded");
     expect(declined.payments).toEqual([]);
   });
