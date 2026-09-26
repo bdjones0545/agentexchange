@@ -18,13 +18,13 @@ export function sellerGateway(key: string): SellerGateway {
       const a = await stripe.v2.core.accounts.create({
         dashboard: 'express', identity: { country }, contact_email: email, metadata: { profileId },
         defaults: { responsibilities: { fees_collector: 'application', losses_collector: 'application' } },
-        configuration: { recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } } },
+        configuration: { merchant: { capabilities: { card_payments: { requested: true } } }, recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } } },
       }, { idempotencyKey: `seller:${profileId}` });
       return a.id;
     },
     async onboarding(accountId, appUrl) {
       const link = await stripe.v2.core.accountLinks.create({ account: accountId,
-        use_case: { type: 'account_onboarding', account_onboarding: { configurations: ['recipient'],
+        use_case: { type: 'account_onboarding', account_onboarding: { configurations: ['merchant', 'recipient'],
           refresh_url: `${appUrl}/account?seller=refresh`, return_url: `${appUrl}/account?seller=return` } } });
       return link.url;
     },
