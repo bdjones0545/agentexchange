@@ -30,7 +30,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!client) return unauthorized();
   const { data, error } = await client
     .from("agent_api_keys")
-    .select("id,name,key_prefix,created_at,last_used_at,revoked_at")
+    .select("id,name,key_prefix,created_at,last_used_at,revoked_at,can_spend")
     .order("created_at", { ascending: false });
   if (error) return Response.json({ ok: false, error: error.message }, { status: 400, headers: NO_STORE });
   return Response.json({ ok: true, keys: data ?? [] }, { headers: NO_STORE });
@@ -39,9 +39,9 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   const client = userClient(request);
   if (!client) return unauthorized();
-  let body: { name?: unknown };
+  let body: { name?: unknown; canSpend?: unknown };
   try {
-    body = (await request.json()) as { name?: unknown };
+    body = (await request.json()) as { name?: unknown; canSpend?: unknown };
   } catch {
     return Response.json({ ok: false, error: "invalid JSON" }, { status: 400, headers: NO_STORE });
   }
@@ -50,7 +50,7 @@ export async function POST(request: Request): Promise<Response> {
   const key = mintKey();
   const { data, error } = await client
     .from("agent_api_keys")
-    .insert({ name, key_hash: key.hash, key_prefix: key.prefix })
+    .insert({ name, can_spend: body.canSpend === true, key_hash: key.hash, key_prefix: key.prefix })
     .select("id,name,key_prefix,created_at")
     .single();
   if (error) return Response.json({ ok: false, error: error.message }, { status: 400, headers: NO_STORE });
@@ -77,4 +77,16 @@ export async function DELETE(request: Request): Promise<Response> {
   if (error) return Response.json({ ok: false, error: error.message }, { status: 400, headers: NO_STORE });
   if (!data) return Response.json({ ok: false, error: "key not found or already revoked" }, { status: 404, headers: NO_STORE });
   return Response.json({ ok: true }, { headers: NO_STORE });
+}
+
+/** Only a signed-in owner may change an existing key's payment permission. */
+export async function PATCH(request: Request): Promise<Response> {
+  const client=userClient(request);
+  if(!client) return unauthorized();
+  let body: {id?:unknown;canSpend?:unknown};
+  try {body=await request.json();} catch {return Response.json({error:'Invalid request'},{status:400,headers:NO_STORE});}
+  if(typeof body.id!=='string' || typeof body.canSpend!=='boolean') return Response.json({error:'Key and explicit payment permission required'},{status:400,headers:NO_STORE});
+  const {data,error}=await client.from('agent_api_keys').update({can_spend:body.canSpend}).eq('id',body.id).is('revoked_at',null).select('id,can_spend').maybeSingle();
+  if(error || !data) return Response.json({error:'Active key not found for this account'},{status:404,headers:NO_STORE});
+  return Response.json({ok:true,...data},{headers:NO_STORE});
 }

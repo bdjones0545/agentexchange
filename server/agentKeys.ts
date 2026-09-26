@@ -25,6 +25,7 @@ export function looksLikeAgentKey(presented: string): boolean {
 
 export interface ResolvedAgentKey {
   keyId: string;
+  canSpend: boolean;
   profileId: string;
   userId: string;
 }
@@ -35,9 +36,11 @@ export async function resolveAgentKey(presented: string, client: SupabaseClient 
   const { data, error } = await client.rpc("resolve_agent_api_key", { hash_in: hashKey(presented) });
   if (error || !Array.isArray(data) || data.length === 0) return null;
   const row = data[0] as { key_id: string; profile_id: string; user_id: string };
+  const {data: scope, error: scopeError} = await client.from('agent_api_keys').select('can_spend,revoked_at').eq('id',row.key_id).maybeSingle();
+  if (scopeError || !scope || scope.revoked_at) return null;
   // Best-effort usage stamp; never blocks the call.
   void client.from("agent_api_keys").update({ last_used_at: new Date().toISOString() }).eq("id", row.key_id);
-  return { keyId: row.key_id, profileId: row.profile_id, userId: row.user_id };
+  return { canSpend: scope.can_spend === true, keyId: row.key_id, profileId: row.profile_id, userId: row.user_id };
 }
 
 interface AgentSession {

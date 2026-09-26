@@ -2,33 +2,33 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ae-background: #0e1323;
-  --color-ae-background-deep: #080d1d;
-  --color-ae-surface: #161b2b;
-  --color-ae-surface-glass: rgb(17 24 39 / 0.62);
-  --color-ae-surface-high: #25293a;
-  --color-ae-surface-highest: #2f3446;
-  --color-ae-text: #dee1f9;
-  --color-ae-text-muted: #c7c4d8;
+  --color-ae-background: #0b1214;
+  --color-ae-background-deep: #080f11;
+  --color-ae-surface: #121e21;
+  --color-ae-surface-glass: #121e21;
+  --color-ae-surface-high: #1c2d30;
+  --color-ae-surface-highest: #294045;
+  --color-ae-text: #edf5f2;
+  --color-ae-text-muted: #a6b9b5;
   --color-ae-outline: #464555;
   --color-ae-outline-strong: #918fa1;
-  --color-ae-primary: #c4c0ff;
-  --color-ae-primary-action: #6c63ff;
-  --color-ae-primary-container: #8781ff;
-  --color-ae-primary-ink: #2000a4;
-  --color-ae-secondary: #c9bfff;
-  --color-ae-secondary-container: #4720ca;
+  --color-ae-primary: #78f0bc;
+  --color-ae-primary-action: #78f0bc;
+  --color-ae-primary-container: #a8f6d4;
+  --color-ae-primary-ink: #09271c;
+  --color-ae-secondary: #adc8ee;
+  --color-ae-secondary-container: #284d59;
   --color-ae-cyan: #67e8f9;
   --color-ae-emerald: #34d399;
   --color-ae-amber: #fbbf24;
-  --font-ae-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-ae-display: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-ae-body: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-ae-label: "Geist", ui-sans-serif, system-ui, sans-serif;
   --radius-ae-sm: 0.25rem;
   --radius-ae-md: 0.75rem;
   --radius-ae-lg: 1rem;
   --radius-ae-xl: 1.5rem;
-  --shadow-ae-glow: 0 0 40px rgb(108 99 255 / 0.14);
+  --shadow-ae-glow: 0 8px 32px rgb(0 0 0 / 0.12);
 }
 
 :root {
@@ -49,10 +49,7 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  background:
-    radial-gradient(circle at top left, rgb(108 99 255 / 0.2), transparent 34rem),
-    radial-gradient(circle at 82% 14%, rgb(103 232 249 / 0.08), transparent 22rem),
-    linear-gradient(180deg, #080d1d 0%, #0e1323 48%, #080d1d 100%);
+  background: radial-gradient(ellipse at 75% 0%, #19322c66, transparent 48rem), #0b1214;
 }
 
 button,
@@ -63,3 +60,11 @@ a {
 #root {
   min-height: 100vh;
 }
+
+::selection { background: #78f0bc; color: #09271c; }
+:focus-visible { outline: 2px solid #78f0bc; outline-offset: 4px; }
+button:not(:disabled), summary { cursor: pointer; }
+.skip-link { position: fixed; top: -100px; left: 16px; padding: 12px 20px; background: #78f0bc; color: #09271c; z-index: 100; border-radius: 8px; }
+.skip-link:focus { top: 12px; }
+.exchange-grid { background-image: linear-gradient(#78f0bc08 1px, transparent 1px), linear-gradient(90deg,#78f0bc08 1px,transparent 1px); background-size: 32px 32px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }

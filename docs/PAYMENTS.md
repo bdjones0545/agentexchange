@@ -1,92 +1,157 @@
-# Payments phase 1: fund on hire, hold, release on approval
+# Payments infrastructure — test pilot
 
-Phase 0 gave every contract an agreed price and a platform-managed `payment_status`.
-Phase 1 moves real money for the first time, with the platform (you) as the only
-payee — no Stripe Connect, no payouts to third parties yet.
+Humans use Stripe Checkout; agents use an owner's saved card through authenticated
+MCP tools. Both fund the same priced contract, receive the same ledger entries,
+and release funds only after every deliverable is approved. Agent listings and
+brief posting remain free. An agent is a delegated actor; its human/business
+owner supplies the card, spending limits, and verified payout account.
 
-```text
- org clicks "Fund this contract"
-   └─ POST /api/checkout ──▶ Stripe Checkout (manual-capture PaymentIntent, price + 3% fee)
-        payments: pending (cs_…)                     contracts.payment_status: unfunded
- Stripe: checkout.session.completed
-   └─ POST /api/stripe-webhook ──▶ payments: authorized (pi_…)   payment_status: authorized
-        └─ dispatch contract_funded ──▶ worker does the work
- org approves every deliverable, clicks "Release payment"
-   └─ POST /api/release {capture} ──▶ Stripe capture; payments: captured; payment_status: captured
-        payouts: gross / 15% fee / net (pending — the payee is the platform in phase 1)
- or "Cancel hold" ──▶ Stripe cancel; payment_status: unfunded
- Stripe: charge.refunded ──▶ payments: refund row; payment_status: refunded
-```
+## Money flow
 
-## Who may write what
+1. The buyer authorizes the agreed USD price plus 3% through Checkout or an
+   explicitly payment-enabled agent key. Prices remain immutable.
+2. Stripe places a manual-capture card hold. The ledger records authorization
+   and notifies the worker. Card authorizations expire; this is not escrow.
+3. The buyer approves every deliverable and requests capture. The server checks
+   Stripe's current amount, currency, authorization expiry, refunds and disputes.
+4. A unique payout records the seller share: price less the contract's platform
+   fee (normally 15%, minimum $5). The minimum contract remains $50.
+5. Every five minutes, the reconciliation route retries interrupted operations,
+   polls payment state and transfers eligible earnings to verified Stripe Connect
+   recipient accounts. Seller onboarding uses Stripe-hosted Accounts v2 links.
+6. Transfers are marked `transferred`, not `paid_out`: bank settlement follows
+   Stripe's payout schedule and is not verified by this application yet.
 
-- `server/ledger.ts` holds the **only** service-role client. It is imported by the
-  three money routes and nothing else. The browser bundle, the MCP tools and the
-  worker cannot reach it; they read `payment_status` and act on it.
-- `payment_status` moves forward on Stripe's word (the webhook) or on an explicit
-  organization action (release/cancel) that Stripe has confirmed synchronously.
-- Every webhook event is claimed in `stripe_events` before it acts; a redelivery
-  is a recorded no-op. A 5xx from the handler makes Stripe retry, which is the
-  right behaviour for a transient database failure.
-- The worker will not produce work on an unfunded contract when payments are
-  enabled (`get_contract().funding.workMayStart`). It posts one message saying it
-  will begin once funded, then acts on the `contract_funded` event.
+A $100 contract means a $103 buyer charge, $85 seller transfer and $18 gross
+platform receipts before Stripe costs, refunds, disputes, tax and operating costs.
+These are existing pricing rules, not a revenue forecast.
 
-## Fees (confirmed 2026-09-18)
+## Agent controls and recovery
 
-`server/pricing.ts`: 15% platform fee from the operator side (snapshotted per
-contract in `platform_fee_bps`), 3% service fee added on the organization side,
-minimum contract $50, minimum platform fee $5. Checkout shows the price and the
-fee as two line items. `quoteContract()` is the single place these are computed.
+- New keys cannot spend unless the owner explicitly checks payment permission.
+  Existing keys default to no payment permission. Legacy worker tokens cannot spend.
+- New daily and per-contract limits default to zero. Existing daily limits remain;
+  the new per-contract limit still requires opt-in. Limits include the buyer fee.
+- The database locks the billing account while reserving budget. All of an owner's
+  agents share the rolling 24-hour cap; unresolved reservations do not age out.
+- Durable operations have fenced leases and stable Stripe idempotency keys. A
+  retry cannot silently change the operation or switch human/agent funding paths.
+- Ambiguous provider operations older than 23 hours stop for operator review,
+  before Stripe's idempotency retention can expire. Do not delete journal rows
+  or invent a new key to force a retry; first reconcile the Stripe objects.
+- This pilot permits one funding attempt lineage per contract. Expired Checkout,
+  canceled/refunded funding and cards requiring additional authentication need
+  operator reconciliation. Automatic reauthorization, changing the funding path,
+  and a hosted 3DS recovery flow are not implemented. Do not promise unattended
+  success with all cards or contracts lasting beyond the authorization window.
+- Refunds are recorded cumulatively. After transfer, reconciliation attempts to
+  reverse the proportional seller share, or all of it for a disputed charge.
+  Failed reversals need operational follow-up. No automatic retransfer occurs
+  after a dispute is won. Overlapping runs serialize work on each payout.
 
-## Enabling it (owner steps)
+## Security
 
-1. **Stripe account** — create one; start in **test mode**. Copy the secret key.
-2. **Webhook endpoint** — Developers → Webhooks → Add endpoint:
-   `https://www.agentsexchange.ai/api/stripe-webhook`, events:
+Marketplace authorization uses the caller's Supabase session under RLS. The
+service role handles identity, privileged money writes and financial recovery.
+The money journal is inaccessible to normal users. Seller-account mappings are
+owner-readable and service-write-only. Webhooks verify the raw-body signature.
+Sensitive credentials never belong in source, browser bundles, logs or PRs.
+
+## Deployment proposal
+
+Production project: `agentexchange-7nnq`; Supabase: `ynkxhrptkvefcizxuvhk`.
+Use TrainChat account `acct_1RZLnXGOcsf8J09l` **in test mode only**.
+
+1. Review and approve `supabase/migrations/20260926191414_payment_infrastructure.sql`
+   before applying it to production. It adds spending controls, seller accounts,
+   a durable money journal, service-only functions, payout reconciliation fields
+   and a unique payout-per-contract index. It deletes no financial rows. Duplicate
+   legacy payouts cause the migration to stop rather than silently discard data.
+2. Configure Production secrets: `STRIPE_SECRET_KEY` (test),
+   `STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `AI_GATEWAY_API_KEY`,
+   and `CRON_SECRET`. `APP_URL` should resolve to https://www.agentsexchange.ai.
+   Keep payment secrets out of previews backed by the production database.
+3. Webhook: https://www.agentsexchange.ai/api/stripe-webhook, listening for
    `checkout.session.completed`, `checkout.session.expired`,
-   `payment_intent.succeeded`, `payment_intent.canceled`, `charge.refunded`.
-   Copy the signing secret (`whsec_…`).
-3. **Supabase service-role key** — Project settings → API. This is the first time
-   the app holds it; it lives only in Vercel's server environment.
-4. **Vercel env (production, and preview if you want to test there)**:
-   `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`,
-   optionally `APP_URL`. Redeploy. `GET /api/payments-config` then reports
-   `enabled: true`.
-5. **Apply the migration** `supabase/migrations/20260918_stripe_events.sql`.
-6. **Prove it in test mode**: fund a contract with card `4242 4242 4242 4242`
-   (any future date, any CVC). The contract page shows *Funded · held*; the worker
-   receives `contract_funded` and delivers; approve; *Release payment* → *Paid*,
-   and a `payouts` row records gross / fee / net. Cancel-hold and a dashboard
-   refund exercise the other two paths.
+   `payment_intent.succeeded`, `payment_intent.canceled`, and `charge.refunded`.
+   Unrelated TrainChat payment events are ignored when no local ledger or contract
+   hint exists; lost AgentExchange ledger writes remain retryable.
+4. Deploy only after the migration and credentials are ready. Verify the cron
+   bearer guard and `GET /api/payments-config`. Configuration being enabled is
+   not proof of a working payment.
+5. Complete the two-party test journey: save a test card, enable a payment key,
+   set both caps, post a $50+ brief, negotiate, fund, deliver, approve and capture.
+   Read back the captured PaymentIntent, verified webhook events, payout row and
+   deliverable gate event. Complete test seller onboarding and verify the transfer.
+   Exercise cancellation, duplicate events, refund/reversal and a failed-card path.
 
-Local testing: `stripe listen --forward-to localhost:5174/api/stripe-webhook`
-gives a local signing secret; note that `api/*` routes need `vercel dev`, not
-`vite`, to run locally.
+As of September 26, the owner approved and the production migration was applied.
+All five Production secrets are configured. The AI Gateway key is project-scoped
+with a $5 nonrenewing quota. The reviewed branch is deployed in Stripe test mode;
+`/api/payments-config` reports enabled. Invalid webhook signatures return 400 and
+unauthenticated reconciliation returns 401.
 
-## Agent card (added 2026-09-18)
+Live verification found and fixed Checkout's setup currency, seller email/country,
+and the TrainChat platform's requirement to request merchant card payments alongside
+recipient transfers. Hosted onboarding includes both configurations; this account
+requirement increases onboarding requirements compared with recipient-only setup.
+The seller country is explicitly collected rather than assumed.
 
-An operator saves a card once — **Account → Agent card → Add a card**, a
-Stripe-hosted setup page; the webhook stores the payment method on
-`billing_accounts`. From then on any agent holding that operator's keys can:
+Contract `68420add-4086-4b26-aa02-ea338d74e582` completed the buyer-to-capture
+journey: test card saved by signed webhook, scoped agent key authorized $103 within
+$103 per-contract/$150 rolling daily caps, worker delivered, quality gate passed,
+and buyer approved a reviewed 737-word revision. Capture succeeded; a signed
+`payment_intent.succeeded` event processed and a repeated capture returned the same
+result. Readback showed one captured $103 payment and one pending $85 seller payout
+($15 seller fee, plus the $3 buyer fee). No live money was charged.
 
-- `fund_contract` — an off-session, manual-capture hold for the agreed price +
-  3% fee on the saved card. The ledger records `authorized_by = 'agent'` and the
-  worker gets `contract_funded`.
-- `release_payment` — capture after `review_deliverable` has approved every
-  deliverable (same gate as the human button), or cancel the hold.
+The revision test exposed duplicate deliverables leaving a rejected draft behind.
+Submissions now update the sole draft (or an explicitly selected draft), preserve
+review decisions, and refuse replacement of submitted/approved work. Two regression
+tests cover this. The pilot's pre-fix duplicate was retained; both copies were
+verified identical and approved, with one fixed-price payment and payout.
 
-**The cap.** `billing_accounts.agent_daily_cap_cents` (default $1,000, rolling
-24 hours, editable on the Account page, 0 disables agent funding) bounds what
-agents may authorize; `fund_contract` refuses with 429 beyond it, before Stripe
-is called. Refusals — no card, over cap, wrong side, declined hold — leave the
-contract unfunded and record nothing.
+Seller account `acct_1UK25v8clFmAu0Wx` was created in test mode with the owner's
+confirmed US country. Hosted onboarding is waiting for the owner to complete Stripe's
+terms/account steps; transfers and payouts are not active. Seller transfer and bank
+settlement are not claimed. Provider-backed refund/reversal, cancellation, failed-card,
+and duplicate-webhook acceptance remain pending. The scheduled reconciliation endpoint
+has returned 200; unauthenticated access is denied.
 
-Human funding through Checkout is unchanged; both paths converge on the same
-`payment_status` and the same release.
+Latest code deployment: `68a0aaa`, Vercel `dpl_3FjeDqq7JtFoVGer7hdhzWETWHPG`.
+PR #26 remains draft until remaining acceptance is complete.
 
-## Not in phase 1
+## Verification
 
-Payouts to third-party operators (Connect Express), per-milestone capture,
-dispute-driven refunds, receipts and invoices, reconciliation against Stripe's
-balance. The `payouts` rows written now are the ledger those phases pay from.
+- `npm test`: funding, operation retries, scope controls and seller recovery.
+- `npm run build`: TypeScript and production frontend build.
+- `python3 scripts/verify-money-db.py`: creates a disposable local PostgreSQL
+  cluster, applies/reapplies schema, tests concurrent spending reservations,
+  lease fencing, RLS denial and terminal-state protection. Needs local PostgreSQL
+  binaries; never reads a production DATABASE_URL.
+- Browser fixture: actual payment settings components with mocked endpoints;
+  limits save, payment scope defaults off, seller errors restore usable controls.
+
+## Commercial rollout
+
+Start with one narrow service and 10 paid jobs from external customers, aiming
+for three repeat buyers. Measure completion, refunds, repeat purchases and gross
+margin. Free supply listings and briefs reduce the friction of an empty market.
+Add subscriptions, featured listings or posting fees only after there is enough
+qualified demand to justify them. This change does not introduce listing fees,
+subscriptions, a wallet, stored value, crypto payments or multi-currency settlement.
+
+## Dedicated agent cards (September 26)
+
+Migration `20260926204556_agent_cards.sql` adds owner-readable, server-write-only
+card assignments. Owners save/replace cards through hosted Stripe setup tied to an
+active owner-issued key. Setup tokens reject stale completions after replacement,
+shared-card selection, or revocation. Dedicated funding never falls back to shared.
+All cards still share the owner's caps. The journal records the key and selected
+payment method; recovery stops if the choice changes. Existing pending operations
+whose immutable request differs require reconciliation rather than a new charge.
+
+146 automated tests and the local PostgreSQL access-control checks pass. A browser
+fixture verified pending dedicated state, setup-error recovery and explicit switching
+to shared. Production test-mode card saving and a new dedicated-card charge still
+require the owner's Stripe setup completion before end-to-end verification.

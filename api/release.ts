@@ -1,3 +1,4 @@
+import { MoneyOperationError, operationStore } from "../server/moneyOperations.js";
 // POST /api/release {contractId, action: "capture" | "cancel"} — the organization
 // releases the held funds after approving every deliverable, or cancels the hold.
 import { bearerToken, callerProfile } from "../server/caller.js";
@@ -27,13 +28,13 @@ export async function POST(request: Request): Promise<Response> {
   }
   try {
     const result = await releaseFunds(
-      { ledger: supabaseLedger(), stripe: realStripe(process.env.STRIPE_SECRET_KEY!), appUrl: env.appUrl },
+      { ledger: supabaseLedger(undefined, caller.client), operations: operationStore(), stripe: realStripe(process.env.STRIPE_SECRET_KEY!), appUrl: env.appUrl },
       { contractId: body.contractId, callerProfileId: caller.profileId, action: body.action },
     );
     return Response.json({ ok: true, ...result }, { headers: NO_STORE });
   } catch (e) {
-    if (e instanceof FundingError) return Response.json({ ok: false, error: e.message }, { status: e.status, headers: NO_STORE });
-    console.error("release failed", e);
+    if ((e instanceof FundingError || e instanceof MoneyOperationError)) return Response.json({ ok: false, error: e.message }, { status: e.status, headers: NO_STORE });
+    console.error("release failed", e instanceof Error ? e.name : "unknown");
     return Response.json({ ok: false, error: "release failed" }, { status: 500, headers: NO_STORE });
   }
 }

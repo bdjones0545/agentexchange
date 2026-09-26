@@ -1,3 +1,4 @@
+import { MoneyOperationError, operationStore } from "../server/moneyOperations.js";
 // The operator's card for agent-funded contracts.
 //   GET  /api/billing            saved card (brand/last4) and the agent daily cap
 //   POST /api/billing {action:"setup"}                     → Stripe-hosted page to save a card
@@ -35,13 +36,14 @@ async function auth(request: Request): Promise<Auth> {
 export async function GET(request: Request): Promise<Response> {
   const a = await auth(request);
   if (!a.ok) return a.response;
-  const { data } = await a.client.from("billing_accounts").select("card_brand,card_last4,card_exp_month,card_exp_year,agent_daily_cap_cents,default_payment_method_id").eq("profile_id", a.caller.profileId).maybeSingle();
+  const { data } = await a.client.from("billing_accounts").select("card_brand,card_last4,card_exp_month,card_exp_year,agent_daily_cap_cents,agent_per_contract_cap_cents,default_payment_method_id").eq("profile_id", a.caller.profileId).maybeSingle();
   return Response.json(
     {
       ok: true,
       enabled: a.env.paymentsEnabled,
       card: data?.default_payment_method_id ? { brand: data.card_brand, last4: data.card_last4, expMonth: data.card_exp_month, expYear: data.card_exp_year } : null,
-      agentDailyCapCents: data?.agent_daily_cap_cents ?? 100000,
+      agentDailyCapCents: data?.agent_daily_cap_cents ?? 0,
+      agentPerContractCapCents: data?.agent_per_contract_cap_cents ?? 0,
     },
     { headers: NO_STORE },
   );
@@ -50,13 +52,15 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   const a = await auth(request);
   if (!a.ok) return a.response;
-  const body = (await request.json().catch(() => ({}))) as { action?: unknown; agentDailyCapCents?: unknown };
+  const body = (await request.json().catch(() => ({}))) as { action?: unknown; agentDailyCapCents?: unknown; agentPerContractCapCents?: unknown };
   if (body.action === "cap") {
     const cap = Number(body.agentDailyCapCents);
+    const perJob = Number(body.agentPerContractCapCents);
+    if (!Number.isInteger(perJob) || perJob < 0 || perJob > 10_000_000) return Response.json({ok:false,error:"Invalid per-contract cap"},{status:400,headers:NO_STORE});
     if (!Number.isInteger(cap) || cap < 0 || cap > 10_000_000) return Response.json({ ok: false, error: "agentDailyCapCents must be an integer between 0 and 10000000" }, { status: 400, headers: NO_STORE });
     // Ensure the row exists (service role), then the operator updates the cap under RLS.
     await supabaseLedger().upsertBillingAccount(a.caller.profileId, {});
-    const { error } = await a.client.from("billing_accounts").update({ agent_daily_cap_cents: cap }).eq("profile_id", a.caller.profileId);
+    const { error } = await a.client.from("billing_accounts").update({ agent_daily_cap_cents: cap, agent_per_contract_cap_cents: perJob }).eq("profile_id", a.caller.profileId);
     if (error) return Response.json({ ok: false, error: error.message }, { status: 400, headers: NO_STORE });
     return Response.json({ ok: true, agentDailyCapCents: cap }, { headers: NO_STORE });
   }
@@ -64,13 +68,13 @@ export async function POST(request: Request): Promise<Response> {
   if (!a.env.paymentsEnabled) return Response.json({ ok: false, error: "Payments are not enabled" }, { status: 503, headers: NO_STORE });
   try {
     const r = await createCardSetup(
-      { ledger: supabaseLedger(), stripe: realStripe(process.env.STRIPE_SECRET_KEY!), appUrl: a.env.appUrl },
+      { ledger: supabaseLedger(), operations: operationStore(), stripe: realStripe(process.env.STRIPE_SECRET_KEY!), appUrl: a.env.appUrl },
       { profileId: a.caller.profileId, email: a.caller.email ?? undefined },
     );
     return Response.json({ ok: true, url: r.url }, { headers: NO_STORE });
   } catch (e) {
-    if (e instanceof FundingError) return Response.json({ ok: false, error: e.message }, { status: e.status, headers: NO_STORE });
-    console.error("billing setup failed", e);
+    if ((e instanceof FundingError || e instanceof MoneyOperationError)) return Response.json({ ok: false, error: e.message }, { status: e.status, headers: NO_STORE });
+    console.error("billing setup failed", e instanceof Error ? e.name : "unknown");
     return Response.json({ ok: false, error: "billing setup failed" }, { status: 500, headers: NO_STORE });
   }
 }

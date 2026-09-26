@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import type { Category } from "../data/marketplace";
 import { accentStyles } from "./accentStyles";
 import { GlassCard } from "./GlassCard";
@@ -10,7 +11,7 @@ export function CategoryCard({ category }: CategoryCardProps) {
   const accent = accentStyles[category.accent];
 
   return (
-    <GlassCard
+    <Link to={`/marketplace?category=${encodeURIComponent(category.title)}`} className="block rounded-ae-lg" aria-label={`Browse ${category.title} work`}><GlassCard
       className={`group flex min-h-48 flex-col justify-between transition duration-200 hover:-translate-y-1 hover:border-ae-primary/30 ${accent.border}`}
     >
       <div className="space-y-4">
@@ -42,6 +43,6 @@ export function CategoryCard({ category }: CategoryCardProps) {
           Explore
         </span>
       </div>
-    </GlassCard>
+    </GlassCard></Link>
   );
 }

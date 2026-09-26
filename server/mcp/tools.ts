@@ -1,3 +1,7 @@
+import { setupLink, setupStatus } from '../agentSetup.js';
+import { serviceClient } from '../service.js';
+import { sellerGateway } from '../connect.js';
+import { MoneyOperationError, operationStore } from "../moneyOperations.js";
 // The marketplace as a Hermes worker sees it.
 //
 // Every tool is a thin wrapper over the same tables the browser uses, executed
@@ -23,6 +27,8 @@ export interface ToolContext {
    */
   open: () => Promise<OperatorHandle>;
   worker: string;
+  paymentsAllowed?: boolean;
+  agentKeyId?: string;
   now: () => string;
   /** When true, a contract must be funded (payment_status authorized) before work starts. */
   paymentsEnabled: boolean;
@@ -37,9 +43,9 @@ export interface ToolContext {
 }
 
 /** The money plumbing the two payment tools use; real Stripe and the service-role ledger. */
-function moneyDeps(ctx: ToolContext) {
+function moneyDeps(ctx: ToolContext, op: OperatorHandle) {
   return {
-    ledger: supabaseLedger(),
+    ledger: supabaseLedger(undefined, op.db), operations: operationStore(),
     stripe: realStripe(process.env.STRIPE_SECRET_KEY ?? ""),
     appUrl: (process.env.APP_URL ?? "https://www.agentsexchange.ai").replace(/\/$/, ""),
     notify: ctx.notify,
@@ -179,6 +185,11 @@ function contractSummary(c: Row) {
 }
 
 export const TOOLS = [
+  tool({name:'get_owner_setup_link', description:'Get a secure owner setup navigation link. Share it with the human who issued your API key. The owner signs in, saves a card, sets limits, explicitly enables this key, and optionally completes Stripe seller verification. This link grants no access. Never collect owner card, bank, identity documents or passwords in chat.', schema:z.object({}), readOnly:true,
+    run:async (_input,ctx)=> {await ctx.open();return {ok:true,url:setupLink(process.env.APP_URL ?? 'https://www.agentsexchange.ai',ctx.agentKeyId),instructions:'Send this link to your existing account owner. New owners must first create an account and issue a non-spending key at /account. Check get_payment_setup_status after they finish. Do not poll more than once every 30 seconds.'};}}),
+  tool({name:'get_payment_setup_status',description:'Read payment and earnings readiness for your own owner and API key. Returns no card or bank details. Payment readiness does not guarantee any particular charge succeeds.',schema:z.object({}),readOnly:true,
+    run:async (_input,ctx)=>{const op=await ctx.open();try{return {ok:true,...await setupStatus(serviceClient(),op.profileId,ctx.agentKeyId,ctx.paymentsEnabled,id=>sellerGateway(process.env.STRIPE_SECRET_KEY!).readiness(id))};}catch{return {ok:false,error:'Setup status unavailable; ask your owner to check the setup page'};}}}),
+
   tool({
     name: "whoami",
     description:
@@ -418,6 +429,7 @@ export const TOOLS = [
       "Submit a deliverable for the organization's review. `notes` IS the work product (markdown is fine): the memo, plan, analysis, copy, code or report the contract asked for, complete and self-contained. Every submission passes a quality gate that checks it against the brief's scope and success criteria; if it comes back ok=false with gate.verdict \"returned\", read gate.flags, revise, and submit again. Only the organization can approve it; you cannot.",
     schema: z.object({
       contractId: uuid,
+      deliverableId: uuid.optional().describe("Rejected draft to revise; required when multiple drafts exist"),
       title: z.string().min(2).max(160),
       notes: z.string().min(1).max(60000),
     }),
@@ -428,6 +440,12 @@ export const TOOLS = [
       if (contractError) return fail("submit_deliverable", contractError);
       if (!c) return { ok: false, error: "contract not found or not visible to this worker" };
 
+      const {data: drafts, error: draftError} = await op.db.from("contract_deliverables").select("id,decisions").eq("contract_id", input.contractId).eq("status", "draft");
+      if(draftError) return fail("submit_deliverable", draftError);
+      const candidates = (drafts ?? []) as Row[];
+      const revision = input.deliverableId ? candidates.find(d=>d.id===input.deliverableId) : candidates.length===1 ? candidates[0] : undefined;
+      if(input.deliverableId && !revision) return {ok:false,error:"Only a draft on this contract can be revised"};
+      if(!input.deliverableId && candidates.length>1) return {ok:false,error:"Choose the rejected draft using deliverableId"};
       const gate = await gateDeliverable(ctx, op.db, c as Row, input);
       if (gate.verdict === "returned") {
         await recordGate(op.db, c as Row, op.profileId, input.title, gate, null);
@@ -446,14 +464,12 @@ export const TOOLS = [
         status: "submitted",
         submitted_at: ctx.now(),
       };
-      let { data, error } = await op.db
-        .from("contract_deliverables")
-        .insert({ ...row, gate })
-        .select("id,title,status,submitted_at")
-        .single();
+      const write = (payload: Record<string, unknown>) => revision
+        ? op.db.from("contract_deliverables").update(payload).eq("id", revision.id).eq("status", "draft").select("id,title,status,submitted_at").single()
+        : op.db.from("contract_deliverables").insert(payload).select("id,title,status,submitted_at").single();
+      let { data, error } = await write({...row, gate});
       if (error && /gate/i.test(error.message)) {
-        // The gate column has not been migrated yet: the deliverable still lands.
-        ({ data, error } = await op.db.from("contract_deliverables").insert(row).select("id,title,status,submitted_at").single());
+        ({ data, error } = await write(row));
       }
       if (error) return fail("submit_deliverable", error);
       await recordGate(op.db, c as Row, op.profileId, input.title, gate, String((data as Row).id));
@@ -865,11 +881,11 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
-      const { data: d } = await op.db.from("contract_deliverables").select("id,contract_id,status,decisions").eq("id", input.deliverableId).maybeSingle();
+      const { data: d } = await op.db.from("contract_deliverables").select("id,contract_id,status,decisions,notes,title").eq("id", input.deliverableId).maybeSingle();
       if (!d) return { ok: false, error: "deliverable not found or not visible" };
       if (d.status !== "submitted") return { ok: false, error: `deliverable is ${d.status}; only a submitted deliverable can be decided` };
       const now = ctx.now();
-      const decisions = [...((d.decisions as unknown[]) ?? []), { id: `decision-${Date.now()}`, status: input.decision === "approve" ? "approved" : "rejected", note: input.note, decidedAt: now }];
+      const decisions = [...((d.decisions as unknown[]) ?? []), { id: `decision-${Date.now()}`, status: input.decision === "approve" ? "approved" : "rejected", note: input.note, decidedAt: now, ...(input.decision === "reject" ? {previousNotes: d.notes, previousTitle: d.title} : {}) }];
       const { error } = await op.db
         .from("contract_deliverables")
         .update({ status: input.decision === "approve" ? "approved" : "draft", approved_at: input.decision === "approve" ? now : null, decisions })
@@ -894,13 +910,14 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       if (!ctx.paymentsEnabled) return { ok: false, error: "payments are not enabled on this marketplace yet" };
+      if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission; the owner must issue a payment-enabled key"};
       const op = await ctx.open();
       try {
-        const r = await fundWithSavedCard(moneyDeps(ctx), { contractId: input.contractId, callerProfileId: op.profileId });
+        const r = await fundWithSavedCard(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, agentKeyId:ctx.agentKeyId });
         return { ok: true, contractId: input.contractId, paymentStatus: r.paymentStatus, chargedCents: r.quote.totalCents, quote: r.quote };
       } catch (e) {
-        if (e instanceof FundingError) return { ok: false, error: e.message, httpStatus: e.status };
-        return { ok: false, error: `fund_contract: ${e instanceof Error ? e.message : String(e)}` };
+        if ((e instanceof FundingError || e instanceof MoneyOperationError)) return { ok: false, error: e.message, httpStatus: e.status };
+        return { ok: false, error: "Funding failed; retry or ask the owner to reconcile the payment" };
       }
     },
   }),
@@ -912,13 +929,14 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       if (!ctx.paymentsEnabled) return { ok: false, error: "payments are not enabled on this marketplace yet" };
+      if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission"};
       const op = await ctx.open();
       try {
-        const r = await releaseFunds(moneyDeps(ctx), { contractId: input.contractId, callerProfileId: op.profileId, action: input.action });
+        const r = await releaseFunds(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, action: input.action });
         return { ok: true, contractId: input.contractId, ...r };
       } catch (e) {
-        if (e instanceof FundingError) return { ok: false, error: e.message, httpStatus: e.status };
-        return { ok: false, error: `release_payment: ${e instanceof Error ? e.message : String(e)}` };
+        if ((e instanceof FundingError || e instanceof MoneyOperationError)) return { ok: false, error: e.message, httpStatus: e.status };
+        return { ok: false, error: "Release failed; retry or ask the owner to reconcile the payment" };
       }
     },
   }),
@@ -927,6 +945,9 @@ export const TOOLS = [
 export type AnyTool = (typeof TOOLS)[number];
 
 export const MARKETPLACE_GUIDE = `AgentExchange is a marketplace where organizations post briefs and agents do the work.
+
+OWNER PAYMENT SETUP
+Call get_owner_setup_link and share the URL with the owner who issued your key. They sign in, save a card, set limits, and explicitly enable the key; seller verification is optional for buyers. Call get_payment_setup_status after they finish; poll no faster than every 30 seconds. Never ask for card numbers, bank details, identity documents, or owner passwords in chat.
 
 LIFECYCLE
 1. Publish a listing for your agent (publish_agent). Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.

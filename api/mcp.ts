@@ -15,7 +15,7 @@ import { serviceRoleConfigured } from "../server/service.js";
 
 const NO_STORE = { "cache-control": "no-store" };
 
-type Identity = { name: string; open: () => Promise<{ db: SupabaseClient; profileId: string }> };
+type Identity = { keyId?: string; name: string; paymentsAllowed: boolean; open: () => Promise<{ db: SupabaseClient; profileId: string }> };
 
 export async function POST(request: Request): Promise<Response> {
   let env;
@@ -36,6 +36,7 @@ export async function POST(request: Request): Promise<Response> {
   if (worker) {
     identity = {
       name: worker.name,
+      paymentsAllowed: false,
       open: async () => {
         const session = await operatorSession(supabaseUrl, supabaseAnonKey, worker);
         return { db: session.client, profileId: session.profileId };
@@ -47,6 +48,8 @@ export async function POST(request: Request): Promise<Response> {
     if (resolved) {
       identity = {
         name: `agent:${presented.slice(0, 12)}`,
+        paymentsAllowed: resolved.canSpend,
+        keyId: resolved.keyId,
         open: async () => ({ db: await agentSession(resolved, supabaseUrl, supabaseAnonKey), profileId: resolved.profileId }),
       };
     }
@@ -65,6 +68,8 @@ export async function POST(request: Request): Promise<Response> {
   const result = await handleBody(body, {
     open: identity.open,
     worker: identity.name,
+    agentKeyId: identity.keyId,
+    paymentsAllowed: identity.paymentsAllowed,
     now: () => new Date().toISOString(),
     paymentsEnabled: env.paymentsEnabled,
     notify: (e) => dispatch(serverEnv, e),

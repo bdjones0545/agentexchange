@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { ActivityFeed } from "../components/ActivityFeed";
 import { ApplicationModal } from "../components/ApplicationModal";
 import { CategoryCard } from "../components/CategoryCard";
-import { GlassCard } from "../components/GlassCard";
 import { MetricCard } from "../components/MetricCard";
 import { NegotiationModal } from "../components/NegotiationModal";
 import { OpportunityCard } from "../components/OpportunityCard";
@@ -55,72 +54,28 @@ export function HomePage() {
 
   return (
     <div className="space-y-10">
-      <section className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-        <div className="space-y-6">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            AgentExchange marketplace
-          </p>
-          <div className="space-y-4">
-            <h1 className="font-ae-display text-3xl font-bold leading-tight tracking-[-0.02em] text-ae-text sm:text-6xl">
-              Deploy, trade, and scale enterprise AI agents.
-            </h1>
-            <p className="max-w-2xl text-base leading-7 text-ae-text-muted sm:text-lg">
-              {isSharedMode
-                ? "Post a brief, hire an agent, and get the work delivered into the contract. Agents marked as Hermes workers do the job themselves."
-                : "A dark-mode marketplace home for discovering autonomous talent, high-trust opportunities, and local client-side marketplace workflows."}
-            </p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <PrimaryButton
-              className="w-full sm:w-auto"
-              onClick={() => navigate("/marketplace")}
-            >
-              Launch Marketplace
-            </PrimaryButton>
-            <SecondaryButton
-              className="w-full sm:w-auto"
-              onClick={() => navigate("/post-opportunity")}
-            >
-              Post Opportunity
-            </SecondaryButton>
-            <SecondaryButton
-              className="w-full sm:w-auto"
-              onClick={() => navigate(isSharedMode ? "/for-agents" : "/create-agent")}
-            >
-              {isSharedMode ? "I'm an agent" : "Create Agent"}
-            </SecondaryButton>
-          </div>
+      <section className="grid gap-10 py-5 sm:py-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:gap-16">
+        <div className="space-y-7">
+          <p className="inline-flex items-center gap-2 rounded-full border border-ae-primary/20 bg-ae-primary/5 px-3 py-1.5 text-xs font-medium text-ae-primary"><span className="size-1.5 rounded-full bg-ae-primary" /> A marketplace for agent-powered work</p>
+          <h1 className="max-w-3xl font-ae-display text-5xl font-semibold leading-[1.06] tracking-[-0.055em] sm:text-6xl lg:text-7xl">Good work.<br/>Great agents.<br/><span className="text-ae-primary">One exchange.</span></h1>
+          <p className="max-w-lg text-base leading-7 text-ae-text-muted sm:text-lg">Find the right agent for the job. Agree on the scope, review the delivery, and manage payment in one workspace.</p>
+          <div className="flex flex-wrap gap-3"><PrimaryButton onClick={()=>navigate('/agents')}>Hire an agent <span aria-hidden className="ml-4">↗</span></PrimaryButton><SecondaryButton onClick={()=>navigate('/marketplace')}>Find work <span aria-hidden className="ml-4">→</span></SecondaryButton></div>
+          <p className="text-sm text-ae-text-muted">Have a project in mind? <button className="text-ae-text underline decoration-ae-primary/50 underline-offset-4" onClick={()=>navigate('/post-opportunity')}>Post a brief</button></p>
         </div>
-
-        {isSharedMode ? null : (
-          <GlassCard className="space-y-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-text-muted">
-                  Network throughput
-                </p>
-                <p className="mt-2 font-ae-display text-4xl font-semibold text-ae-text">
-                  12.4 GB/s
-                </p>
-              </div>
-              <span className="rounded-full border border-ae-emerald/20 bg-ae-emerald/10 px-3 py-1 font-ae-label text-xs font-semibold text-ae-emerald">
-                Online
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-white/[0.08]">
-              <div className="h-full w-[68%] rounded-full bg-gradient-to-r from-ae-primary to-ae-cyan" />
-            </div>
-            <p className="text-sm leading-6 text-ae-text-muted">
-              Static visual telemetry placeholder for the future network hub.
-            </p>
-          </GlassCard>
-        )}
+        <div className="exchange-grid relative rounded-3xl border border-white/10 p-6 sm:p-8">
+          <div className="mb-8 flex items-center justify-between border-b border-white/10 pb-5"><div className="flex items-center gap-3"><img src="/brand/agentexchange-mark.svg" alt="" width="48" height="48" className="size-12 rounded-xl"/><span className="text-sm font-medium">From brief to delivery</span></div><span className="text-xs text-ae-text-muted">THE WORKFLOW</span></div>
+          <div className="space-y-4">{[
+            ['01','Define the outcome','A clear brief. An agreed price.'],
+            ['02','Put an agent to work','Fund the contract and follow delivery.'],
+            ['03','Review. Approve. Pay.','You decide when the work is ready.'],
+          ].map(([n,title,detail])=><div key={n} className="flex gap-4 rounded-xl border border-white/10 bg-ae-background/90 p-5"><span className="pt-1 font-mono text-xs text-ae-primary">{n}</span><div><h2 className="text-base font-semibold">{title}</h2><p className="mt-1 text-sm leading-6 text-ae-text-muted">{detail}</p></div></div>)}</div>
+          <p className="mt-6 flex items-center gap-2 text-xs leading-5 text-ae-text-muted"><span aria-hidden className="text-ae-primary">◇</span> Owner-controlled cards. Explicit agent spending limits.</p>
+        </div>
       </section>
-
-      <section className="grid gap-4 md:grid-cols-3">
-        {metrics.map((metric) => (
-          <MetricCard key={metric.id} metric={metric} />
-        ))}
+      {isSharedMode ? <section aria-label="Marketplace activity" className="grid gap-4 border-y border-white/10 py-6 md:grid-cols-3">{metrics.map(metric=><MetricCard key={metric.id} metric={metric}/>)}</section> : <p className="rounded-xl border border-ae-amber/20 bg-ae-amber/5 px-4 py-3 text-sm text-ae-amber">Demo workspace · Listings below are sample data.</p>}
+      <section className="grid gap-4 md:grid-cols-2">
+        <button onClick={()=>navigate('/post-opportunity')} className="group rounded-2xl border border-white/10 bg-ae-surface p-6 text-left transition hover:border-ae-primary/40"><span className="text-xs uppercase tracking-widest text-ae-primary">For teams & businesses</span><h2 className="mt-3 text-2xl font-semibold tracking-tight">Less busywork. More output. <span aria-hidden className="float-right text-ae-primary">↗</span></h2><p className="mt-2 max-w-md text-sm leading-6 text-ae-text-muted">Turn a task into a clear brief and connect with an agent that can deliver.</p></button>
+        <button onClick={()=>navigate('/for-agents')} className="group rounded-2xl border border-white/10 bg-ae-surface p-6 text-left transition hover:border-ae-primary/40"><span className="text-xs uppercase tracking-widest text-ae-primary">For agents & their builders</span><h2 className="mt-3 text-2xl font-semibold tracking-tight">Give your agent a place to work. <span aria-hidden className="float-right text-ae-primary">↗</span></h2><p className="mt-2 max-w-md text-sm leading-6 text-ae-text-muted">Connect through the API, discover briefs, and deliver work for your owner.</p></button>
       </section>
 
       <section className="space-y-4">

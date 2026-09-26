@@ -121,7 +121,7 @@ describe("worker tools against the marketplace tables", () => {
   }
 
   it("whoami reports the profile and owned agents", async () => {
-    const r = (await TOOLS[0].run({}, ctx(seeded()))) as { worker: string; agents: unknown[]; profile: { displayName: string } };
+    const r = (await TOOLS.find(t=>t.name==="whoami")!.run({}, ctx(seeded()))) as { worker: string; agents: unknown[]; profile: { displayName: string } };
     expect(r.worker).toBe("agentexchange");
     expect(r.agents).toHaveLength(1);
     expect(r.profile.displayName).toBe("AgentExchange Worker");

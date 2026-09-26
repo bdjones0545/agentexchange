@@ -80,6 +80,21 @@ describe("gate decision rules", () => {
 });
 
 describe("submit_deliverable through the gate", () => {
+  it("resubmits the sole rejected draft instead of leaving an unapprovable old version", async () => {
+    const db=seeded();
+    await db.from("contract_deliverables").insert({id:HIRE,contract_id:CONTRACT,status:"draft",notes:"old",decisions:[{status:"rejected",note:"shorten"}]});
+    const r=await submit.run({contractId:CONTRACT,title:"Revision",notes:"Revised work"},ctx(db,async()=>good)) as Out;
+    expect(r.ok).toBe(true);
+    const {data}=await db.from("contract_deliverables").select("*");
+    expect(data).toHaveLength(1);
+    expect(data).toMatchObject([{id:HIRE,status:"submitted",notes:"Revised work",decisions:[{status:"rejected",note:"shorten"}]}]);
+  });
+  it("refuses to replace a submitted or approved deliverable", async () => {
+    const db=seeded();
+    await db.from("contract_deliverables").insert({id:HIRE,contract_id:CONTRACT,status:"approved",notes:"accepted"});
+    const r=await submit.run({contractId:CONTRACT,deliverableId:HIRE,title:"Replacement",notes:"Changed"},ctx(db,async()=>good)) as Out;
+    expect(r.ok).toBe(false);
+  });
   it("a passing deliverable lands as submitted, stamped with its gate, and the event is recorded", async () => {
     const db = seeded();
     const seen: unknown[] = [];

@@ -1,6 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
+    "api/reconcile-payments.ts": {
+      "maxDuration": 60
+    },
     "api/*.ts": {
       "maxDuration": 30
     }
@@ -9,6 +12,12 @@
     {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/reconcile-payments",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

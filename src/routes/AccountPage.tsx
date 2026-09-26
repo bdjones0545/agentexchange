@@ -1,104 +1,25 @@
-import { useNavigate } from "react-router-dom";
-
-import { AgentApiKeys } from "../components/AgentApiKeys";
-import { AgentCardBilling } from "../components/AgentCardBilling";
-import { GlassCard } from "../components/GlassCard";
-import { PrimaryButton } from "../components/PrimaryButton";
-import { SecondaryButton } from "../components/SecondaryButton";
-import { useAuth } from "../state/AuthContext";
-
-export function AccountPage() {
-  const navigate = useNavigate();
-  const { error, isAuthenticated, isSupabaseEnabled, signOut, user } = useAuth();
-  const accountType = user?.user_metadata?.account_type ?? "Demo User";
-  const displayName = user?.user_metadata?.display_name ?? "Local Demo";
-  const persistenceMode = error
-    ? "Supabase Error"
-    : !isSupabaseEnabled
-      ? "Local Demo Mode"
-      : isAuthenticated
-        ? "Supabase Authenticated"
-        : "Supabase Connected";
-
-  return (
-    <section className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-          Account
-        </p>
-        <h1 className="mt-2 font-ae-display text-4xl font-semibold text-ae-text">
-          {isAuthenticated ? displayName : "Local demo mode"}
-        </h1>
-      </div>
-
-      <GlassCard className="space-y-5">
-        <div className="flex flex-wrap gap-2">
-          <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
-            {persistenceMode}
-          </span>
-          <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
-            {accountType}
-          </span>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4">
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-              Supabase configured
-            </p>
-            <p className="mt-2 text-ae-text">{isSupabaseEnabled ? "Yes" : "No"}</p>
-          </div>
-          <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4">
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-              Auth status
-            </p>
-            <p className="mt-2 text-ae-text">
-              {isAuthenticated ? "Signed in" : "Not signed in"}
-            </p>
-          </div>
-          <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4">
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-              Email
-            </p>
-            <p className="mt-2 text-ae-text">{user?.email ?? "Not signed in"}</p>
-          </div>
-          <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4">
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-              User ID
-            </p>
-            <p className="mt-2 break-all text-sm text-ae-text-muted">
-              {user?.id ?? "Local fallback session"}
-            </p>
-          </div>
-          <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4">
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-              Profile status
-            </p>
-            <p className="mt-2 text-ae-text">
-              {user ? "Profile expected from sign-up" : "No Supabase profile"}
-            </p>
-          </div>
-        </div>
-        {error ? (
-          <p className="rounded-ae-md border border-ae-error/20 bg-ae-error/10 p-3 text-sm text-ae-error">
-            {error}
-          </p>
-        ) : null}
-        {isAuthenticated ? (
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <PrimaryButton onClick={() => void signOut()}>Sign Out</PrimaryButton>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <PrimaryButton onClick={() => navigate("/sign-in")}>Sign In</PrimaryButton>
-            <SecondaryButton onClick={() => navigate("/sign-up")}>
-              Create Account
-            </SecondaryButton>
-          </div>
-        )}
-      </GlassCard>
-
-      {isAuthenticated && isSupabaseEnabled ? <AgentApiKeys /> : null}
-      {isAuthenticated && isSupabaseEnabled ? <AgentCardBilling /> : null}
-    </section>
-  );
+import {useEffect} from 'react';
+import {useNavigate,useSearchParams} from 'react-router-dom';
+import {AgentSetup} from '../components/AgentSetup';
+import {AgentApiKeys} from '../components/AgentApiKeys';
+import {AgentCardBilling} from '../components/AgentCardBilling';
+import {GlassCard} from '../components/GlassCard';
+import {PrimaryButton} from '../components/PrimaryButton';
+import {SecondaryButton} from '../components/SecondaryButton';
+import {useAuth} from '../state/AuthContext';
+export function AccountPage(){
+ const navigate=useNavigate();const [params]=useSearchParams();
+ const setup=params.get('agentSetup') ?? sessionStorage.getItem('agentSetup');
+ useEffect(()=>{if(params.has('agentSetup'))sessionStorage.setItem('agentSetup',params.get('agentSetup')!);},[params]);
+ const {error,isAuthenticated,isSupabaseEnabled,signOut,user}=useAuth();
+ return <section className="mx-auto max-w-4xl space-y-7">
+ <div><p className="text-xs font-semibold uppercase tracking-widest text-ae-primary">Your workspace</p><h1 className="mt-3 text-4xl font-semibold tracking-tight">Account & payments</h1><p className="mt-3 max-w-xl leading-7 text-ae-text-muted">Your identity, your agents, your spending controls. Manage everything in one place.</p></div>
+ {isAuthenticated && <nav aria-label="Account sections" className="flex flex-wrap gap-3 text-sm"><a href="#profile" className="rounded-full border border-white/15 px-4 py-2 hover:text-ae-primary">Profile</a><a href="#agent-access" className="rounded-full border border-white/15 px-4 py-2 hover:text-ae-primary">Agent access</a><a href="#payment-settings" className="rounded-full border border-white/15 px-4 py-2 hover:text-ae-primary">Cards & earnings</a></nav>}
+ {setup && isAuthenticated && <AgentSetup key={setup} id={setup}/>}
+ <div id="profile" className="scroll-mt-28"><GlassCard className="space-y-5">
+ {isAuthenticated?<><div className="flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-4"><span aria-hidden className="grid size-12 place-items-center rounded-xl bg-ae-primary/10 text-xl text-ae-primary">{String(user?.user_metadata?.display_name ?? user?.email ?? 'A').slice(0,1).toUpperCase()}</span><div><h2 className="text-xl font-semibold">{user?.user_metadata?.display_name ?? 'Your account'}</h2><p className="mt-1 break-all text-sm text-ae-text-muted">{user?.email}</p></div></div><SecondaryButton onClick={()=>void signOut()}>Sign out</SecondaryButton></div><p className="text-sm text-ae-text-muted">Only enable payment permission for agents you trust. You can revoke their access at any time.</p></>:<><h2 className="text-2xl font-semibold">Bring your agents to work.</h2><p className="text-sm leading-7 text-ae-text-muted">{setup?'Sign in as the owner who issued this agent’s key to finish its payment setup.':'Create an account to hire agents, publish work, and manage cards and spending limits.'}</p><div className="flex flex-wrap gap-3"><PrimaryButton onClick={()=>navigate(setup?`/sign-in?redirect=${encodeURIComponent(`/account?agentSetup=${encodeURIComponent(setup)}`)}`:'/sign-in')}>Sign in</PrimaryButton><SecondaryButton onClick={()=>navigate('/sign-up')}>Create account</SecondaryButton></div></>}
+ {error && <p role="alert" className="text-sm text-ae-amber">{error}</p>}
+ </GlassCard></div>
+ {isAuthenticated && isSupabaseEnabled && <><div id="agent-access" className="scroll-mt-28"><AgentApiKeys/></div><div id="payment-settings" className="scroll-mt-28"><AgentCardBilling/></div></>}
+ </section>;
 }
