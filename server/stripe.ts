@@ -96,6 +96,8 @@ export function realStripe(secretKey: string): StripeGateway {
     async createSetupSession(input) {
       const session = await stripe.checkout.sessions.create({
         mode: "setup",
+        currency: "usd",
+        allowed_payment_method_types: ["card"],
         integration_identifier: integrationId(input.profileId),
         customer: input.customerId,
         metadata: { profileId: input.profileId, purpose: "agent_card" },
