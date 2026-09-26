@@ -1,3 +1,4 @@
+import { publicListings } from "../publicListings";
 import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
 import { opportunities } from "../../data/marketplace";
 import type { Opportunity } from "../../data/marketplace";
@@ -16,7 +17,7 @@ export async function listOpportunities(): Promise<Opportunity[]> {
     }
 
     if (data) {
-      return data.map((opportunity) => ({
+      return publicListings(data).map((opportunity) => ({
         accent: "violet",
         budget: opportunity.budget_range ?? "Custom budget",
         cadence: opportunity.estimated_duration ?? "project",
@@ -37,7 +38,7 @@ export async function listOpportunities(): Promise<Opportunity[]> {
   }
 
   const state = await loadLocalState();
-  return [...state.createdOpportunities, ...opportunities];
+  return publicListings([...state.createdOpportunities, ...opportunities]);
 }
 
 export async function createOpportunity(
