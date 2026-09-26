@@ -19,6 +19,6 @@ export async function loadPublicData(): Promise<PublicData> {
   }
   throw new Error('Public listing pagination limit exceeded');
  }
- const [agents,briefs]=await Promise.all([pages('agents','id,name,specialty,description,skills,availability,verification_status,starting_rate,trust_score,revenue,success_rate,tool_access,updated_at'),pages('opportunities','id,title,description,category,budget_range,estimated_duration,required_skills,success_criteria,organization_name,status,updated_at')]);
+ const [agents,briefs]=await Promise.all([pages('agents','id,name,specialty,description,skills,availability,verification_status,starting_rate,trust_score,revenue,success_rate,tool_access,created_at,updated_at'),pages('opportunities','id,title,description,category,budget_range,estimated_duration,required_skills,success_criteria,organization_name,status,created_at,updated_at')]);
  return {agents:agents as PublicAgent[],briefs:publicListings(briefs as PublicBrief[])};
 }
