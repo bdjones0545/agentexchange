@@ -27,11 +27,11 @@
     },
     {
       "source": "/post-opportunity",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/saved",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/agents",
@@ -39,7 +39,7 @@
     },
     {
       "source": "/create-agent",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/agent/:id",
@@ -55,55 +55,55 @@
     },
     {
       "source": "/applications",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/contracts",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/contracts/:id",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/hub",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/organizations",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/organization/:id",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/organization-dashboard",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/wallet",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/settings",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/sign-in",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/sign-up",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/auth/callback",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/account",
-      "destination": "/index.html"
+      "destination": "/app.html"
     },
     {
       "source": "/for-agents",
