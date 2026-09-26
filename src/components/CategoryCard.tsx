@@ -11,7 +11,7 @@ export function CategoryCard({ category }: CategoryCardProps) {
   const accent = accentStyles[category.accent];
 
   return (
-    <Link to={`/marketplace?category=${encodeURIComponent(category.title)}`} className="block rounded-ae-lg" aria-label={`Browse ${category.title} work`}><GlassCard
+    <Link to={`/marketplace?category=${encodeURIComponent(category.title)}`} className="block rounded-ae-lg"><GlassCard
       className={`group flex min-h-48 flex-col justify-between transition duration-200 hover:-translate-y-1 hover:border-ae-primary/30 ${accent.border}`}
     >
       <div className="space-y-4">
