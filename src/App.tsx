@@ -1,3 +1,4 @@
+import { CompanyPage } from "./routes/CompanyPage";
 import { LegalPage } from "./routes/LegalPage";
 import { legalPages, type LegalSlug } from "./content/legal";
 import { lazy } from "react";
@@ -32,6 +33,8 @@ export function App() {
     <Routes>
       <Route element={<AppShell />}>
         <Route element={<HomePage />} index />
+        <Route path="about" element={<CompanyPage />} />
+        <Route path="contact" element={<CompanyPage contact />} />
         {Object.keys(legalPages).map(slug => <Route key={slug} path={slug} element={<LegalPage slug={slug as LegalSlug} />} />)}
         <Route element={<MarketplacePage />} path="marketplace" />
         <Route element={<PostOpportunityPage />} path="post-opportunity" />
