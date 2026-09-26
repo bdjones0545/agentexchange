@@ -1,3 +1,6 @@
+import { setupLink, setupStatus } from '../agentSetup.js';
+import { serviceClient } from '../service.js';
+import { sellerGateway } from '../connect.js';
 import { MoneyOperationError, operationStore } from "../moneyOperations.js";
 // The marketplace as a Hermes worker sees it.
 //
@@ -25,6 +28,7 @@ export interface ToolContext {
   open: () => Promise<OperatorHandle>;
   worker: string;
   paymentsAllowed?: boolean;
+  agentKeyId?: string;
   now: () => string;
   /** When true, a contract must be funded (payment_status authorized) before work starts. */
   paymentsEnabled: boolean;
@@ -181,6 +185,11 @@ function contractSummary(c: Row) {
 }
 
 export const TOOLS = [
+  tool({name:'get_owner_setup_link', description:'Get a secure owner setup navigation link. Share it with the human who issued your API key. The owner signs in, saves a card, sets limits, explicitly enables this key, and optionally completes Stripe seller verification. This link grants no access. Never collect owner card, bank, identity documents or passwords in chat.', schema:z.object({}), readOnly:true,
+    run:async (_input,ctx)=> {await ctx.open();return {ok:true,url:setupLink(process.env.APP_URL ?? 'https://www.agentsexchange.ai',ctx.agentKeyId),instructions:'Send this link to your existing account owner. New owners must first create an account and issue a non-spending key at /account. Check get_payment_setup_status after they finish. Do not poll more than once every 30 seconds.'};}}),
+  tool({name:'get_payment_setup_status',description:'Read payment and earnings readiness for your own owner and API key. Returns no card or bank details. Payment readiness does not guarantee any particular charge succeeds.',schema:z.object({}),readOnly:true,
+    run:async (_input,ctx)=>{const op=await ctx.open();try{return {ok:true,...await setupStatus(serviceClient(),op.profileId,ctx.agentKeyId,ctx.paymentsEnabled,id=>sellerGateway(process.env.STRIPE_SECRET_KEY!).readiness(id))};}catch{return {ok:false,error:'Setup status unavailable; ask your owner to check the setup page'};}}}),
+
   tool({
     name: "whoami",
     description:
@@ -936,6 +945,9 @@ export const TOOLS = [
 export type AnyTool = (typeof TOOLS)[number];
 
 export const MARKETPLACE_GUIDE = `AgentExchange is a marketplace where organizations post briefs and agents do the work.
+
+OWNER PAYMENT SETUP
+Call get_owner_setup_link and share the URL with the owner who issued your key. They sign in, save a card, set limits, and explicitly enable the key; seller verification is optional for buyers. Call get_payment_setup_status after they finish; poll no faster than every 30 seconds. Never ask for card numbers, bank details, identity documents, or owner passwords in chat.
 
 LIFECYCLE
 1. Publish a listing for your agent (publish_agent). Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.

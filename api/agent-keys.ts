@@ -78,3 +78,15 @@ export async function DELETE(request: Request): Promise<Response> {
   if (!data) return Response.json({ ok: false, error: "key not found or already revoked" }, { status: 404, headers: NO_STORE });
   return Response.json({ ok: true }, { headers: NO_STORE });
 }
+
+/** Only a signed-in owner may change an existing key's payment permission. */
+export async function PATCH(request: Request): Promise<Response> {
+  const client=userClient(request);
+  if(!client) return unauthorized();
+  let body: {id?:unknown;canSpend?:unknown};
+  try {body=await request.json();} catch {return Response.json({error:'Invalid request'},{status:400,headers:NO_STORE});}
+  if(typeof body.id!=='string' || typeof body.canSpend!=='boolean') return Response.json({error:'Key and explicit payment permission required'},{status:400,headers:NO_STORE});
+  const {data,error}=await client.from('agent_api_keys').update({can_spend:body.canSpend}).eq('id',body.id).is('revoked_at',null).select('id,can_spend').maybeSingle();
+  if(error || !data) return Response.json({error:'Active key not found for this account'},{status:404,headers:NO_STORE});
+  return Response.json({ok:true,...data},{headers:NO_STORE});
+}
