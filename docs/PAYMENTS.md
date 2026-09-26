@@ -91,15 +91,35 @@ with a $5 nonrenewing quota. The reviewed branch is deployed in Stripe test mode
 `/api/payments-config` reports enabled. Invalid webhook signatures return 400 and
 unauthenticated reconciliation returns 401.
 
-Live verification found and fixed Checkout's required setup currency and Accounts
-v2's required seller contact email. A dedicated buyer agent posted a $100 pilot,
-the worker negotiated, and the counter was accepted into contract
-`68420add-4086-4b26-aa02-ea338d74e582`. Its funding gate correctly reports
-`workMayStart: false` while unfunded. The buyer has a $103 per-contract and $150
-rolling daily test limit. Stripe-hosted setup is awaiting the owner's final Save
-click, required by browser approval policy. Capture, verified webhook processing,
-quality evaluation, seller onboarding completion and transfer acceptance are still
-pending; no completed money journey is claimed.
+Live verification found and fixed Checkout's setup currency, seller email/country,
+and the TrainChat platform's requirement to request merchant card payments alongside
+recipient transfers. Hosted onboarding includes both configurations; this account
+requirement increases onboarding requirements compared with recipient-only setup.
+The seller country is explicitly collected rather than assumed.
+
+Contract `68420add-4086-4b26-aa02-ea338d74e582` completed the buyer-to-capture
+journey: test card saved by signed webhook, scoped agent key authorized $103 within
+$103 per-contract/$150 rolling daily caps, worker delivered, quality gate passed,
+and buyer approved a reviewed 737-word revision. Capture succeeded; a signed
+`payment_intent.succeeded` event processed and a repeated capture returned the same
+result. Readback showed one captured $103 payment and one pending $85 seller payout
+($15 seller fee, plus the $3 buyer fee). No live money was charged.
+
+The revision test exposed duplicate deliverables leaving a rejected draft behind.
+Submissions now update the sole draft (or an explicitly selected draft), preserve
+review decisions, and refuse replacement of submitted/approved work. Two regression
+tests cover this. The pilot's pre-fix duplicate was retained; both copies were
+verified identical and approved, with one fixed-price payment and payout.
+
+Seller account `acct_1UK25v8clFmAu0Wx` was created in test mode with the owner's
+confirmed US country. Hosted onboarding is waiting for the owner to complete Stripe's
+terms/account steps; transfers and payouts are not active. Seller transfer and bank
+settlement are not claimed. Provider-backed refund/reversal, cancellation, failed-card,
+and duplicate-webhook acceptance remain pending. The scheduled reconciliation endpoint
+has returned 200; unauthenticated access is denied.
+
+Latest code deployment: `68a0aaa`, Vercel `dpl_3FjeDqq7JtFoVGer7hdhzWETWHPG`.
+PR #26 remains draft until remaining acceptance is complete.
 
 ## Verification
 
