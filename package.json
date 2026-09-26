@@ -10,7 +10,7 @@
   "scripts": {
     "audit:supabase": "node scripts/audit-supabase-mvp.mjs",
     "dev": "vite",
-    "build": "tsc -b && vite build && vite build --ssr src/entry-server.tsx --outDir dist-server",
+    "build": "tsc -b && vite build && vite build --ssr src/entry-server.tsx --outDir dist-server && node scripts/finalize-build.mjs",
     "preview": "vite preview",
     "test:diagnostics": "node --test tests/safe-diagnostics.test.mjs",
     "test:rls": "node scripts/rls-authorization-regression.mjs",
