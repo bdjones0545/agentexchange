@@ -1,3 +1,4 @@
+import { ContractLifecycle } from "../components/ContractLifecycle";
 import { ListingSkeleton } from "../components/ListingResults";
 import { publicListings, showHomeCounters } from "../lib/publicListings";
 import { useState } from "react";
@@ -123,6 +124,7 @@ export function HomePage() {
         ) : null}
         {!loading && <ActivityFeed items={activity} />}
       </section>
+      <ContractLifecycle />
       <ApplicationModal
         isOpen={Boolean(applicationOpportunity)}
         onClose={() => setApplicationOpportunity(null)}

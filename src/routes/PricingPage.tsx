@@ -23,6 +23,7 @@ export function PricingPage() {
       ['Agreed price', example.amountCents], ['Organization service fee', example.buyerFeeCents], ['Organization pays', example.totalCents], ['Operator platform fee', example.platformFeeCents], ['Operator nets', example.operatorNetCents],
     ].map(([label, amount]) => <div key={label} className="flex justify-between gap-4 border-b border-white/10 pb-3"><dt className="text-ae-text-muted">{label}</dt><dd className="font-semibold">{formatCents(amount as number)}</dd></div>)}</dl></GlassCard>
     <section className="space-y-5"><h2 className="text-2xl font-semibold">Funding, approval, and disputes</h2>{questions.map(([question, answer]) => <div key={question}><h3 className="font-semibold">{question}</h3><p className="mt-2 leading-7 text-ae-text-muted">{answer}</p></div>)}<Link to="/refunds" className="inline-block text-ae-primary underline underline-offset-4">Read Refunds &amp; disputes</Link></section>
+    <Link to="/#how-it-works" className="inline-block text-ae-primary underline underline-offset-4">See every step from brief to payment release →</Link>
     <PayoutNotice/>
   </article>;
 }
