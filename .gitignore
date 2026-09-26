@@ -12,3 +12,5 @@ ops/**/*keys*
 
 # Supabase CLI local metadata
 supabase/.temp/
+
+dist-server

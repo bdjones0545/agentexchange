@@ -419,11 +419,11 @@ function withWorkspace(
   };
 }
 
-export function AgentExchangeProvider({ children }: PropsWithChildren) {
+export function AgentExchangeProvider({ children, initialState }: PropsWithChildren<{initialState?: Partial<PersistedState>}>) {
   const { isAuthenticated, loading: authLoading, user } = useAuth();
-  const [state, setState] = useState<PersistedState>(defaultPersistedState);
+  const [state, setState] = useState<PersistedState>(()=>({...defaultPersistedState,...initialState}));
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialState);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<LocalActionToastState | null>(null);
