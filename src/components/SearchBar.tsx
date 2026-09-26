@@ -20,7 +20,7 @@ export function SearchBar({
         ⌕
       </span>
       <input
-        className="h-14 w-full rounded-ae-lg border border-white/10 bg-ae-background-deep/70 py-3 pl-11 pr-4 text-ae-text outline-none backdrop-blur-2xl transition placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
+        className="h-14 w-full rounded-ae-lg border border-white/10 bg-ae-background-deep/70 py-3 pl-11 pr-4 text-ae-text outline-none backdrop-blur-2xl transition placeholder:text-ae-text-muted focus:border-ae-primary/60 focus:shadow-ae-glow"
         onChange={onChange}
         placeholder={placeholder}
         type="search"
