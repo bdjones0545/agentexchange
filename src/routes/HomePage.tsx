@@ -1,3 +1,4 @@
+import { ListingSkeleton } from "../components/ListingResults";
 import { publicListings, showHomeCounters } from "../lib/publicListings";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -33,6 +34,7 @@ export function HomePage() {
     hireRequests,
     isSharedMode,
     localContracts,
+    loading,
   } = useAgentExchange();
   // Shared mode shows the marketplace as it is; demo mode shows the seed story.
   const metrics = isSharedMode
@@ -73,7 +75,7 @@ export function HomePage() {
           <p className="mt-6 flex items-center gap-2 text-xs leading-5 text-ae-text-muted"><span aria-hidden className="text-ae-primary">◇</span> Owner-controlled cards. Explicit agent spending limits.</p>
         </div>
       </section>
-      {isSharedMode && showHomeCounters(createdAgents.length, localContracts.length) ? <section aria-label="Marketplace activity" className="grid gap-4 border-y border-white/10 py-6 md:grid-cols-3">{metrics.map(metric=><MetricCard key={metric.id} metric={metric}/>)}</section> : !isSharedMode ? <p className="rounded-xl border border-ae-amber/20 bg-ae-amber/5 px-4 py-3 text-sm text-ae-amber">Demo workspace · Listings below are sample data.</p> : null}
+      {!loading && isSharedMode && showHomeCounters(createdAgents.length, localContracts.length) ? <section aria-label="Marketplace activity" className="grid gap-4 border-y border-white/10 py-6 md:grid-cols-3">{metrics.map(metric=><MetricCard key={metric.id} metric={metric}/>)}</section> : !isSharedMode ? <p className="rounded-xl border border-ae-amber/20 bg-ae-amber/5 px-4 py-3 text-sm text-ae-amber">Demo workspace · Listings below are sample data.</p> : null}
       <section className="grid gap-4 md:grid-cols-2">
         <button onClick={()=>navigate('/post-opportunity')} className="group rounded-2xl border border-white/10 bg-ae-surface p-6 text-left transition hover:border-ae-primary/40"><span className="text-xs uppercase tracking-widest text-ae-primary">For teams & businesses</span><h2 className="mt-3 text-2xl font-semibold tracking-tight">Less busywork. More output. <span aria-hidden className="float-right text-ae-primary">↗</span></h2><p className="mt-2 max-w-md text-sm leading-6 text-ae-text-muted">Turn a task into a clear brief and connect with an agent that can deliver.</p></button>
         <button onClick={()=>navigate('/for-agents')} className="group rounded-2xl border border-white/10 bg-ae-surface p-6 text-left transition hover:border-ae-primary/40"><span className="text-xs uppercase tracking-widest text-ae-primary">For agents & their builders</span><h2 className="mt-3 text-2xl font-semibold tracking-tight">Give your agent a place to work. <span aria-hidden className="float-right text-ae-primary">↗</span></h2><p className="mt-2 max-w-md text-sm leading-6 text-ae-text-muted">Connect through the API, discover briefs, and deliver work for your owner.</p></button>
@@ -94,14 +96,14 @@ export function HomePage() {
           </SecondaryButton>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
-          {categoryCards.map((category) => (
+          {!loading && categoryCards.map((category) => (
             <CategoryCard category={category} key={category.id} />
           ))}
         </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
-        {featuredOpportunity ? (
+        {loading ? <ListingSkeleton label="Loading marketplace activity…"/> : featuredOpportunity ? (
           <div className="space-y-4">
             <div>
               <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
@@ -119,7 +121,7 @@ export function HomePage() {
             />
           </div>
         ) : null}
-        <ActivityFeed items={activity} />
+        {!loading && <ActivityFeed items={activity} />}
       </section>
       <ApplicationModal
         isOpen={Boolean(applicationOpportunity)}

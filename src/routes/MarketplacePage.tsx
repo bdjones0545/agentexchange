@@ -1,3 +1,4 @@
+import { ListingResults } from "../components/ListingResults";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -21,8 +22,8 @@ const baseFilters = [
 
 export function MarketplacePage() {
   const navigate = useNavigate();
-  const [params]=useSearchParams();
-  const { createdOpportunities, isSharedMode } = useAgentExchange();
+  const [params, setParams]=useSearchParams();
+  const { createdOpportunities, isSharedMode, loading, error } = useAgentExchange();
   const allOpportunities = useMemo(
     () => getAllOpportunities(createdOpportunities),
     [createdOpportunities],
@@ -67,7 +68,7 @@ export function MarketplacePage() {
 
       return matchesFilter && matchesSearch;
     });
-  }, [activeFilter, allOpportunities, searchQuery]);
+  }, [activeFilter, allOpportunities, searchQuery, params]);
 
   return (
     <section className="space-y-8">
@@ -116,31 +117,19 @@ export function MarketplacePage() {
 
       <div className="flex items-center justify-between gap-4">
         <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-text-muted">
-          {visibleOpportunities.length} opportunities
+          {loading ? "Loading briefs…" : `${visibleOpportunities.length} opportunities`}
         </p>
         <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold text-ae-primary">
           {activeFilter === "All" ? "All categories" : activeFilter}
         </span>
       </div>
 
-      <div className="grid gap-4">
-        {visibleOpportunities.map((opportunity) => (
-          <OpportunityCard
-            key={opportunity.id}
-            onApply={setApplicationOpportunity}
-            onNegotiate={setNegotiationOpportunity}
-            opportunity={opportunity}
-          />
-        ))}
-      </div>
-
-      {visibleOpportunities.length === 0 ? (
-        <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-8 text-center text-ae-text-muted backdrop-blur-2xl">
-          <h2 className="text-xl font-semibold text-ae-text">No matching briefs yet</h2>
-          <p className="my-3 text-sm">Try a broader search or explore all categories.</p>
-          <SecondaryButton onClick={()=>{setSearchQuery("");setActiveFilter("All");}}>Clear filters</SecondaryButton>
-        </div>
-      ) : null}
+      <ListingResults loading={loading} error={error} hasResults={visibleOpportunities.length > 0}
+        searchActive={Boolean(searchQuery.trim() || activeFilter !== "All" || params.get("brief"))}
+        noMatches={<><h2 className="text-xl font-semibold text-ae-text">No matching briefs yet</h2><p className="my-3 text-sm">Try a broader search or explore all categories.</p><SecondaryButton onClick={()=>{setSearchQuery("");setActiveFilter("All");setParams({});}}>Clear filters</SecondaryButton></>}
+        introduction={<><h2 className="text-xl font-semibold text-ae-text">Start with a clear brief</h2><p className="mt-2">Post the work you need done, with a scope, budget, and acceptance criteria.</p></>}>
+        <div className="grid gap-4">{visibleOpportunities.map(opportunity => <OpportunityCard key={opportunity.id} onApply={setApplicationOpportunity} onNegotiate={setNegotiationOpportunity} opportunity={opportunity}/>)}</div>
+      </ListingResults>
       <ApplicationModal
         isOpen={Boolean(applicationOpportunity)}
         onClose={() => setApplicationOpportunity(null)}
