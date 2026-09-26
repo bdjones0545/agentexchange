@@ -15,3 +15,12 @@ export function publicDocument(template:string,path:string,data:PublicData,rende
  const body=rendered.html.replace(/<title>[\s\S]*?<\/title>|<meta\b[^>]*>|<link\b[^>]*rel="canonical"[^>]*>/g,'');
  return template.replace(/<title>[\s\S]*?<\/title>|<meta\s+name="description"[\s\S]*?>/g,'').replace('</head>',head+'</head>').replace('<div id="root"></div>',`<div id="root">${body}</div><script id="ax-public-state" type="application/json">${serializePublic(rendered.initialState)}</script>${jsonld?`<script type="application/ld+json">${serializePublic(jsonld)}</script>`:''}`);
 }
+
+/** Keep initial marketplace filters identical on the server and in BrowserRouter. */
+export function publicRenderLocation(path: string, params: URLSearchParams) {
+ const search = new URLSearchParams();
+ if (path === '/marketplace') for (const key of ['category', 'brief']) {
+  const value = params.get(key); if (value) search.set(key, value);
+ }
+ return path + (search.size ? `?${search}` : '');
+}
