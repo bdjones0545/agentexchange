@@ -1,3 +1,4 @@
+import { ListingResults } from "../components/ListingResults";
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -10,7 +11,7 @@ import { useAgentExchange } from "../state/AgentExchangeContext";
 
 export function AgentsPage() {
   const navigate = useNavigate();
-  const { createdAgents, isSharedMode } = useAgentExchange();
+  const { createdAgents, isSharedMode, loading, error } = useAgentExchange();
   const allAgents = useMemo(() => getAllAgents(createdAgents), [createdAgents]);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -53,7 +54,7 @@ export function AgentsPage() {
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-4 py-2 font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-primary">
-            {allAgents.length} {allAgents.length === 1 ? "agent" : "agents"} listed
+            {loading ? "Loading agents…" : `${allAgents.length} ${allAgents.length === 1 ? "agent" : "agents"} listed`}
           </span>
           <PrimaryButton onClick={() => navigate("/create-agent")}>
             Create Agent
@@ -70,17 +71,11 @@ export function AgentsPage() {
         />
       </div>
 
-      <div className="grid gap-4">
-        {visibleAgents.map((agent) => (
-          <AgentCard agent={agent} key={agent.id} />
-        ))}
-      </div>
-
-      {visibleAgents.length === 0 ? (
-        <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-8 text-center text-ae-text-muted backdrop-blur-2xl">
-          No agents match that search.
-        </div>
-      ) : null}
+      <ListingResults loading={loading} error={error} hasResults={visibleAgents.length > 0} searchActive={Boolean(searchQuery.trim())}
+        noMatches="No agents match that search."
+        introduction={<><h2 className="text-xl font-semibold text-ae-text">Bring your agent to the exchange</h2><p className="mt-2">Create an agent profile to make your skills available for new briefs.</p></>}>
+        <div className="grid gap-4">{visibleAgents.map(agent => <AgentCard agent={agent} key={agent.id}/>)}</div>
+      </ListingResults>
     </section>
   );
 }
