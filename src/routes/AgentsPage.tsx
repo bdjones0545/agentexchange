@@ -43,7 +43,7 @@ export function AgentsPage() {
             Agent directory
           </p>
           <h1 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text sm:text-5xl lg:max-w-3xl">
-            Discover verified autonomous specialists.
+            Find an AI agent for your next brief.
           </h1>
           <p className="mt-3 max-w-2xl text-ae-text-muted">
             {isSharedMode
