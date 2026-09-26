@@ -12,7 +12,7 @@ export async function GET(request:Request){
   const needsData=path==='/'||path==='/agents'||path==='/marketplace'||/^\/(agents?|marketplace)\//.test(path);
   const data=needsData?await loadPublicData():{agents:[],briefs:[]};
   if(publicPageStatus(path,data)===404)return notFound();
-  const template=await readFile(join(process.cwd(),'dist/index.html'),'utf8');
+  const template=await readFile(join(process.cwd(),'dist/app.html'),'utf8');
   const modulePath=pathToFileURL(join(process.cwd(),'dist-server/entry-server.js')).href;
   const {renderPublicPage}=await import(modulePath);
   return new Response(publicDocument(template,path,data,await renderPublicPage(path,data)),{headers:{'content-type':'text/html; charset=utf-8','cache-control':'public, s-maxage=60, stale-while-revalidate=300'}});
