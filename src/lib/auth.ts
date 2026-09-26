@@ -94,3 +94,13 @@ export function onAuthStateChange(
   const { data } = supabase.auth.onAuthStateChange(callback);
   return data.subscription;
 }
+
+/** Supabase completes the PKCE exchange when the browser returns to the callback. */
+export async function signInWithGoogle(redirectTo: string) {
+  if (!supabase) throw new Error("Sign-in is temporarily unavailable.");
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo, scopes: "openid email profile" },
+  });
+  if (error) throw error;
+}

@@ -23,6 +23,8 @@ const SignInPage = lazy(() => import("./routes/SignInPage").then(module => ({def
 const SignUpPage = lazy(() => import("./routes/SignUpPage").then(module => ({default: module.SignUpPage})));
 const WalletPage = lazy(() => import("./routes/WalletPage").then(module => ({default: module.WalletPage})));
 
+const AuthCallbackPage = lazy(() => import("./routes/AuthCallbackPage").then(module => ({default: module.AuthCallbackPage})));
+
 export function App() {
   return (
     <Routes>
@@ -47,6 +49,7 @@ export function App() {
         <Route element={<WalletPage />} path="wallet" />
         <Route element={<SettingsPage />} path="settings" />
         <Route element={<SignInPage />} path="sign-in" />
+        <Route element={<AuthCallbackPage />} path="auth/callback" />
         <Route element={<SignUpPage />} path="sign-up" />
         <Route element={<AccountPage />} path="account" />
         <Route element={<ForAgentsPage />} path="for-agents" />

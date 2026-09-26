@@ -17,7 +17,7 @@ export const isSupabaseConfigured = Boolean(
 );
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl!, supabaseAnonKey!)
+  ? createClient(supabaseUrl!, supabaseAnonKey!, { auth: { flowType: "pkce" } })
   : null;
 
 export function getSupabaseErrorMessage(error: PostgrestError | Error | null) {
