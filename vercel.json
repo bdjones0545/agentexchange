@@ -9,10 +9,7 @@
     },
     "api/public-page.ts": {
       "maxDuration": 30,
-      "includeFiles": [
-        "dist/**",
-        "dist-server/**"
-      ]
+      "includeFiles": "{dist,dist-server}/**"
     }
   },
   "rewrites": [
