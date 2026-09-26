@@ -4,7 +4,7 @@ import { runMoneyOperation, type OperationStore } from './moneyOperations.js';
 import type { PaymentSnapshot, StripeGateway } from './stripe.js';
 
 export interface SellerGateway {
-  createAccount(profileId: string): Promise<string>;
+  createAccount(profileId: string, email: string): Promise<string>;
   onboarding(accountId: string, appUrl: string): Promise<string>;
   readiness(accountId: string): Promise<{ transfers: boolean; payouts: boolean }>;
   transfer(input: { payoutId: string; destination: string; amount: number; currency: string; chargeId: string }): Promise<string>;
@@ -14,9 +14,9 @@ export interface SellerGateway {
 export function sellerGateway(key: string): SellerGateway {
   const stripe = new Stripe(key, { apiVersion: '2026-08-26.dahlia', timeout: 5000, maxNetworkRetries: 1 });
   return {
-    async createAccount(profileId) {
+    async createAccount(profileId, email) {
       const a = await stripe.v2.core.accounts.create({
-        dashboard: 'express', metadata: { profileId },
+        dashboard: 'express', contact_email: email, metadata: { profileId },
         defaults: { responsibilities: { fees_collector: 'application', losses_collector: 'application' } },
         configuration: { recipient: { capabilities: { stripe_balance: { stripe_transfers: { requested: true } } } } },
       }, { idempotencyKey: `seller:${profileId}` });
@@ -56,12 +56,12 @@ export function assertTransferable(payment: PaymentSnapshot, payout: PayoutRow) 
   }
 }
 
-export async function onboardSeller(client: SupabaseClient, operations: OperationStore, gateway: SellerGateway, profileId: string, appUrl: string) {
+export async function onboardSeller(client: SupabaseClient, operations: OperationStore, gateway: SellerGateway, profileId: string, appUrl: string, email: string) {
   const { data: existing, error } = await client.from('seller_accounts').select('stripe_account_id').eq('profile_id', profileId).maybeSingle();
   if (error) throw new Error('Could not read seller account');
   const accountId = existing?.stripe_account_id ?? await runMoneyOperation(operations,
     { key: `seller:${profileId}`, kind: 'seller', profileId, request: { profileId } }, async () => {
-      const id = await gateway.createAccount(profileId);
+      const id = await gateway.createAccount(profileId, email);
       const { error: saveError } = await client.from('seller_accounts').upsert({ profile_id: profileId, stripe_account_id: id }, {onConflict:'profile_id', ignoreDuplicates:true});
       if (saveError) throw new Error('Could not save seller account');
       return id;

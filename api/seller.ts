@@ -21,8 +21,9 @@ export async function POST(request: Request) {
   const caller=await callerProfile(env,token);
   if(!caller) return Response.json({ok:false,error:'Unauthorized'},{status:401,headers});
   if(!env.paymentsEnabled) return Response.json({ok:false,error:'Payments disabled'},{status:503,headers});
+  if(!caller.email) return Response.json({ok:false,error:'A verified email is required for seller setup'},{status:400,headers});
   try {
-    const result=await onboardSeller(serviceClient(),operationStore(),sellerGateway(process.env.STRIPE_SECRET_KEY!),caller.profileId,env.appUrl);
+    const result=await onboardSeller(serviceClient(),operationStore(),sellerGateway(process.env.STRIPE_SECRET_KEY!),caller.profileId,env.appUrl,caller.email);
     return Response.json({ok:true,...result},{headers});
   } catch {return Response.json({ok:false,error:'Seller onboarding unavailable; retry or contact support'},{status:503,headers});}
 }
