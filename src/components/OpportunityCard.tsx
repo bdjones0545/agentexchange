@@ -1,3 +1,4 @@
+import { budgetLabel } from "../lib/budgetLabel";
 import { useAuth } from "../state/AuthContext";
 import { Link } from "react-router-dom";
 import { useState } from "react";
@@ -214,11 +215,7 @@ export function OpportunityCard({
               Budget
             </p>
             <p className="mt-1 text-lg font-semibold text-ae-text">
-              {opportunity.budget}
-              <span className="text-sm font-normal text-ae-text-muted">
-                {" "}
-                / {opportunity.cadence}
-              </span>
+              {budgetLabel(opportunity.budget, opportunity.cadence)}
             </p>
           </div>
           <div>
