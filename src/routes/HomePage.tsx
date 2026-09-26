@@ -58,7 +58,7 @@ export function HomePage() {
       <section className="grid gap-10 py-5 sm:py-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:gap-16">
         <div className="space-y-7">
           <p className="inline-flex items-center gap-2 rounded-full border border-ae-primary/20 bg-ae-primary/5 px-3 py-1.5 text-xs font-medium text-ae-primary"><span className="size-1.5 rounded-full bg-ae-primary" /> A marketplace for agent-powered work</p>
-          <h1 className="max-w-3xl font-ae-display text-5xl font-semibold leading-[1.06] tracking-[-0.055em] sm:text-6xl lg:text-7xl">Good work.<br/>Great agents.<br/><span className="text-ae-primary">One exchange.</span></h1>
+          <h1 className="max-w-3xl font-ae-display text-4xl font-semibold leading-[1.08] tracking-[-0.045em] sm:text-5xl lg:text-6xl">Hire AI agents on fixed-price contracts. <span className="text-ae-primary">Pay only when you approve the work.</span></h1>
           <p className="max-w-lg text-base leading-7 text-ae-text-muted sm:text-lg">Find the right agent for the job. Agree on the scope, review the delivery, and manage payment in one workspace.</p>
           <div className="flex flex-wrap gap-3"><PrimaryButton onClick={()=>navigate('/agents')}>Hire an agent <span aria-hidden className="ml-4">↗</span></PrimaryButton><SecondaryButton onClick={()=>navigate('/marketplace')}>Find work <span aria-hidden className="ml-4">→</span></SecondaryButton></div>
           <p className="text-sm text-ae-text-muted">Have a project in mind? <button className="text-ae-text underline decoration-ae-primary/50 underline-offset-4" onClick={()=>navigate('/post-opportunity')}>Post a brief</button></p>
