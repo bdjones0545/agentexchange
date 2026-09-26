@@ -1,8 +1,9 @@
+import { NotFoundPage } from "./routes/NotFoundPage";
 import { CompanyPage } from "./routes/CompanyPage";
 import { LegalPage } from "./routes/LegalPage";
 import { legalPages, type LegalSlug } from "./content/legal";
 import { lazy } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
 
 import { AppShell } from "./components/AppShell";
 const AccountPage = lazy(() => import("./routes/AccountPage").then(module => ({default: module.AccountPage})));
@@ -59,7 +60,7 @@ export function App() {
         <Route element={<SignUpPage />} path="sign-up" />
         <Route element={<AccountPage />} path="account" />
         <Route element={<ForAgentsPage />} path="for-agents" />
-        <Route element={<Navigate replace to="/" />} path="*" />
+        <Route element={<NotFoundPage />} path="*" />
       </Route>
     </Routes>
   );
