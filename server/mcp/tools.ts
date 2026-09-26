@@ -420,6 +420,7 @@ export const TOOLS = [
       "Submit a deliverable for the organization's review. `notes` IS the work product (markdown is fine): the memo, plan, analysis, copy, code or report the contract asked for, complete and self-contained. Every submission passes a quality gate that checks it against the brief's scope and success criteria; if it comes back ok=false with gate.verdict \"returned\", read gate.flags, revise, and submit again. Only the organization can approve it; you cannot.",
     schema: z.object({
       contractId: uuid,
+      deliverableId: uuid.optional().describe("Rejected draft to revise; required when multiple drafts exist"),
       title: z.string().min(2).max(160),
       notes: z.string().min(1).max(60000),
     }),
@@ -430,6 +431,12 @@ export const TOOLS = [
       if (contractError) return fail("submit_deliverable", contractError);
       if (!c) return { ok: false, error: "contract not found or not visible to this worker" };
 
+      const {data: drafts, error: draftError} = await op.db.from("contract_deliverables").select("id,decisions").eq("contract_id", input.contractId).eq("status", "draft");
+      if(draftError) return fail("submit_deliverable", draftError);
+      const candidates = (drafts ?? []) as Row[];
+      const revision = input.deliverableId ? candidates.find(d=>d.id===input.deliverableId) : candidates.length===1 ? candidates[0] : undefined;
+      if(input.deliverableId && !revision) return {ok:false,error:"Only a draft on this contract can be revised"};
+      if(!input.deliverableId && candidates.length>1) return {ok:false,error:"Choose the rejected draft using deliverableId"};
       const gate = await gateDeliverable(ctx, op.db, c as Row, input);
       if (gate.verdict === "returned") {
         await recordGate(op.db, c as Row, op.profileId, input.title, gate, null);
@@ -448,14 +455,12 @@ export const TOOLS = [
         status: "submitted",
         submitted_at: ctx.now(),
       };
-      let { data, error } = await op.db
-        .from("contract_deliverables")
-        .insert({ ...row, gate })
-        .select("id,title,status,submitted_at")
-        .single();
+      const write = (payload: Record<string, unknown>) => revision
+        ? op.db.from("contract_deliverables").update(payload).eq("id", revision.id).eq("status", "draft").select("id,title,status,submitted_at").single()
+        : op.db.from("contract_deliverables").insert(payload).select("id,title,status,submitted_at").single();
+      let { data, error } = await write({...row, gate});
       if (error && /gate/i.test(error.message)) {
-        // The gate column has not been migrated yet: the deliverable still lands.
-        ({ data, error } = await op.db.from("contract_deliverables").insert(row).select("id,title,status,submitted_at").single());
+        ({ data, error } = await write(row));
       }
       if (error) return fail("submit_deliverable", error);
       await recordGate(op.db, c as Row, op.profileId, input.title, gate, String((data as Row).id));
@@ -867,11 +872,11 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
-      const { data: d } = await op.db.from("contract_deliverables").select("id,contract_id,status,decisions").eq("id", input.deliverableId).maybeSingle();
+      const { data: d } = await op.db.from("contract_deliverables").select("id,contract_id,status,decisions,notes,title").eq("id", input.deliverableId).maybeSingle();
       if (!d) return { ok: false, error: "deliverable not found or not visible" };
       if (d.status !== "submitted") return { ok: false, error: `deliverable is ${d.status}; only a submitted deliverable can be decided` };
       const now = ctx.now();
-      const decisions = [...((d.decisions as unknown[]) ?? []), { id: `decision-${Date.now()}`, status: input.decision === "approve" ? "approved" : "rejected", note: input.note, decidedAt: now }];
+      const decisions = [...((d.decisions as unknown[]) ?? []), { id: `decision-${Date.now()}`, status: input.decision === "approve" ? "approved" : "rejected", note: input.note, decidedAt: now, ...(input.decision === "reject" ? {previousNotes: d.notes, previousTitle: d.title} : {}) }];
       const { error } = await op.db
         .from("contract_deliverables")
         .update({ status: input.decision === "approve" ? "approved" : "draft", approved_at: input.decision === "approve" ? now : null, decisions })
