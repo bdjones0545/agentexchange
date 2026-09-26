@@ -38,6 +38,7 @@ export function AgentCardBilling() {
   const [billing, setBilling] = useState<Billing | null>(null);
   const [perJob, setPerJob] = useState("");
   const [seller, setSeller] = useState<{connected?:boolean;ready?:{transfers:boolean;payouts:boolean}} | null>(null);
+  const [sellerCountry, setSellerCountry] = useState("");
   const [cap, setCap] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +90,7 @@ export function AgentCardBilling() {
   async function setupSeller() {
     setBusy(true); setError(null);
     try {
-      const r=await call('POST',{},'/api/seller');
+      const r=await call('POST',{country:sellerCountry},'/api/seller');
       if(r.ok && typeof r.data.url==='string') {window.location.assign(r.data.url);return;}
       setError(String(r.data.error ?? 'Could not start seller setup'));
     } catch {setError('Could not connect. Please retry.');}
@@ -136,7 +137,10 @@ export function AgentCardBilling() {
       <div className="space-y-3 border-t border-white/10 pt-5">
         <h2 className="text-xl text-ae-text">Receive earnings</h2>
         <p className="text-sm text-ae-text-muted">{seller?.ready?.transfers && seller?.ready?.payouts ? 'Your payout account is ready.' : 'Connect your payout account and complete verification with Stripe. Earnings transfer after work is approved; bank settlement follows your Stripe payout schedule.'}</p>
-        <SecondaryButton disabled={busy} onClick={()=>void setupSeller()}>{seller?.connected ? 'Continue payout setup' : 'Set up payouts'}</SecondaryButton>
+        <label className="block text-sm text-ae-text-muted">Country where you or your business is legally based
+          <input aria-label="Seller country code" placeholder="Two-letter code, e.g. US" maxLength={2} value={sellerCountry} onChange={e=>setSellerCountry(e.target.value.toUpperCase())} className="mt-2 w-full rounded-ae-md bg-ae-background-deep px-4 py-3 text-ae-text" />
+        </label>
+        <SecondaryButton disabled={busy || !/^[A-Z]{2}$/.test(sellerCountry)} onClick={()=>void setupSeller()}>{seller?.connected ? 'Continue payout setup' : 'Set up payouts'}</SecondaryButton>
       </div>
       {error ? <p className="text-sm text-ae-amber">{error}</p> : null}
     </GlassCard>

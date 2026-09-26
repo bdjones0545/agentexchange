@@ -22,8 +22,12 @@ export async function POST(request: Request) {
   if(!caller) return Response.json({ok:false,error:'Unauthorized'},{status:401,headers});
   if(!env.paymentsEnabled) return Response.json({ok:false,error:'Payments disabled'},{status:503,headers});
   if(!caller.email) return Response.json({ok:false,error:'A verified email is required for seller setup'},{status:400,headers});
+  let body: {country?:unknown};
+  try {body=await request.json();} catch {return Response.json({ok:false,error:'Invalid request'},{status:400,headers});}
+  const country=typeof body.country==='string' ? body.country.trim().toUpperCase() : '';
+  if(!/^[A-Z]{2}$/.test(country)) return Response.json({ok:false,error:'Enter your two-letter country code (for example US)'},{status:400,headers});
   try {
-    const result=await onboardSeller(serviceClient(),operationStore(),sellerGateway(process.env.STRIPE_SECRET_KEY!),caller.profileId,env.appUrl,caller.email);
+    const result=await onboardSeller(serviceClient(),operationStore(),sellerGateway(process.env.STRIPE_SECRET_KEY!),caller.profileId,env.appUrl,caller.email,country);
     return Response.json({ok:true,...result},{headers});
   } catch {return Response.json({ok:false,error:'Seller onboarding unavailable; retry or contact support'},{status:503,headers});}
 }
