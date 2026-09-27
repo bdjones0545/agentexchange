@@ -29,6 +29,22 @@ database checks remain required.
   the pending SSR/metadata, crawler, social-image and real-404 improvements.
   This is a release gap, not evidence that the preview fixes are broken.
 
+## Deployment acceptance workflow
+
+`.github/workflows/public-release.yml` runs the same checker after successful
+GitHub deployment events named `Production`, or manually from Actions. It uses
+the default branch and fixed public origin, read-only repository permissions,
+no installed application dependencies and no secrets. Failed checks fail the
+workflow; text evidence is retained for 14 days even when checks fail.
+
+This workflow becomes available when merged into the default branch. It is
+post-deployment detection, not a pre-promotion gate or automatic rollback.
+The repository has historical deployment events named `Production`; confirm a
+new event is emitted on the first release with this workflow. A manually deployed release must run the workflow explicitly if
+no GitHub deployment event is emitted. GitHub notification delivery depends on
+the recipient's Actions notification settings and remains unverified. This does
+not replace continuous uptime monitoring or scheduled-job heartbeat detection.
+
 ## Legal and Google publication
 
 1. Obtain the owner's legal entity, public business address and monitored
@@ -74,3 +90,11 @@ to that deployment if public acceptance or login fails, then repeat checks.
 The existing constant-fee search-path migration is compatible with the old app;
 application rollback does not require reverting it. This runbook does not change
 Stripe mode or authorize live-money activation.
+
+## Pre-release evidence refresh
+
+PR #47 CI run `36288674717` passed application verification and database
+authorization. The rollback candidate before public release is production
+deployment `dpl_AKjYMQEHGMAneb1kMpVNTf1AD2Mc`, application commit `10833e6`;
+Vercel inspection confirmed this is still the active public deployment during
+this verification; reconfirm immediately before promotion.
