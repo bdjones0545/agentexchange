@@ -21,9 +21,9 @@ export async function reconcileMoney(client: SupabaseClient, deps: FundingDeps, 
       }
       const input={contractId:job.contract_id,callerProfileId:job.profile_id};
       if(job.kind==='webhook') await handleStripeEvent(deps,job.request.event);
-      else if(job.kind==='fund_agent') await fundWithSavedCard(deps,{...input,agentKeyId:job.request.agentKeyId,selectedPaymentMethod:job.request.selectedPaymentMethod});
+      else if(job.kind==='fund_agent') await fundWithSavedCard(deps,{...input,agentKeyId:job.request.agentKeyId,selectedPaymentMethod:job.request.selectedPaymentMethod,executionId:job.request.executionId});
       else if(job.kind==='fund_human') await createFunding(deps,input);
-      else if(job.kind==='capture' || job.kind==='cancel') await releaseFunds(deps,{...input,action:job.kind,agentKeyId:job.request.agentKeyId});
+      else if(job.kind==='capture' || job.kind==='cancel') await releaseFunds(deps,{...input,action:job.kind,agentKeyId:job.request.agentKeyId,executionId:job.request.executionId});
       else continue; // Seller creation requires the owner; transfer/reversal work runs below.
       report.replayed++;
     } catch { report.failed++; }
@@ -81,5 +81,8 @@ export async function reconcileMoney(client: SupabaseClient, deps: FundingDeps, 
     } catch { report.failed++; }
     finally { await client.from('payouts').update({checked_at:new Date().toISOString(),check_until:null}).eq('id',payout.id).eq('check_until',leaseUntil); }
   }
+  const {data:cases,error:caseError}=await client.from('payment_review_cases').select('id').eq('status','open').limit(100);
+  if(caseError) throw new Error('Could not read payment review queue');
+  report.needsReview+=(cases ?? []).length;
   return report;
 }

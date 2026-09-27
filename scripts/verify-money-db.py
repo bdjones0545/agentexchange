@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 BIN = Path(subprocess.check_output(['pg_config', '--bindir'], text=True).strip())
@@ -44,6 +45,9 @@ alter default privileges in schema public grant all on sequences to anon,authent
         bounded=next((ROOT/'supabase/migrations').glob('*_bounded_marketplace_authority.sql'))
         sql(bounded.read_text())
         sql(bounded.read_text())
+        transactional=next((ROOT/'supabase/migrations').glob('*_transactional_marketplace_operations.sql'))
+        sql(transactional.read_text())
+        sql(transactional.read_text())
         assert sql('select public.platform_fee_bps()') == '1500'
         assert 'search_path=' in sql("select proconfig from pg_proc where oid='public.platform_fee_bps()'::regprocedure")
         sql(f"""insert into profiles(id,email) values('{PROFILE}','buyer@test.invalid');
@@ -92,6 +96,43 @@ insert into billing_accounts(profile_id,agent_daily_cap_cents,agent_per_contract
         sql(f"update contracts set payment_status='captured' where id='{c}';set role service_role;select set_contract_payment_status('{c}','authorized');")
         assert sql(f"select payment_status from contracts where id='{c}'")=='captured'
         print('PASS old authorization cannot downgrade captured payment')
+        # Concurrent caller-token retries must create one row and one receipt.
+        user='23232323-2323-4323-8323-232323232323'
+        sql(f"insert into auth.users(id,email) values('{user}','retry@test.invalid');")
+        actor=f"set role authenticated;set request.jwt.claim.sub='{user}';"
+        token='24242424-2424-4424-8424-242424242424'
+        create=f"select create_marketplace_record('agents','{token}','{{\"name\":\"Replay worker\"}}','{{\"name\":\"Replay worker\",\"specialty\":\"Research\"}}');"
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            rows=list(pool.map(lambda _:json.loads(sql(actor+create)),[0,1]))
+        assert rows[0]['id']==rows[1]['id']
+        assert sql("select count(*) from agents where name='Replay worker'")=='1'
+        assert sql(f"select count(*) from marketplace_requests where request_id='{token}'")=='1'
+        sql(actor+create.replace('Replay worker','Changed intent'),False)
+        sql(actor+"select create_marketplace_record('agents','25252525-2525-4525-8525-252525252525','{}','{\"specialty\":\"Missing name\"}');",False)
+        assert sql("select count(*) from marketplace_requests where request_id='25252525-2525-4525-8525-252525252525'")=='0'
+        sql(actor+f"select create_marketplace_record('payments','{token}','{{}}','{{}}');",False)
+        print('PASS concurrent creation replays, intent conflicts, rollback and resource whitelist')
+        sql(f"insert into contract_deliverables(contract_id,title,status) values('{c}','Approved evidence','approved');")
+        claim=f"select begin_money_operation('capture-fence','capture','{PROFILE}','{c}','{{}}',0);"
+        assert json.loads(sql('set role service_role;'+claim))['state']=='acquired'
+        sql(f"insert into disputes(contract_id,reason) values('{c}','Late dispute');")
+        assert sql("select count(*) from payment_review_cases where operation_key='capture-fence' and status='open'")=='1'
+        sql(f"set role service_role;select begin_money_operation('transfer-blocked','transfer','{PROFILE}','{c}','{{}}',0);",False)
+        sql(f"update disputes set status='Resolved' where contract_id='{c}';")
+        # Keep an opening dispute uncommitted while a competing capture claims.
+        proc=subprocess.Popen([str(BIN/'psql'),'-h',directory,'-p','55439','-d','postgres','-v','ON_ERROR_STOP=1','-qAt'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        proc.stdin.write(f"begin;set application_name='ax_dispute_race';insert into disputes(contract_id,reason) values('{c}','Concurrent dispute');select pg_sleep(1);commit;")
+        proc.stdin.close()
+        sleeping=False
+        for _ in range(100):
+            if sql("select count(*) from pg_stat_activity where application_name='ax_dispute_race' and wait_event='PgSleep'")=='1':
+                sleeping=True;break
+            time.sleep(.02)
+        assert sleeping,'dispute transaction did not reach synchronization point'
+        sql(f"set role service_role;select begin_money_operation('capture-race','capture','{PROFILE}','{c}','{{}}',0);",False)
+        assert proc.wait(timeout=5)==0
+        assert sql("select count(*) from money_operations where key='capture-race'")=='0'
+        print('PASS late disputes create review evidence and concurrent disputes block payment claims')
         print('Payment database verification passed')
         # Run the three-party authorization suite in a second disposable database
         # on this isolated cluster, so CI never needs a shared database URL.

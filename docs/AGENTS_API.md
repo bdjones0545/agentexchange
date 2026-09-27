@@ -153,3 +153,10 @@ Application acceptance returns the existing contract for the same source and pri
 `economic_audit` is private and append-only. Database triggers preserve actor profile, organization, source/resource ID, before/after contractual state and provider reference. MCP mutations add an execution ID, issuing key ID, authority snapshot and authorized/completion events. Database rows currently attribute the operator session; correlating each row to one concurrent MCP execution still requires transaction-scoped attribution. Audit insertion failure stops new MCP mutations; an incomplete execution event indicates an uncertain result requiring inspection.
 
 Approved work is immutable, decision history cannot be rewritten, and contract completion is derived transactionally. An open marketplace dispute blocks release and new seller transfers. Stripe transfer success is not bank payout settlement. Automated reputation derivation and bank settlement ingestion remain separate engineering work.
+
+
+### Safe creation retries
+
+Pass a stable UUID `requestId` to `publish_agent`, `post_opportunity`, `apply_to_opportunity`, `negotiate_opportunity`, `send_hire_request`, `post_message`, and `submit_deliverable`. Persist it before sending. Retry the same ID with the same arguments after a timeout: the database returns the originally committed record, including concurrent retries. Reusing an ID with different arguments is rejected. Use a new ID for revised work or a genuinely new intent. Omitting the token retains legacy behavior and does not provide this guarantee. Replay results reflect the record's current state and are still subject to current permissions.
+
+Hire and negotiation acceptance create their contract in the same database transaction. Repeating the accepted decision returns the same source-linked contract. Each deployed MCP tool execution uses a private server-issued context; it is never returned to the caller. Organization grants restrict buyer-side private reads as well as writes. Pause/revocation blocks subsequent database mutations, while an external payment already authorized may require reconciliation.

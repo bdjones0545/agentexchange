@@ -1,3 +1,5 @@
+import {executionClient} from '../server/agentExecution.js';
+import type {ToolContext} from '../server/mcp/tools.js';
 import {beginAgentAudit} from '../server/agentAudit.js';
 import {authorizeAgentTool, readAuthority, WORKER_ACTIONS} from '../server/agentAuthority.js';
 import {serviceClient} from '../server/service.js';
@@ -68,10 +70,12 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400, headers: NO_STORE });
   }
   const serverEnv = env;
-  const result = await handleBody(body, {
-    audit: async(name,input,grant)=>{
+  const context:ToolContext = {
+    prepare: async(name,input,readOnly,grant)=>{
       const op=await identity!.open();
-      return beginAgentAudit(serviceClient(),op.profileId,identity!.keyId,name,input,grant);
+      const execution=await executionClient(serviceClient(),op.db,op.profileId,identity!.keyId,name,readOnly,supabaseUrl,supabaseAnonKey);
+      const finish=readOnly ? undefined : await beginAgentAudit(serviceClient(),op.profileId,identity!.keyId,name,input,grant,execution.executionId);
+      return {context:{...context,executionId:execution.executionId,open:async()=>({db:execution.db,profileId:op.profileId})},finish};
     },
     authority: async()=>{
       const op=await identity!.open();
@@ -93,7 +97,8 @@ export async function POST(request: Request): Promise<Response> {
     notify: (e) => dispatch(serverEnv, e),
     // Deliverable quality gate; unset key = accept-and-stamp, never block.
     gate: jevEvaluator(process.env.AI_GATEWAY_API_KEY),
-  });
+  };
+  const result=await handleBody(body,context);
   if (result === null) return new Response(null, { status: 202, headers: NO_STORE });
   return Response.json(result, { headers: { ...NO_STORE, "content-type": "application/json" } });
 }

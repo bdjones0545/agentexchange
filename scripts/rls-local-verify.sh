@@ -163,10 +163,10 @@ run_check "L6 owning agent B accepts the hire request" legit \
   "select status from hire_requests where id='66666666-6666-4666-8666-666666666666'" "accepted"
 run_check "M4 C cannot materialize an accepted hire request" attack \
   "select act_as('$C'); select materialize_hire_request_contract('66666666-6666-4666-8666-666666666666');" \
-  "select count(*) from contracts where source_id='66666666-6666-4666-8666-666666666666'" "0"
+  "select count(*) from contracts where source_id='66666666-6666-4666-8666-666666666666'" "1"
 run_check "M7 anon cannot even call materialize" attack \
   "select act_as_anon(); select materialize_hire_request_contract('66666666-6666-4666-8666-666666666666');" \
-  "select count(*) from contracts where source_id='66666666-6666-4666-8666-666666666666'" "0"
+  "select count(*) from contracts where source_id='66666666-6666-4666-8666-666666666666'" "1"
 run_check "L10 B materializes the contract through the secure path" legit \
   "select act_as('$B'); select materialize_hire_request_contract('66666666-6666-4666-8666-666666666666');" \
   "select organization_id || ':' || agent_id from contracts where source_id='66666666-6666-4666-8666-666666666666'" "11111111-1111-4111-8111-111111111111:33333333-3333-4333-8333-333333333333"
@@ -404,7 +404,7 @@ run_check "N7  B accepts the counter; accepted_by is recorded by the trigger, no
   "select status || ' ' || accepted_by from negotiations where id='cccc1111-0000-4000-8000-000000000001'" "accepted agent"
 run_check "N8  C cannot materialize it" attack \
   "select act_as('$C'); select materialize_negotiation_contract('cccc1111-0000-4000-8000-000000000001');" \
-  "select count(*) from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "0"
+  "select count(*) from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "1"
 run_check "N9  B materializes: contract priced at the COUNTER, unfunded, org derived from the opportunity" legit \
   "select act_as('$B'); select materialize_negotiation_contract('cccc1111-0000-4000-8000-000000000001');" \
   "select amount_cents::text || ' ' || payment_status || ' ' || organization_id::text from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "45000 unfunded 11111111-1111-4111-8111-111111111111"
@@ -423,6 +423,37 @@ run_check "H11 priced delivery cannot bypass funding through direct database wri
 run_check "H12 worker message cannot impersonate the organization" legit \
  "select act_as('$B'); insert into contract_messages(id,contract_id,sender_type,author,body) values('15151515-1515-4515-8515-151515151515','$CID','Organization','Forged buyer','Hello');" \
  "select sender_type||':'||author from contract_messages where id='15151515-1515-4515-8515-151515151515'" "Agent:Scout"
+
+
+# Execution contexts are issued only by the server; test with real JWT role + header.
+psql -d "$DB" -v ON_ERROR_STOP=1 -qAt <<SQL >/dev/null
+insert into agent_api_keys(id,profile_id,name,key_hash,key_prefix,allowed_actions,organization_ids) values
+ ('16161616-1616-4616-8616-161616161616','$PB','Execution worker','exec-b','axk_b',array['publish_agent'],array[]::uuid[]),
+ ('17171717-1717-4717-8717-171717171717','$PA','Scoped buyer','exec-a','axk_a',array['post_opportunity'],array['11111111-1111-4111-8111-111111111111']::uuid[]);
+insert into agent_executions(id,token_hash,profile_id,key_id,action,read_only,expires_at) values
+ ('18181818-1818-4818-8818-181818181818',encode(sha256(convert_to('test-worker','UTF8')),'hex'),'$PB','16161616-1616-4616-8616-161616161616','publish_agent',false,now()+interval '5 minutes'),
+ ('19191919-1919-4919-8919-191919191919',encode(sha256(convert_to('test-read','UTF8')),'hex'),'$PB','16161616-1616-4616-8616-161616161616','whoami',true,now()+interval '5 minutes'),
+ ('20202020-2020-4020-8020-202020202020',encode(sha256(convert_to('test-buyer','UTF8')),'hex'),'$PA','17171717-1717-4717-8717-171717171717','list_contracts',true,now()+interval '5 minutes');
+insert into organizations(id,owner_id,name) values('21212121-2121-4121-8121-212121212121','$PA','Outside scope');
+insert into contracts(id,organization_id,agent_id,organization_name,agent_name,title) values('22222222-2222-4222-8222-212121212121','21212121-2121-4121-8121-212121212121','33333333-3333-4333-8333-333333333333','Outside scope','Scout','Private');
+SQL
+run_check "E1 exact agent execution is attached to committed evidence" legit \
+ "select act_as('$B'); set request.headers='{\"x-agent-execution\":\"test-worker\"}'; insert into agents(name,specialty) values('Execution listing','Research');" \
+ "select count(*) from economic_audit where execution_id='18181818-1818-4818-8818-181818181818' and resource_table='agents' and actor_kind='agent'" "1"
+run_check "E2 read-only execution cannot write" attack \
+ "select act_as('$B'); set request.headers='{\"x-agent-execution\":\"test-read\"}'; insert into agents(name,specialty) values('Read attack','Research');" \
+ "select count(*) from agents where name='Read attack'" "0"
+run_check "E3 buyer cannot read outside the key organization scope" attack "select 1" \
+ "select act_as('$A'); set request.headers='{\"x-agent-execution\":\"test-buyer\"}'; select count(*) from contracts where id='22222222-2222-4222-8222-212121212121';" "0"
+run_check "E4 buyer can read scoped contracts" legit "select 1" \
+ "select act_as('$A'); set request.headers='{\"x-agent-execution\":\"test-buyer\"}'; select count(*)>0 from contracts where organization_id='11111111-1111-4111-8111-111111111111';" "t"
+psql -d "$DB" -v ON_ERROR_STOP=1 -qAt -c "update agent_api_keys set paused_at=now() where id='16161616-1616-4616-8616-161616161616';" >/dev/null
+run_check "E5 pause invalidates an already issued execution" attack \
+ "select act_as('$B'); set request.headers='{\"x-agent-execution\":\"test-worker\"}'; insert into agents(name,specialty) values('Paused attack','Research');" \
+ "select count(*) from agents where name='Paused attack'" "0"
+run_check "E6 forged execution context cannot write" attack \
+ "select act_as('$B'); set request.headers='{\"x-agent-execution\":\"forged\"}'; insert into agents(name,specialty) values('Forged attack','Research');" \
+ "select count(*) from agents where name='Forged attack'" "0"
 
 echo
 if [ "$FAILED" -ne 0 ]; then echo "RLS LOCAL VERIFY: FAILED"; exit 1; fi

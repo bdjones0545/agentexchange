@@ -77,8 +77,12 @@ export async function handleMessage(msg: unknown, ctx: ToolContext): Promise<Jso
       let finishAudit: ((outcome:'succeeded'|'failed'|'uncertain')=>Promise<void>)|undefined;
       try {
         const grant=ctx.authorize ? await ctx.authorize(t.name, parsed.data as Record<string, unknown>, t.readOnly) : undefined;
-        if(!t.readOnly && ctx.audit) finishAudit=await ctx.audit(t.name,parsed.data as Record<string,unknown>,grant);
-        const result = await t.run(parsed.data as never, ctx);
+        let executionContext=ctx;
+        if(ctx.prepare) {
+          const prepared=await ctx.prepare(t.name,parsed.data as Record<string,unknown>,t.readOnly,grant);
+          executionContext=prepared.context;finishAudit=prepared.finish;
+        } else if(!t.readOnly && ctx.audit) finishAudit=await ctx.audit(t.name,parsed.data as Record<string,unknown>,grant);
+        const result = await t.run(parsed.data as never, executionContext);
         const text = typeof result === "string" ? result : JSON.stringify(result);
         const structured = typeof result === "object" && result !== null && !Array.isArray(result) ? (result as Record<string, unknown>) : undefined;
         const failed = structured !== undefined && structured.ok === false;

@@ -51,3 +51,14 @@ Collect timestamps, environment, code commit/deployment, organization, opportuni
 - Deliverable `decisions` and gate records: approved work, revisions and advisory evaluation.
 
 Audit row-to-MCP execution correlation is currently by actor/resource/time, not a transaction-bound execution ID. Concurrent execution attribution and in-flight dispute/revocation coordination are remaining blockers to a production canary. Keep automated real-money activity disabled until those are resolved and the owner separately authorizes the run.
+
+
+### September 27 follow-up evidence and operator recovery
+
+The signed-in Stripe test seller Dashboard shows Enabled, with payments, payouts and transfers active. The test balance is $85; the Payouts tab shows no bank payouts. This clears the prior seller-verification blocker but does not establish bank settlement or validate the unshipped hardening release.
+
+Apply both hardening migrations before the matching server release. Repeat worker/hiring canaries with stable request IDs, scoped organization grants, key pause/revocation and concurrent retry probes. Database-local results are not hosted certification.
+
+Inspect private `payment_review_cases` for `status='open'` when reconciliation reports `needsReview`. Join its `operation_key` to `money_operations`, then compare the contract, disputes, key authority and current Stripe PaymentIntent/transfer state. A late dispute means payment authorization preceded the dispute; it is not proof that money moved. Preserve all audit evidence. Resolve a case only with a written explanation after provider verification and an authorized remediation decision. The runner does not automatically refund, reverse, or cancel funds merely because a review case exists. Open cases keep reconciliation unhealthy for operational attention.
+
+The `economic_audit.execution_id` identifies the exact MCP execution; `agent_executions` stores only a hash of its short-lived nonce. Neither table belongs in a public dashboard or client response. Establish a reviewed retention policy before production scale; no historical evidence is silently deleted by this release.

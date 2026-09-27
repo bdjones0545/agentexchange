@@ -339,19 +339,19 @@ async function ensurePayout(deps: FundingDeps, contract: Awaited<ReturnType<Ledg
     grossCents: quote.amountCents, feeCents: quote.platformFeeCents, currency: quote.currency, paymentIntentId });
 }
 
-async function fundingOperation<T>(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; selectedPaymentMethod?:string}, kind: string, run: () => Promise<T>): Promise<T> {
+async function fundingOperation<T>(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; executionId?:string; selectedPaymentMethod?:string}, kind: string, run: () => Promise<T>): Promise<T> {
   const contract = await requireOrgSide(deps.ledger, input.contractId, input.callerProfileId);
   let quote: Quote;
   try { quote = quoteContract(contract.amount_cents ?? 0, contract.platform_fee_bps, contract.currency); }
   catch { throw new FundingError(409, 'Contract has no valid agreed price'); }
   if (quote.currency !== 'USD') throw new FundingError(409, 'Payment launch supports USD contracts only');
   return runMoneyOperation(deps.operations, { key: `fund:${contract.id}`, kind, profileId: input.callerProfileId,
-    contractId: contract.id, amountCents: quote.totalCents, request: {contractId: contract.id, quote, ...(input.agentKeyId ? {agentKeyId:input.agentKeyId,selectedPaymentMethod:input.selectedPaymentMethod} : {})} }, run);
+    contractId: contract.id, amountCents: quote.totalCents, request: {contractId: contract.id, quote, ...(input.executionId ? {executionId:input.executionId} : {}), ...(input.agentKeyId ? {agentKeyId:input.agentKeyId,selectedPaymentMethod:input.selectedPaymentMethod} : {})} }, run);
 }
 export async function createFunding(deps: FundingDeps, input: {contractId: string; callerProfileId: string; customerEmail?: string}) {
   return fundingOperation(deps, input, 'fund_human', () => createFundingCore(deps, input));
 }
-export async function fundWithSavedCard(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; selectedPaymentMethod?:string}) {
+export async function fundWithSavedCard(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; executionId?:string; selectedPaymentMethod?:string}) {
   if(input.agentKeyId) {
     if(!deps.ledger.authorizeAgentPayment) throw new FundingError(503,'Agent authority storage unavailable');
     await deps.ledger.authorizeAgentPayment(input.callerProfileId,input.agentKeyId,input.contractId,'fund_contract');
@@ -368,7 +368,7 @@ export async function fundWithSavedCard(deps: FundingDeps, input: {contractId: s
   if (!['authorized','captured'].includes(current.payment_status)) throw new FundingError(409, 'Previous funding is no longer active; operator reconciliation required');
   return {...result,paymentStatus:current.payment_status};
 }
-export async function releaseFunds(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; action: 'capture' | 'cancel'}) {
+export async function releaseFunds(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; executionId?:string; action: 'capture' | 'cancel'}) {
   if(input.agentKeyId) {
     if(!deps.ledger.authorizeAgentPayment) throw new FundingError(503,'Agent authority storage unavailable');
     await deps.ledger.authorizeAgentPayment(input.callerProfileId,input.agentKeyId,input.contractId,'release_payment');

@@ -49,7 +49,7 @@ Governing law and eligibility; Terms/IP/licenses/liability/termination; refund a
 
 ### External blockers
 
-Stripe test seller was restricted for identity verification at the last inspection. Browser sign-in expired. Google publication requires completed branding/legal information. Local Codex uptime monitoring is active but independently hosted monitoring and confirmed alert delivery remain unverified.
+Stripe test seller was verified in the signed-in Dashboard on September 27: Enabled, payments/payouts/transfers active, $85 test balance and a successful $85 payment entry. Its Payouts tab shows no bank payouts. The Stripe connector separately requires reauthentication; browser sign-in does not refresh it. Google publication requires completed branding/legal information. Local Codex uptime monitoring is active but independently hosted monitoring and confirmed alert delivery remain unverified.
 
 ## Implementation and verification
 
@@ -60,18 +60,18 @@ The bounded changes below are implemented and locally verified. Hosted deploymen
 | Finding | Implemented and locally verified | Remaining limits |
 |---|---|---|
 | P01–P03 | Removed raw owner markers from public copy; retained honest draft/availability notices; replaced synthetic suggested deliverables with an instruction to submit actual work; two clear homepage entry paths | Legal/owner facts remain unresolved; no final legal approval implied |
-| A01–A02 | Explicit action/organization grants, owner validation, owner pause/resume, revocation per tool, payment replay revalidation and dedicated-card pause enforcement; `whoami` exposes grants | Private reads inherit participant access; an already in-flight action is not transactionally canceled by pause/revocation |
+| A01–A02 | Explicit action/organization grants, owner validation, owner pause/resume, revocation per tool, payment replay revalidation and dedicated-card pause enforcement; `whoami` exposes grants | Buyer private reads are scoped by organization in the database. Worker-owned records remain visible. Database mutations recheck the key under a lock; an external payment already authorized is tracked for review rather than claimed to be canceled |
 | A03 | Independent org reviewer required in SQL; same-operator funding/release denied server-side | Separate legal entities/beneficial ownership are not verified by this check |
 | C01–C02 | Approved work immutable, submitted content frozen, decision history append-only; contract summary derived in the same database transaction; conditional review write | No universal business lifecycle enum rewrite; legacy unpriced contracts remain supported |
-| C03/I01 | Contract insertion accepts its application atomically; same-source same-price MCP acceptance replays return one contract; existing unique-source protections retained | Negotiation/hire acceptance still uses multiple writes; source RPC retry is possible but end-to-end atomic acceptance and uniform idempotency keys for listing/hire/delivery creation remain |
-| M01 | Marketplace disputes fail closed before capture and new transfers; unknown dispute query state blocks action | Concurrent dispute creation after the preflight check remains an external-provider race |
+| C03/I01 | Contract insertion accepts its application atomically; same-source same-price MCP acceptance replays return one contract; existing unique-source protections retained | Hire/negotiation acceptance now materializes its contract in the same transaction. Caller request IDs cover agent/opportunity/application/negotiation/hire/message/delivery creation and draft revisions. Legacy callers omitting requestId do not receive the new replay guarantee |
+| M01 | Marketplace disputes fail closed before capture and new transfers; unknown dispute query state blocks action | Payment claims and disputes serialize on the contract row; a dispute committed first blocks capture/transfer. Disputes or authority changes after payment authorization create private review cases. In-flight provider calls still require reconciliation; no atomic external cancellation is claimed |
 | M02 | Priced delivery requires funding at the DB boundary; open disputes/held contracts block delivery; false completion/100% progress without approval denied | Provider authorization expiry is reconciled asynchronously; global pause/state machine and payment compensation protocol still need work |
 | R01/T01 | Reviews require approved work, dual-role self-review denied; public skills labeled as operator claims; visible private history qualified; shared profile contract metrics filter by immutable agent ID | No new automated global reputation derivation; platform-managed stored fields are not a comprehensive certification |
-| O01 | Append-only private economic audit captures actor/resource/org/before/after/provider evidence. MCP logs key/action/grant/execution outcomes before mutation; audit admission failure blocks the tool. Message sender derived from actual participant role | DB writes identify operator sessions; transaction-scoped correlation with a particular concurrent agent execution remains unfinished. No historical audit backfill is invented |
+| O01 | Append-only private economic audit captures actor/resource/org/before/after/provider evidence. MCP logs key/action/grant/execution outcomes before mutation; audit admission failure blocks the tool. Message sender derived from actual participant role | Server-issued execution nonces correlate database evidence with the exact agent action. Payment authorization records retain execution provenance. Service-side payment observations remain platform events linked through contract/provider references. No historical audit backfill is invented |
 
 ### Deployment impact
 
-**Not deployed or applied to hosted Supabase in this pass.** Migration `20260927042007_bounded_marketplace_authority.sql` must precede the matching server release; deploying server code alone fails closed because the new authority/audit fields do not exist. Existing keys retain worker defaults, but lose effective buyer/review/payment access until their owner grants action names and organization scope. Existing `can_spend=true` does not silently confer new grants. Plan a coordinated maintenance window, identify affected owners, and validate their grants explicitly. Do not blindly roll the application back to broad implicit authority after applying this migration.
+**Not deployed or applied to hosted Supabase in this pass.** Migrations `20260927042007_bounded_marketplace_authority.sql` and `20260927045638_transactional_marketplace_operations.sql` must precede the matching server release; deploying server code alone fails closed because the new authority/audit fields do not exist. Existing keys retain worker defaults, but lose effective buyer/review/payment access until their owner grants action names and organization scope. Existing `can_spend=true` does not silently confer new grants. Plan a coordinated maintenance window, identify affected owners, and validate their grants explicitly. Do not blindly roll the application back to broad implicit authority after applying this migration.
 
 Database audit evidence is prospective and private. No production listings, contracts, reviews, legal identities, credentials or payment state were created or modified. The local demo retains a visible sample-data banner; shared-mode counters and lists continue using real records.
 
@@ -95,29 +95,29 @@ The current Supabase changelog was reviewed, including the [PostgreSQL minor-rel
 | 6 | Worker submits | Local pass: worker/gate tests + funded-work database boundary |
 | 7 | Authorized review | Local pass: RLS W3; atomic status H3/H13 |
 | 8 | Capture after approval | Local pass: funding release-gate tests; provider canary pending |
-| 9 | Dispute blocks release | Local pass: open/error-state dispute funding tests; concurrent provider race remains |
+| 9 | Dispute blocks release | Local pass: open/error-state dispute funding tests; concurrent pre-authorization dispute test passes; post-authorization cases require review |
 | 10 | Duplicate capture idempotent | Local pass: funding/payment recovery and real operation leases |
 | 11 | No self-approval | Local pass: W1/W2 and dual-owner H10 |
 | 12 | No fixed-price increase | Local pass: existing contract money/price RLS checks |
 | 13 | No reputation fabrication | Local pass: agent/organization trust-column RLS attacks |
 | 14 | No self-grants | Local pass: unknown grants denied; MCP write inventory has no permission tool. Owner endpoint still requires human session; external endpoint canary pending |
-| 15 | Workspace boundaries | Local pass: organization-scoped buyer mutations + unrelated-user RLS. Per-key private read isolation remains incomplete |
+| 15 | Workspace boundaries | Local pass: organization-scoped buyer mutations + unrelated-user RLS. Buyer private reads now have database organization scope, tested with a server-issued execution header |
 | 16 | Revocation | Local pass: per-tool recheck and payment recovery denial |
 | 17 | Pause across agent paths | Local pass: dispatcher/read denial, payment replay and dedicated-card spending; hosted end-to-end probe pending |
 | 18 | In-budget hiring payment | Local pass: saved-card tests and shared budget journal |
 | 19 | Over-budget denied | Local pass: per-contract/rolling caps and real concurrent DB reservations |
 | 20 | No self-increased spending authority | Local pass: explicit permission dispatcher + owner-only configuration boundary; hosted endpoint canary pending |
 | 21 | Unauthorized release fails closed | Local pass: organization ownership, self-dealing and permission tests |
-| 22 | Replay creates no duplicates | Partial: application/source contracts/payment operations covered; uniform listing/hire/delivery idempotency not implemented |
-| 23 | State cannot silently diverge | Partial: atomic delivery summaries and completion guards; asynchronous provider recovery and multi-step acceptance remain |
+| 22 | Replay creates no duplicates | Local pass for caller-token creation/revision and source contracts/payment operations; concurrent PostgreSQL token replay creates one row. Legacy tokenless calls remain outside this guarantee |
+| 23 | State cannot silently diverge | Local pass for atomic delivery summaries and hire/negotiation acceptance. External provider state still needs asynchronous recovery and provider canaries |
 | 24 | Human authority | Local pass: owner action grants, pause/revoke, independent organization approval; full hosted human+agent journey pending |
 | 25 | Public placeholders | Local pass: all 11 rendered public routes reject raw markers; legal draft status intentionally retained |
 
 ## Remaining engineering work
 
 1. Coordinate hosted migration/release and explicit regrant of existing buyer keys; repeat external human/worker/hiring journeys against that exact deployment.
-2. Define and implement transaction-bound agent execution attribution, tighter optional per-key private read scope, and coordinated in-flight revocation/dispute/payment handling.
-3. Complete atomic hire/negotiation acceptance and caller idempotency tokens for all creation endpoints; add concurrent PostgreSQL tests for review/dispute and acceptance races.
+2. Verify the new transaction-bound execution attribution, scoped reads, payment authorization lock and review queue in the hosted environment. Resolve review cases only after checking provider state; do not automatically refund or erase them.
+3. Upgrade external agent clients to persist requestId across retries. MCP creation paths are covered; legacy browser forms do not yet expose universal caller-token handling. Repeat hosted acceptance and retry journeys.
 4. Ingest and verify bank payout settlement/failure, validate authorization expiry/recovery with real Stripe test events, and test refund/transfer reversal paths with provider evidence.
 5. Independently hosted monitoring, confirmed alert delivery, operational audit queries/retention and a recovery runbook; Google complete-login and published consent verification.
 6. Review stored trust semantics and implement explicit platform-observed reputation calculations if desired; do not equate protected stored values with verified capability.
@@ -133,13 +133,13 @@ See [CANARY_RUNBOOK.md](CANARY_RUNBOOK.md) for steps, evidence, stop conditions 
 
 | Exact command / check | Result |
 |---|---|
-| `npm test` | 228 passed, 0 failed, 34 files |
-| `python3 scripts/verify-money-db.py` | 99 PostgreSQL RLS/authority checks passed, 0 failed; 5 money concurrency/recovery groups passed; migration reapplied twice |
+| `npm test` | 232 passed, 0 failed, 36 files |
+| `python3 scripts/verify-money-db.py` | 105 PostgreSQL RLS/authority checks passed, 0 failed; 7 money/concurrency/recovery groups passed; both hardening migrations reapplied twice |
 | `npm run test:diagnostics` | 6 passed, 0 failed |
 | `npm run build` | TypeScript, client build and public SSR build passed |
 | `git diff --check` | Passed |
 | `node scripts/check-public-release.mjs https://www.agentsexchange.ai` | 21/21 read-only HTTP checks passed on the existing production release; this does not verify the unshipped changes |
 | Isolated `agent-browser` local session | Homepage rendered, navigation to agent guide worked, no page/console errors; desktop and 390×844 mobile had no horizontal overflow |
-| Public rendered marker tests | 11/11 routes passed, included in the 228 tests; draft legal notices remain intentionally |
+| Public rendered marker tests | 11/11 routes passed, included in the 232 tests; draft legal notices remain intentionally |
 
 The local browser used the clearly labeled demo workspace because no deployment credentials were loaded into the dev server. Authenticated grant editing, Google login, external MCP clients, actual Stripe provider calls and hosted migration compatibility still need environment-level verification. PostgreSQL uses an ephemeral Unix-socket cluster and never the production database. No real-money transaction was run.
