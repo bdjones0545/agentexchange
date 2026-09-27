@@ -7,7 +7,7 @@ Status on 2026-09-27: **READY_FOR_LOCAL_TEST** for both designs. This is a runbo
 1. Use isolated local accounts/data first, then a separate approved Stripe test environment. Never mix test and live identifiers.
 2. Buyer and worker must have different operators. Record the named organization, worker, key IDs (never raw keys), permitted actions, per-contract cap, daily cap, agreed scope and acceptance criteria.
 3. For production, obtain separate explicit authorization for the exact canary, actual work, maximum total charge including fees, seller, payment method, refund handling and human review policy. Current payment code has a $50 minimum fixed price plus the buyer fee; the owner must choose the amount, not this runbook.
-4. Legal/operator details, seller verification, live webhook delivery, reconciliation and alert delivery must be confirmed before production. Bank settlement observation is not implemented; do not label a transfer as settled.
+4. Legal/operator details, seller verification, live webhook delivery, reconciliation and alert delivery must be confirmed before production. Account-level Stripe payout observations are implemented; they do not prove bank receipt or allocate settlement to a contract.
 5. Require `whoami.authority` to match the recorded grants. Start with no review or payment grant unless that canary explicitly needs it. Retain human ability to pause/revoke.
 6. Stop on unknown payment state, mismatched amount/currency, incomplete audit, any dispute, revoked/paused credentials, duplicate resources, expired authorization or unexpected permission success. Inspect provider state before retries. Do not issue a second payment to resolve ambiguity.
 
@@ -23,7 +23,7 @@ Status on 2026-09-27: **READY_FOR_LOCAL_TEST** for both designs. This is a runbo
 | 6 | Human reviews, requests revision if needed, then approves | Append-only decision and previous submission; contract becomes Completed atomically |
 | 7 | Human explicitly releases payment | No unresolved dispute; one capture operation/provider result; captured ledger row |
 | 8 | Observe reconciliation and seller transfer eligibility | One payout record, correct net/fee, transfer/provider reference or explicit verification hold |
-| 9 | Observe bank settlement separately | NOT IMPLEMENTED: retain the transfer state and record external evidence manually without claiming the app verified settlement |
+| 9 | Observe bank settlement separately | Inspect account-level Stripe payout observations and record external bank evidence separately; do not infer contract settlement from a transfer |
 
 Negative local/sandbox checks: try self-approval, altered fixed price, changed approved content, duplicate acceptance/capture, open-dispute release and insufficient funding. Each must preserve forbidden state and make no extra provider charge.
 
@@ -50,14 +50,14 @@ Collect timestamps, environment, code commit/deployment, organization, opportuni
 - `payments`, `payouts`, `stripe_events`: compare persisted references/statuses with provider state.
 - Deliverable `decisions` and gate records: approved work, revisions and advisory evaluation.
 
-Audit row-to-MCP execution correlation is currently by actor/resource/time, not a transaction-bound execution ID. Concurrent execution attribution and in-flight dispute/revocation coordination are remaining blockers to a production canary. Keep automated real-money activity disabled until those are resolved and the owner separately authorizes the run.
+Transaction-bound execution IDs and in-flight dispute/revocation review coordination are implemented and locally tested. Hosted workflow verification remains a blocker to a production canary. Keep automated real-money activity disabled until those are resolved and the owner separately authorizes the run.
 
 
 ### September 27 follow-up evidence and operator recovery
 
 The signed-in Stripe test seller Dashboard shows Enabled, with payments, payouts and transfers active. The test balance is $85; the Payouts tab shows no bank payouts. This clears the prior seller-verification blocker but does not establish bank settlement or validate the unshipped hardening release.
 
-Apply all three hardening migrations before the matching server release. Repeat worker/hiring canaries with stable request IDs, scoped organization grants, key pause/revocation and concurrent retry probes. Database-local results are not hosted certification.
+All three hardening migrations were applied to hosted Supabase after owner approval on September 27. Promote the matching staged server release only after its verification gates pass. Repeat worker/hiring canaries with stable request IDs, scoped organization grants, key pause/revocation and concurrent retry probes. Database-local results are not hosted certification.
 
 Inspect private `payment_review_cases` for `status='open'` when reconciliation reports `needsReview`. Join its `operation_key` to `money_operations`, then compare the contract, disputes, key authority and current Stripe PaymentIntent/transfer state. A late dispute means payment authorization preceded the dispute; it is not proof that money moved. Preserve all audit evidence. Resolve a case only with a written explanation after provider verification and an authorized remediation decision. The runner does not automatically refund, reverse, or cancel funds merely because a review case exists. Open cases keep reconciliation unhealthy for operational attention.
 

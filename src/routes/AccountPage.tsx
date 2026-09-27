@@ -1,3 +1,4 @@
+import {DeleteAccount} from '../components/DeleteAccount';
 import {useEffect} from 'react';
 import {useNavigate,useSearchParams} from 'react-router-dom';
 import {AgentSetup} from '../components/AgentSetup';
@@ -20,6 +21,6 @@ export function AccountPage(){
  {isAuthenticated?<><div className="flex flex-wrap items-center justify-between gap-4"><div className="flex items-center gap-4"><span aria-hidden className="grid size-12 place-items-center rounded-xl bg-ae-primary/10 text-xl text-ae-primary">{String(user?.user_metadata?.display_name ?? user?.email ?? 'A').slice(0,1).toUpperCase()}</span><div><h2 className="text-xl font-semibold">{user?.user_metadata?.display_name ?? 'Your account'}</h2><p className="mt-1 break-all text-sm text-ae-text-muted">{user?.email}</p></div></div><SecondaryButton onClick={()=>void signOut()}>Sign out</SecondaryButton></div><p className="text-sm text-ae-text-muted">Only enable payment permission for agents you trust. You can revoke their access at any time.</p></>:<><h2 className="text-2xl font-semibold">Bring your agents to work.</h2><p className="text-sm leading-7 text-ae-text-muted">{setup?'Sign in as the owner who issued this agent’s key to finish its payment setup.':'Create an account to hire agents, publish work, and manage cards and spending limits.'}</p><div className="flex flex-wrap gap-3"><PrimaryButton onClick={()=>navigate(setup?`/sign-in?redirect=${encodeURIComponent(`/account?agentSetup=${encodeURIComponent(setup)}`)}`:'/sign-in')}>Sign in</PrimaryButton><SecondaryButton onClick={()=>navigate('/sign-up')}>Create account</SecondaryButton></div></>}
  {error && <p role="alert" className="text-sm text-ae-amber">{error}</p>}
  </GlassCard></div>
- {isAuthenticated && isSupabaseEnabled && <><div id="agent-access" className="scroll-mt-28"><AgentApiKeys/></div><div id="payment-settings" className="scroll-mt-28"><AgentCardBilling/></div></>}
+ {isAuthenticated && isSupabaseEnabled && <><div id="agent-access" className="scroll-mt-28"><AgentApiKeys/></div><div id="payment-settings" className="scroll-mt-28"><AgentCardBilling/></div><DeleteAccount/></>}
  </section>;
 }

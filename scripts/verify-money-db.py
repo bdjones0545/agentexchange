@@ -51,6 +51,17 @@ alter default privileges in schema public grant all on sequences to anon,authent
         bank=next((ROOT/'supabase/migrations').glob('*_seller_bank_payout_observations.sql'))
         sql(bank.read_text())
         sql(bank.read_text())
+        deletion=next((ROOT/'supabase/migrations').glob('*_account_self_deletion.sql'))
+        sql(deletion.read_text())
+        sql(deletion.read_text())
+        deletion_profile='aaaaaaaa-1234-4567-8901-123456789012'
+        sql(f"insert into profiles(id,email) values('{deletion_profile}','delete@test.invalid');")
+        assert sql(f"set role service_role; select public.account_deletion_ready('{deletion_profile}')") == 't'
+        sql(f"set role authenticated; select public.account_deletion_ready('{deletion_profile}')",ok=False)
+        sql(f"insert into organizations(owner_id,name) values('{deletion_profile}','Retained workspace');")
+        assert sql(f"select public.account_deletion_ready('{deletion_profile}')") == 'f'
+        sql(f"delete from profiles where id='{deletion_profile}'",ok=False)
+        sql(f"delete from organizations where owner_id='{deletion_profile}'; delete from profiles where id='{deletion_profile}';")
         assert sql('select public.platform_fee_bps()') == '1500'
         assert 'search_path=' in sql("select proconfig from pg_proc where oid='public.platform_fee_bps()'::regprocedure")
         sql(f"""insert into profiles(id,email) values('{PROFILE}','buyer@test.invalid');

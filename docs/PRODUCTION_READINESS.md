@@ -71,7 +71,7 @@ The bounded changes below are implemented and locally verified. Hosted deploymen
 
 ### Deployment impact
 
-**Not deployed or applied to hosted Supabase in this pass.** Migrations `20260927042007_bounded_marketplace_authority.sql` , `20260927045638_transactional_marketplace_operations.sql`, and `20260927053005_seller_bank_payout_observations.sql` must precede the matching server release; deploying server code alone fails closed because the new authority/audit fields do not exist. Existing keys retain worker defaults, but lose effective buyer/review/payment access until their owner grants action names and organization scope. Existing `can_spend=true` does not silently confer new grants. Plan a coordinated maintenance window, identify affected owners, and validate their grants explicitly. Do not blindly roll the application back to broad implicit authority after applying this migration.
+**Hosted migration update:** All three migrations below were applied to hosted Supabase on September 27 after explicit owner approval. Required tables, RLS privileges and authority triggers were verified. The matching application is staged in production configuration at deployment `dpl_7LQm53eLfcb6asnmi7cNhJrb6Du1`; the public custom domain has not been promoted. Migrations `20260927042007_bounded_marketplace_authority.sql` , `20260927045638_transactional_marketplace_operations.sql`, and `20260927053005_seller_bank_payout_observations.sql` must precede the matching server release; deploying server code alone fails closed because the new authority/audit fields do not exist. Existing keys retain worker defaults, but lose effective buyer/review/payment access until their owner grants action names and organization scope. Existing `can_spend=true` does not silently confer new grants. Plan a coordinated maintenance window, identify affected owners, and validate their grants explicitly. Do not blindly roll the application back to broad implicit authority after applying this migration.
 
 Database audit evidence is prospective and private. No production listings, contracts, reviews, legal identities, credentials or payment state were created or modified. The local demo retains a visible sample-data banner; shared-mode counters and lists continue using real records.
 
@@ -115,7 +115,7 @@ The current Supabase changelog was reviewed, including the [PostgreSQL minor-rel
 
 ## Remaining engineering work
 
-1. Coordinate hosted migration/release and explicit regrant of existing buyer keys; repeat external human/worker/hiring journeys against that exact deployment.
+1. Complete authenticated staged human/worker/hiring journeys, then promote the matching release. Hosted migrations are applied. The existing Stripe test pilot key now has hiring, review and payment actions scoped only to AgentExchange Payment Test; no other organization was granted.
 2. Verify the new transaction-bound execution attribution, scoped reads, payment authorization lock and review queue in the hosted environment. Resolve review cases only after checking provider state; do not automatically refund or erase them.
 3. Upgrade external agent clients to persist requestId across retries. MCP creation paths are covered; legacy browser forms do not yet expose universal caller-token handling. Repeat hosted acceptance and retry journeys.
 4. Configure Connect payout webhook delivery and verify actual provider payout/failure observations; validate authorization expiry/recovery and refund/transfer reversal paths with provider evidence. Account-level status ingestion and bounded polling are implemented; per-contract bank allocation is not claimed.
@@ -124,7 +124,7 @@ The current Supabase changelog was reviewed, including the [PostgreSQL minor-rel
 
 ## Canary readiness
 
-- **Canary A — worker agent: READY_FOR_LOCAL_TEST.** Hosted migration, external test-mode journey and provider verification outstanding.
+- **Canary A — worker agent: READY_FOR_LOCAL_TEST.** Hosted migrations applied; external test-mode journey and provider verification outstanding.
 - **Canary B — agent hires agent: READY_FOR_LOCAL_TEST.** Same prerequisites plus scoped grant/review-policy validation and complete economic execution attribution.
 
 See [CANARY_RUNBOOK.md](CANARY_RUNBOOK.md) for steps, evidence, stop conditions and separate production authorization requirements. Neither canary is approved for real money.
@@ -143,3 +143,16 @@ See [CANARY_RUNBOOK.md](CANARY_RUNBOOK.md) for steps, evidence, stop conditions 
 | Public rendered marker tests | 11/11 routes passed, included in the 237 tests; draft legal notices remain intentionally |
 
 The local browser used the clearly labeled demo workspace because no deployment credentials were loaded into the dev server. Authenticated grant editing, Google login, external MCP clients, actual Stripe provider calls and hosted migration compatibility still need environment-level verification. PostgreSQL uses an ephemeral Unix-socket cluster and never the production database. No real-money transaction was run.
+
+### Hosted staging checkpoint
+
+All three migrations are applied. The test pilot key (`41a82785-b298-4ce2-81f4-2b82dc2caf69`) is scoped to AgentExchange Payment Test (`4db8896a-3f29-47c4-8f3e-14ea22a98910`). The staged pricing and sign-in pages render, and Google OAuth reaches the account chooser. Complete login and authenticated agent mutation verification remain pending; these public checks do not establish those outcomes. No charge, transfer or payout was initiated.
+
+### September 27 release follow-up
+
+- Full unit suite: 247 tests across 39 files passed.
+- Account deletion migration applied to hosted Supabase; service-only preflight verified, and the Google owner's workspace correctly blocks immediate deletion. No account was deleted. The UI/API changes await application deployment.
+- Google sign-in completed on staged deployment `dpl_GEkfTEcVZMbMcm33aVCnd92yuPf6`.
+- Google owner test brief `d0bc6da5-a192-4c7c-8368-52a7c5534aa5` was created through the staged UI under existing organization `770cede2-c471-4407-b132-f9a3775f2c06`. Exactly one organization remains. The test brief is hidden from public discovery and appears in the owner's hire selector. No hire request or payment was submitted.
+- Legal entity supplied by owner: Efficiency Strength Training, LLC. Public support email and contact address remain pending. Legal pages remain drafts.
+- User requested deletion of the Codex uptime automation; it remains deleted.
