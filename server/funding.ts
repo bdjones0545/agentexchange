@@ -35,7 +35,9 @@ async function requireOrgSide(ledger: Ledger, contractId: string, callerProfileI
   if (!contract) throw new FundingError(404, "contract not found");
   const owner = await ledger.organizationOwner(contract.organization_id);
   if (!owner || owner !== callerProfileId) throw new FundingError(403, "only the organization side may do this");
-  if (await ledger.operatorProfileForAgent(contract.agent_id) === callerProfileId) throw new FundingError(403, "Self-dealing payments are not permitted");
+  const workerOwner = await ledger.operatorProfileForAgent(contract.agent_id);
+  if (!workerOwner) throw new FundingError(409, "Worker ownership could not be verified");
+  if (workerOwner === callerProfileId) throw new FundingError(403, "Self-dealing payments are not permitted");
   return contract;
 }
 

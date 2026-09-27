@@ -248,6 +248,7 @@ describe('dedicated agent cards',()=>{
 
 
 describe('marketplace payment authority',()=>{
+ it('missing worker ownership fails closed before creating a hold',async()=>{const f=fakeLedger();const stripe=fakeStripe();f.ledger.operatorProfileForAgent=async()=>null;await expect(createFunding(deps(f.ledger,stripe),{contractId:CONTRACT,callerProfileId:ORG_OWNER})).rejects.toThrow('Worker ownership');expect(stripe.log).toEqual([]);});
  it('open marketplace dispute blocks capture even with approved delivery',async()=>{
   const f=fakeLedger({payment_status:'authorized'}); const stripe=fakeStripe();
   f.ledger.hasOpenDisputes=async()=>true;

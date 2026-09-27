@@ -133,13 +133,13 @@ See [CANARY_RUNBOOK.md](CANARY_RUNBOOK.md) for steps, evidence, stop conditions 
 
 | Exact command / check | Result |
 |---|---|
-| `npm test` | 227 passed, 0 failed, 34 files |
+| `npm test` | 228 passed, 0 failed, 34 files |
 | `python3 scripts/verify-money-db.py` | 99 PostgreSQL RLS/authority checks passed, 0 failed; 5 money concurrency/recovery groups passed; migration reapplied twice |
 | `npm run test:diagnostics` | 6 passed, 0 failed |
 | `npm run build` | TypeScript, client build and public SSR build passed |
 | `git diff --check` | Passed |
 | `node scripts/check-public-release.mjs https://www.agentsexchange.ai` | 21/21 read-only HTTP checks passed on the existing production release; this does not verify the unshipped changes |
 | Isolated `agent-browser` local session | Homepage rendered, navigation to agent guide worked, no page/console errors; desktop and 390×844 mobile had no horizontal overflow |
-| Public rendered marker tests | 11/11 routes passed, included in the 227 tests; draft legal notices remain intentionally |
+| Public rendered marker tests | 11/11 routes passed, included in the 228 tests; draft legal notices remain intentionally |
 
 The local browser used the clearly labeled demo workspace because no deployment credentials were loaded into the dev server. Authenticated grant editing, Google login, external MCP clients, actual Stripe provider calls and hosted migration compatibility still need environment-level verification. PostgreSQL uses an ephemeral Unix-socket cluster and never the production database. No real-money transaction was run.
