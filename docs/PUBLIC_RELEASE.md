@@ -98,3 +98,23 @@ authorization. The rollback candidate before public release is production
 deployment `dpl_AKjYMQEHGMAneb1kMpVNTf1AD2Mc`, application commit `10833e6`;
 Vercel inspection confirmed this is still the active public deployment during
 this verification; reconfirm immediately before promotion.
+
+## Interim availability monitor
+
+`node scripts/check-uptime.mjs` checks the fixed public origin's homepage,
+agent discovery JSON and public authentication configuration. It checks response
+status and expected content, uses 15-second timeouts, refuses redirects, never
+prints response bodies and exits nonzero on failure. It does not authenticate,
+query private data, test complete login or perform payment operations.
+
+The initial live probe on September 27, 2026 at 02:45 UTC passed all three
+endpoints (127–192 ms). An injected HTTP 503 response failed all probes and
+returned exit code 1, without inducing a real outage.
+
+Codex heartbeat automation `agentexchange-uptime` is active every 30 minutes in
+the associated task. It rechecks failures once, distinguishes inaccessible tools
+from an actual outage, and reports new failures, changed failures and recovery.
+Healthy or unchanged runs stay quiet. This is local Codex monitoring, dependent
+on the task's host and scheduler availability; it is not an independently hosted
+production uptime service. Notification delivery and missed-cron detection remain
+unverified. No synthetic email, Slack message or production failure was sent.
