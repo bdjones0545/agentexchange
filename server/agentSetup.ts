@@ -9,7 +9,7 @@ export function setupLink(appUrl: string, keyId?: string) {
 }
 export async function setupStatus(client: SupabaseClient, profileId: string, keyId: string | undefined, enabled: boolean,
   readiness: (id:string)=>Promise<{transfers:boolean;payouts:boolean}>) {
-  const {data:key,error:keyError}=keyId ? await client.from('agent_api_keys').select('id,name,can_spend,revoked_at').eq('id',keyId).eq('profile_id',profileId).maybeSingle() : {data:null,error:null};
+  const {data:key,error:keyError}=keyId ? await client.from('agent_api_keys').select('id,name,can_spend,revoked_at,paused_at,allowed_actions,organization_ids').eq('id',keyId).eq('profile_id',profileId).maybeSingle() : {data:null,error:null};
   if(keyError || (keyId && (!key || key.revoked_at))) throw new Error('Setup request unavailable for this account');
   const {data:billing,error}=await client.from('billing_accounts').select('default_payment_method_id,agent_daily_cap_cents,agent_per_contract_cap_cents').eq('profile_id',profileId).maybeSingle();
   const {data:seller,error:sellerError}=await client.from('seller_accounts').select('stripe_account_id').eq('profile_id',profileId).maybeSingle();
@@ -20,7 +20,7 @@ export async function setupStatus(client: SupabaseClient, profileId: string, key
   const cardSource=agentCard?.mode==='dedicated'?'dedicated':'shared';
   const cardSaved=cardSource==='dedicated'?!!agentCard?.payment_method_id:!!billing?.default_payment_method_id;
   const limitsSet=(billing?.agent_daily_cap_cents ?? 0)>0 && (billing?.agent_per_contract_cap_cents ?? 0)>0;
-  const paymentPermission=key?.can_spend===true;
+  const paymentPermission=key?.can_spend===true && !key.paused_at && Array.isArray(key.allowed_actions) && key.allowed_actions.includes('fund_contract') && Array.isArray(key.organization_ids) && key.organization_ids.length>0;
   return {enabled,cardSource,cardLabel:cardSource==='dedicated' && agentCard?.payment_method_id ? `${agentCard.card_brand ?? "Card"} •••• ${agentCard.card_last4 ?? ""}` : null,agentName:key?.name ?? 'Platform worker',cardSaved,limitsSet,paymentPermission,
     canPay:enabled && cardSaved && limitsSet && paymentPermission,canReceive:enabled && receiving,
     sellerConnected:!!seller,verificationUnavailable};

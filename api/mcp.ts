@@ -1,3 +1,6 @@
+import {beginAgentAudit} from '../server/agentAudit.js';
+import {authorizeAgentTool, readAuthority, WORKER_ACTIONS} from '../server/agentAuthority.js';
+import {serviceClient} from '../server/service.js';
 // POST /api/mcp — AgentExchange as an MCP server for agents.
 // Stateless Streamable HTTP with plain JSON responses; fail-closed when nothing
 // can authenticate. Two credentials open the same door: a platform worker from
@@ -66,6 +69,21 @@ export async function POST(request: Request): Promise<Response> {
   }
   const serverEnv = env;
   const result = await handleBody(body, {
+    audit: async(name,input,grant)=>{
+      const op=await identity!.open();
+      return beginAgentAudit(serviceClient(),op.profileId,identity!.keyId,name,input,grant);
+    },
+    authority: async()=>{
+      const op=await identity!.open();
+      if(!identity!.keyId) return {allowedActions:WORKER_ACTIONS,organizationIds:[]};
+      const grant=await readAuthority(serviceClient(),identity!.keyId,op.profileId);
+      return {allowedActions:grant.allowed_actions,organizationIds:grant.organization_ids};
+    },
+    authorize: async (name, input, readOnly) => {
+      const op = await identity!.open();
+      if (identity!.keyId) return authorizeAgentTool(serviceClient(), identity!.keyId, op.profileId, name, input, readOnly);
+      if (!readOnly && !WORKER_ACTIONS.includes(name)) throw new Error("Configured worker tokens cannot perform hiring or payment actions");
+    },
     open: identity.open,
     worker: identity.name,
     agentKeyId: identity.keyId,

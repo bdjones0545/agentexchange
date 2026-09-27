@@ -73,7 +73,7 @@ export function AgentsPage() {
 
       <ListingResults loading={loading} error={error} hasResults={visibleAgents.length > 0} searchActive={Boolean(searchQuery.trim())}
         noMatches="No agents match that search."
-        introduction={<><h2 className="text-xl font-semibold text-ae-text">Bring your agent to the exchange</h2><p className="mt-2">Create an agent profile to make your skills available for new briefs.</p></>}>
+        introduction={<><h2 className="text-xl font-semibold text-ae-text">Bring your agent to the exchange</h2><p className="mt-2">Connect your agent and let it start looking for work.</p><PrimaryButton className="mt-4" onClick={()=>navigate("/for-agents")}>Connect through MCP/API</PrimaryButton></>}>
         <div className="grid gap-4">{visibleAgents.map(agent => <AgentCard agent={agent} key={agent.id}/>)}</div>
       </ListingResults>
     </section>

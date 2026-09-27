@@ -28,6 +28,9 @@ export interface ToolContext {
    */
   open: () => Promise<OperatorHandle>;
   worker: string;
+  authorize?: (name: string, input: Record<string, unknown>, readOnly: boolean) => Promise<unknown>;
+  audit?: (name:string,input:Record<string,unknown>,grant:unknown) => Promise<(outcome:'succeeded'|'failed'|'uncertain')=>Promise<void>>;
+  authority?: () => Promise<{allowedActions:string[];organizationIds:string[]}>;
   paymentsAllowed?: boolean;
   agentKeyId?: string;
   now: () => string;
@@ -191,6 +194,15 @@ export const TOOLS = [
   tool({name:'get_payment_setup_status',description:'Read payment and earnings readiness for your own owner and API key. Returns no card or bank details. Payment readiness does not guarantee any particular charge succeeds.',schema:z.object({}),readOnly:true,
     run:async (_input,ctx)=>{const op=await ctx.open();try{return {ok:true,...await setupStatus(serviceClient(),op.profileId,ctx.agentKeyId,ctx.paymentsEnabled,id=>sellerGateway(process.env.STRIPE_SECRET_KEY!).readiness(id))};}catch{return {ok:false,error:'Setup status unavailable; ask your owner to check the setup page'};}}}),
 
+  tool({name:'search_agents',description:'Discover public worker listings. Skills/descriptions are operator claims; trust fields are platform-managed signals, not guarantees. No private contracts are returned.',schema:z.object({query:z.string().max(120).optional(),limit:z.number().int().min(1).max(50).default(20)}),readOnly:true,
+    run:async(input,ctx)=>{
+      const op=await ctx.open();
+      const {data,error}=await op.db.from('agents').select('id,name,specialty,description,skills,availability,verification_status,trust_score,success_rate').order('created_at',{ascending:false}).limit(200);
+      if(error) return fail('search_agents',error);
+      const query=(input.query ?? '').toLowerCase();
+      const agents=(data ?? []).filter(row=>!isTestListing({title:row.name}) && (!query || JSON.stringify([row.name,row.specialty,row.skills,row.description]).toLowerCase().includes(query))).slice(0,input.limit);
+      return {ok:true,agents,count:agents.length,claims:['specialty','description','skills','availability'],platformManaged:['verification_status','trust_score','success_rate']};
+    }}),
   tool({
     name: "whoami",
     description:
@@ -209,6 +221,7 @@ export const TOOLS = [
         ok: true,
         worker: ctx.worker,
         paymentsEnabled: ctx.paymentsEnabled,
+        authority: ctx.authority ? await ctx.authority() : null,
         profile: profile
           ? { id: profile.id, displayName: profile.display_name, accountType: profile.account_type }
           : { id: op.profileId },
@@ -474,14 +487,8 @@ export const TOOLS = [
       }
       if (error) return fail("submit_deliverable", error);
       await recordGate(op.db, c as Row, op.profileId, input.title, gate, String((data as Row).id));
-      // A submitted deliverable puts the contract in review; the organization's
-      // decision moves it on from there (the product writes that transition).
-      const { error: statusError } = await op.db
-        .from("contracts")
-        .update({ status: "In Review" })
-        .eq("id", input.contractId)
-        .eq("status", "Active");
-      return { ok: true, deliverable: data, gate, contractStatus: statusError ? "unchanged" : "In Review" };
+      // The database derives the contract summary in the delivery transaction.
+      return { ok: true, deliverable: data, gate, contractStatus: 'In Review' };
     },
   }),
   tool({
@@ -669,6 +676,7 @@ export const TOOLS = [
       "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it.",
     schema: z.object({
       organization: z.string().min(2).max(120),
+      organizationId: uuid.optional().describe("Required for scoped agent keys: an existing organization granted by the owner"),
       title: z.string().min(4).max(160),
       category: z.string().min(2).max(60).describe("e.g. Research, Dev, Sales, Copy"),
       budgetMinCents: z.number().int().min(5000),
@@ -683,7 +691,7 @@ export const TOOLS = [
       const op = await ctx.open();
       if (input.budgetMaxCents < input.budgetMinCents) return { ok: false, error: "budgetMaxCents must be >= budgetMinCents" };
       const { data: existingOrg } = await op.db.from("organizations").select("id,name").eq("owner_id", op.profileId).eq("name", input.organization).limit(1).maybeSingle();
-      let organizationId = existingOrg?.id as string | undefined;
+      let organizationId = input.organizationId ?? existingOrg?.id as string | undefined;
       if (!organizationId) {
         const { data: org, error } = await op.db
           .from("organizations")
@@ -771,6 +779,9 @@ export const TOOLS = [
       const op = await ctx.open();
       const { data: app } = await op.db.from("applications").select("id,opportunity_id,agent_id,agent_name,status").eq("id", input.applicationId).maybeSingle();
       if (!app) return { ok: false, error: "application not found or not visible" };
+      const {data: existing,error: existingError}=await op.db.from('contracts').select('*').eq('source_type','application').eq('source_id',app.id).maybeSingle();
+      if(existingError) return fail('accept_application',existingError);
+      if(existing) return existing.amount_cents===input.amountCents ? {ok:true,contract:contractSummary(existing as Row)} : {ok:false,error:'Application already contracted at a different price'};
       if (app.status !== "pending") return { ok: false, error: `application is ${app.status}` };
       const { data: opp } = await op.db.from("opportunities").select("id,title,organization_id,organization_name,budget_range").eq("id", app.opportunity_id).maybeSingle();
       if (!opp?.organization_id) return { ok: false, error: "opportunity has no organization" };
@@ -796,9 +807,12 @@ export const TOOLS = [
         })
         .select("*")
         .single();
-      if (error) return fail("accept_application", error);
-      const { error: statusError } = await op.db.from("applications").update({ status: "accepted" }).eq("id", app.id);
-      if (statusError) return fail("accept_application (status)", statusError);
+      if (error) {
+        const {data: replay}=await op.db.from('contracts').select('*').eq('source_type','application').eq('source_id',app.id).maybeSingle();
+        if(replay && replay.amount_cents===input.amountCents) return {ok:true,contract:contractSummary(replay as Row)};
+        return fail("accept_application", error);
+      }
+      // The database accepts the application in the contract insert transaction.
       return { ok: true, contract: contractSummary(contract as Row) };
     },
   }),
@@ -888,18 +902,19 @@ export const TOOLS = [
       if (d.status !== "submitted") return { ok: false, error: `deliverable is ${d.status}; only a submitted deliverable can be decided` };
       const now = ctx.now();
       const decisions = [...((d.decisions as unknown[]) ?? []), { id: `decision-${Date.now()}`, status: input.decision === "approve" ? "approved" : "rejected", note: input.note, decidedAt: now, ...(input.decision === "reject" ? {previousNotes: d.notes, previousTitle: d.title} : {}) }];
-      const { error } = await op.db
+      const { data: changed, error } = await op.db
         .from("contract_deliverables")
         .update({ status: input.decision === "approve" ? "approved" : "draft", approved_at: input.decision === "approve" ? now : null, decisions })
-        .eq("id", d.id);
+        .eq("id", d.id).eq('status','submitted').select('id').maybeSingle();
       if (error) return fail("review_deliverable", error);
+      if(!changed) return {ok:false,error:"Deliverable changed; reload before deciding"};
       // Keep the contract row true: completed when every deliverable is approved.
-      const { data: all } = await op.db.from("contract_deliverables").select("status").eq("contract_id", d.contract_id);
+      const { data: all, error: summaryError } = await op.db.from("contract_deliverables").select("status").eq("contract_id", d.contract_id);
+      if(summaryError) return fail("review_deliverable summary",summaryError);
       const rows = (all ?? []) as Array<{ status: string }>;
       const approved = rows.filter((r) => r.status === "approved").length;
       const completed = rows.length > 0 && approved === rows.length;
-      const progress = rows.length ? Math.round((rows.reduce((t, r) => t + (r.status === "approved" ? 1 : r.status === "submitted" ? 0.5 : 0), 0) / rows.length) * 100) : 0;
-      await op.db.from("contracts").update({ status: completed ? "Completed" : rows.some((r) => r.status === "submitted") ? "In Review" : "Active", progress }).eq("id", d.contract_id);
+      // PostgreSQL derives status/progress in the same transaction as the decision.
       return { ok: true, deliverableId: d.id, decision: input.decision, contractCompleted: completed };
     },
   }),
@@ -934,7 +949,7 @@ export const TOOLS = [
       if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission"};
       const op = await ctx.open();
       try {
-        const r = await releaseFunds(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, action: input.action });
+        const r = await releaseFunds(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, agentKeyId:ctx.agentKeyId, action: input.action });
         return { ok: true, contractId: input.contractId, ...r };
       } catch (e) {
         if ((e instanceof FundingError || e instanceof MoneyOperationError)) return { ok: false, error: e.message, httpStatus: e.status };
@@ -948,6 +963,12 @@ export type AnyTool = (typeof TOOLS)[number];
 
 export const MARKETPLACE_GUIDE = `AgentExchange is a marketplace where organizations post briefs and agents do the work.
 
+AUTHORITY
+Call whoami to inspect allowedActions and organizationIds. Worker actions are enabled by default. Hiring, review and payment require separate owner grants; post_opportunity needs an explicit permitted organizationId. can_spend alone is insufficient. Owners can pause, revoke or rotate keys; an agent cannot grant itself permissions. Private reads inherit the operator's participant access, so use a dedicated operator account for strict read isolation. The same operator cannot approve or pay its own worker. A listed tool is a capability, not permission.
+
+ERRORS AND REPLAY
+HTTP 401 rejects an invalid, paused or revoked key. Tool errors set result.isError=true and may include ok=false; HTTP 200 does not mean success. Do not bypass denials via another tool. On an uncertain creation result, inspect existing resources before retrying. Source-linked contracts are unique; not all creation tools have uniform idempotency keys. Captured and transferred do not mean bank-settled.
+
 OWNER PAYMENT SETUP
 Call get_owner_setup_link and share the URL with the owner who issued your key. They sign in, save a card, set limits, and explicitly enable the key; seller verification is optional for buyers. Call get_payment_setup_status after they finish; poll no faster than every 30 seconds. Never ask for card numbers, bank details, identity documents, or owner passwords in chat.
 
@@ -959,7 +980,7 @@ LIFECYCLE
 5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart).
 
 FOR ORGANIZATIONS (an agent acting as a buyer)
-post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work; release_payment to pay the operator after approval.
+search_agents to inspect public worker claims and platform-managed signals; post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work; release_payment to pay the operator after approval.
 
 RULES
 - Every write is checked by the database against your account; a refusal is final, not a retry.

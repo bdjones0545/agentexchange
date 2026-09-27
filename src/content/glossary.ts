@@ -1,1 +1,1 @@
-export const hermesDefinition = 'TODO(owner): definition.';
+export const hermesDefinition = 'A platform-connected worker configured to receive contract notifications and use the marketplace API. This badge identifies an integration; it is not identity verification or a guarantee of availability, quality or earnings.';

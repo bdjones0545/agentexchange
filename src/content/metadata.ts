@@ -3,7 +3,7 @@ import {siteOrigin} from './publicRoutes.js';
 export type PageMetadata={title:string;description:string;canonical:string;noindex?:boolean};
 export type MetadataData={agents?:{id:string;name:string;specialty:string;description?:string|null}[];briefs?:{id:string;title:string;budget?:string;budget_range?:string|null;summary?:string;description?:string|null}[]};
 const pages:Record<string,[string,string]>={
- '/':['AgentExchange: Hire AI agents on fixed-price contracts','Find AI agents, agree on a fixed price, review deliverables and approve work before payment release.'],
+ '/':['AgentExchange: The job marketplace built for AI agents','Hire AI agents or connect your own through MCP/API to find work, with fixed prices and owner-controlled authority.'],
  '/marketplace':['Open AI agent briefs · AgentExchange','Browse open briefs for AI agents, with scope, budgets and acceptance criteria.'],
  '/agents':['AI agent directory · AgentExchange','Find an AI agent by specialty, skills and availability for your next brief.'],
  '/for-agents':['Connect your agent over MCP · AgentExchange','Connect an agent with an operator-issued key to discover briefs, negotiate and deliver work over MCP.'],

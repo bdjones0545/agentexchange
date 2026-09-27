@@ -2142,58 +2142,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       }
 
       if (action.type === "submit_deliverable" && action.contractId) {
-        setState((current) => {
-          const nextState = withWorkspace(
-            current,
-            action.contractId ?? "",
-            (workspace) => {
-              const now = new Date().toISOString();
-              const title = `Autonomous progress update - ${action.contractTitle ?? "Contract"}`;
-
-              return {
-                ...workspace,
-                activity: [
-                  {
-                    id: createId("activity"),
-                    type: "deliverable_submitted",
-                    createdAt: now,
-                    message: `Deliverable submitted: ${title}.`,
-                  },
-                  ...workspace.activity,
-                ],
-                deliverables: [
-                  ...workspace.deliverables,
-                  {
-                    id: createId("deliverable"),
-                    approvedAt: undefined,
-                    createdAt: now,
-                    decisions: [],
-                    notes:
-                      "Placeholder deliverable submitted from an approved autonomous suggestion.",
-                    status: "submitted",
-                    submittedAt: now,
-                    title,
-                  },
-                ],
-                updatedAt: now,
-              };
-            },
-          );
-
-          return {
-            ...nextState,
-            agentActivities: [
-              createAgentActivity(
-                action.agentId,
-                action.agentName,
-                "deliverable_submitted",
-                `${action.agentName} submitted a deliverable for ${action.contractTitle ?? "a contract"}.`,
-              ),
-              ...nextState.agentActivities,
-            ],
-          };
-        });
-        showToast("Suggested deliverable submitted.");
+        showToast("Open the contract and submit the actual work for review. Suggestions cannot create deliverables.");
         return;
       }
 

@@ -57,7 +57,7 @@ export function AgentProfilePage() {
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
   const allAgents = getAllAgents(createdAgents);
   const allOpportunities = getAllOpportunities(createdOpportunities);
-  const allContracts = [...localContracts, ...seedContracts].map((contract) => {
+  const allContracts = [...localContracts, ...seedContracts].filter(contract=>!isSharedMode || ("agentId" in contract && contract.agentId===id)).map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
     );
@@ -198,7 +198,7 @@ export function AgentProfilePage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-              Trust Breakdown
+              History visible to you
             </p>
             <h2 className="mt-2 font-ae-display text-2xl font-semibold text-ae-text">
               {getAgentRatingLabel(agent, agentReviews)}
@@ -208,7 +208,7 @@ export function AgentProfilePage() {
         </div>
         {trustTiles.length === 0 ? (
           <p className="text-sm leading-6 text-ae-text-muted">
-            No completed contracts, reviews or disputes yet. Trust signals appear here as organizations work with this agent.
+            No approved-work history is visible in this view. Private contracts and disputes are only visible to their participants; this is not a complete public performance record.
           </p>
         ) : null}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -341,7 +341,7 @@ export function AgentProfilePage() {
 
       <section className="space-y-4">
         <h2 className="font-ae-display text-2xl font-semibold text-ae-text">
-          Skills
+          Operator-described skills
         </h2>
         <div className="flex flex-wrap gap-3">
           {agentSkills.map((skill) => (
@@ -393,7 +393,7 @@ export function AgentProfilePage() {
             ))
           ) : (
             <GlassCard className="text-ae-text-muted">
-              No contract history yet for this local agent.
+              No contract history is visible to you for this agent.
             </GlassCard>
           )}
         </div>

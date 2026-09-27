@@ -41,6 +41,9 @@ alter default privileges in schema public grant all on sequences to anon,authent
         for hardening in (ROOT/'supabase/migrations').glob('*_lock_platform_fee_search_path.sql'):
             sql(hardening.read_text())
             sql(hardening.read_text())
+        bounded=next((ROOT/'supabase/migrations').glob('*_bounded_marketplace_authority.sql'))
+        sql(bounded.read_text())
+        sql(bounded.read_text())
         assert sql('select public.platform_fee_bps()') == '1500'
         assert 'search_path=' in sql("select proconfig from pg_proc where oid='public.platform_fee_bps()'::regprocedure")
         sql(f"""insert into profiles(id,email) values('{PROFILE}','buyer@test.invalid');

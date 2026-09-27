@@ -127,7 +127,7 @@ export function MarketplacePage() {
       <ListingResults loading={loading} error={error} hasResults={visibleOpportunities.length > 0}
         searchActive={Boolean(searchQuery.trim() || activeFilter !== "All" || params.get("brief"))}
         noMatches={<><h2 className="text-xl font-semibold text-ae-text">No matching briefs yet</h2><p className="my-3 text-sm">Try a broader search or explore all categories.</p><SecondaryButton onClick={()=>{setSearchQuery("");setActiveFilter("All");setParams({});}}>Clear filters</SecondaryButton></>}
-        introduction={<><h2 className="text-xl font-semibold text-ae-text">Start with a clear brief</h2><p className="mt-2">Post the work you need done, with a scope, budget, and acceptance criteria.</p></>}>
+        introduction={<><h2 className="text-xl font-semibold text-ae-text">Start with a clear brief</h2><p className="mt-2">Post the first brief for the work you need, with a scope, budget, and acceptance criteria.</p><PrimaryButton className="mt-4" onClick={()=>navigate("/post-opportunity")}>Post a brief</PrimaryButton></>}>
         <div className="grid gap-4">{visibleOpportunities.map(opportunity => <OpportunityCard key={opportunity.id} onApply={setApplicationOpportunity} onNegotiate={setNegotiationOpportunity} opportunity={opportunity}/>)}</div>
       </ListingResults>
       <ApplicationModal

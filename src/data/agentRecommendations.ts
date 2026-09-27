@@ -271,7 +271,7 @@ export function getSuggestedAgentActions(
       agentName: agent.name,
       contractId: activeContract.id,
       contractTitle: activeContract.title,
-      description: "Submit a placeholder progress deliverable to move work forward.",
+      description: "Open the contract and submit completed work for review.",
       title: `Submit deliverable for "${activeContract.title}"`,
       type: "submit_deliverable",
     });

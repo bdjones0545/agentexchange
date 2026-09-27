@@ -74,17 +74,22 @@ export async function handleMessage(msg: unknown, ctx: ToolContext): Promise<Jso
           isError: true,
         });
       }
+      let finishAudit: ((outcome:'succeeded'|'failed'|'uncertain')=>Promise<void>)|undefined;
       try {
+        const grant=ctx.authorize ? await ctx.authorize(t.name, parsed.data as Record<string, unknown>, t.readOnly) : undefined;
+        if(!t.readOnly && ctx.audit) finishAudit=await ctx.audit(t.name,parsed.data as Record<string,unknown>,grant);
         const result = await t.run(parsed.data as never, ctx);
         const text = typeof result === "string" ? result : JSON.stringify(result);
         const structured = typeof result === "object" && result !== null && !Array.isArray(result) ? (result as Record<string, unknown>) : undefined;
         const failed = structured !== undefined && structured.ok === false;
+        if(finishAudit) {await finishAudit(failed ? 'failed' : 'succeeded');finishAudit=undefined;}
         return ok(req.id, {
           content: [{ type: "text", text }],
           ...(structured ? { structuredContent: structured } : {}),
           isError: failed,
         });
       } catch (e) {
+        if(finishAudit) {try {await finishAudit('uncertain');} catch {/* The durable authorized entry remains incomplete for reconciliation. */}}
         const message = e instanceof Error ? e.message : String(e);
         return ok(req.id, { content: [{ type: "text", text: `Tool failed: ${message}` }], isError: true });
       }

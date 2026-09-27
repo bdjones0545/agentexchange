@@ -22,6 +22,7 @@ function fakeLedger(overrides: Partial<ContractMoneyRow> = {}) {
   let billing: { profile_id: string; stripe_customer_id: string | null; default_payment_method_id: string | null; card_brand: string | null; card_last4: string | null; agent_daily_cap_cents: number; agent_per_contract_cap_cents?: number } | null = null;
   let agentSpent = 0;
   const ledger: Ledger = {
+    async authorizeAgentPayment() {},
     async getBillingAccount(profileId) { return billing && billing.profile_id === profileId ? { ...billing, agent_per_contract_cap_cents: billing.agent_per_contract_cap_cents ?? 100000 } : null; },
     async upsertBillingAccount(profileId, patch) { billing = { profile_id: profileId, stripe_customer_id: null, default_payment_method_id: null, card_brand: null, card_last4: null, agent_daily_cap_cents: 100000, ...(billing ?? {}), ...patch } as typeof billing; },
     async agentSpendLast24h() { return agentSpent; },
@@ -36,6 +37,7 @@ function fakeLedger(overrides: Partial<ContractMoneyRow> = {}) {
     async operatorProfileForAgent() { return OPERATOR; },
     async organizationOwner() { return ORG_OWNER; },
     async authorizedPaymentRef(id) { const p = payments.find((x) => x.contract_id === id && x.kind === "charge" && ["authorized","captured"].includes(x.status)); return p?.provider_ref ?? null; },
+    async hasOpenDisputes() { return false; },
     async deliverableSummary() { return deliverables; },
   };
   return { ledger, contract, payments, payouts, events, setDeliverables: (d: typeof deliverables) => { deliverables = d; }, setBilling: (b: typeof billing) => { billing = b; }, setAgentSpent: (c: number) => { agentSpent = c; } };
@@ -242,4 +244,37 @@ describe('dedicated agent cards',()=>{
  it('stops recovery when the selected card changed',async()=>{const f=ready();f.ledger.getAgentCard=async()=>({mode:'dedicated',payment_method_id:'pm_new'});const s=fakeStripe();await expect(fundWithSavedCard(deps(f.ledger,s),{contractId:CONTRACT,callerProfileId:ORG_OWNER,agentKeyId:'key',selectedPaymentMethod:'pm_old'})).rejects.toThrow('Card changed');expect(s.log).toEqual([]);});
  it('dedicated setup webhook leaves the owner shared card unchanged',async()=>{const f=ready();let saved:unknown;f.ledger.saveAgentCard=async(...args)=>{saved=args;return true;};await handleStripeEvent(deps(f.ledger,fakeStripe()),{id:'evt_dedicated',type:'checkout.session.completed',data:{object:{id:'cs',mode:'setup',customer:'cus_1',setup_intent:'si',metadata:{purpose:'agent_card',profileId:ORG_OWNER,agentKeyId:'key',setupToken:'nonce'}}}});expect(saved).toMatchObject([ORG_OWNER,'key','nonce',{id:'pm_1'}]);expect((await f.ledger.getBillingAccount(ORG_OWNER))?.default_payment_method_id).toBe('pm_shared');});
  it('ignores superseded dedicated setup without changing the shared card',async()=>{const f=ready();f.ledger.saveAgentCard=async()=>false;await handleStripeEvent(deps(f.ledger,fakeStripe()),{id:'evt_stale',type:'checkout.session.completed',data:{object:{id:'cs',mode:'setup',customer:'cus_1',setup_intent:'si',metadata:{purpose:'agent_card',profileId:ORG_OWNER,agentKeyId:'key',setupToken:'old'}}}});expect(f.events.get('evt_stale')?.outcome).toMatch(/superseded/);expect((await f.ledger.getBillingAccount(ORG_OWNER))?.default_payment_method_id).toBe('pm_shared');});
+});
+
+
+describe('marketplace payment authority',()=>{
+ it('open marketplace dispute blocks capture even with approved delivery',async()=>{
+  const f=fakeLedger({payment_status:'authorized'}); const stripe=fakeStripe();
+  f.ledger.hasOpenDisputes=async()=>true;
+  await expect(releaseFunds(deps(f.ledger,stripe),{contractId:CONTRACT,callerProfileId:ORG_OWNER,action:'capture'})).rejects.toThrow(/dispute/);
+  expect(stripe.log).toEqual([]);
+ });
+ it('dispute read failure fails closed before provider calls',async()=>{
+  const f=fakeLedger({payment_status:'authorized'}); const stripe=fakeStripe();
+  f.ledger.hasOpenDisputes=async()=>{throw new Error('unavailable');};
+  await expect(releaseFunds(deps(f.ledger,stripe),{contractId:CONTRACT,callerProfileId:ORG_OWNER,action:'capture'})).rejects.toThrow('unavailable');
+  expect(stripe.log).toEqual([]);
+ });
+ it('same operator cannot fund their own worker',async()=>{
+  const f=fakeLedger(); const stripe=fakeStripe(); f.ledger.operatorProfileForAgent=async()=>ORG_OWNER;
+  await expect(createFunding(deps(f.ledger,stripe),{contractId:CONTRACT,callerProfileId:ORG_OWNER})).rejects.toThrow(/Self-dealing/);
+  expect(stripe.log).toEqual([]);
+ });
+ it('recovery rechecks revoked agent funding authority',async()=>{
+  const f=fakeLedger(); const stripe=fakeStripe();
+  f.ledger.authorizeAgentPayment=async()=>{throw new Error('revoked');};
+  await expect(fundWithSavedCard(deps(f.ledger,stripe),{contractId:CONTRACT,callerProfileId:ORG_OWNER,agentKeyId:'key'})).rejects.toThrow('revoked');
+  expect(stripe.log).toEqual([]);
+ });
+ it('agent capture rechecks authority before replaying an operation',async()=>{
+  const f=fakeLedger({payment_status:'authorized'}); const stripe=fakeStripe();
+  f.ledger.authorizeAgentPayment=async()=>{throw new Error('paused');};
+  await expect(releaseFunds(deps(f.ledger,stripe),{contractId:CONTRACT,callerProfileId:ORG_OWNER,agentKeyId:'key',action:'capture'})).rejects.toThrow('paused');
+  expect(stripe.log).toEqual([]);
+ });
 });

@@ -7,5 +7,5 @@ export const footerGroups = {
 };
 export function SiteFooter(){return <footer className="mx-auto max-w-7xl border-t border-white/10 px-4 pt-10 pb-32 sm:px-6 lg:px-10 lg:pb-10">
  <nav aria-label="Footer" className="grid grid-cols-2 gap-8 md:grid-cols-4">{Object.entries(footerGroups).map(([name,links])=><section key={name}><h2 className="mb-4 font-semibold">{name}</h2><ul className="space-y-3 text-sm text-ae-text-muted">{links.map(([label,path])=><li key={path}>{path.endsWith('.txt')||path.endsWith('.json')?<a href={path} className="hover:text-ae-primary">{label}</a>:<Link to={path} className="hover:text-ae-primary">{label}</Link>}</li>)}</ul></section>)}</nav>
- <p className="mt-10 text-sm text-ae-text-muted">© {new Date().getFullYear()} TODO(owner): legal entity name.</p>
+ <p className="mt-10 text-sm text-ae-text-muted">AgentExchange · Early access</p>
  </footer>}
