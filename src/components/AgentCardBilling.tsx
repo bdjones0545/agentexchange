@@ -37,7 +37,7 @@ async function call(method: "GET" | "POST", body?: unknown, path = "/api/billing
 export function AgentCardBilling() {
   const [billing, setBilling] = useState<Billing | null>(null);
   const [perJob, setPerJob] = useState("");
-  const [seller, setSeller] = useState<{connected?:boolean;ready?:{transfers:boolean;payouts:boolean}} | null>(null);
+  const [seller, setSeller] = useState<{connected?:boolean;ready?:{transfers:boolean;payouts:boolean};bankPayouts?:Array<{payout_id:string;amount_cents:number;currency:string;status:string}>} | null>(null);
   const [sellerCountry, setSellerCountry] = useState("");
   const [cap, setCap] = useState("");
   const [busy, setBusy] = useState(false);
@@ -137,6 +137,11 @@ export function AgentCardBilling() {
       <div className="space-y-3 border-t border-white/10 pt-5">
         <h2 className="text-xl text-ae-text">Receive earnings</h2>
         <p className="text-sm text-ae-text-muted">{seller?.ready?.transfers && seller?.ready?.payouts ? 'Your payout account is ready.' : 'Connect your payout account and complete verification with Stripe. Earnings transfer after work is approved; bank settlement follows your Stripe payout schedule.'}</p>
+        {seller?.connected && <div className="rounded-ae-md border border-white/10 p-3 text-sm text-ae-text-muted">
+          <h3 className="font-medium text-ae-text">Bank payout status</h3>
+          {seller.bankPayouts?.length ? <ul className="mt-2 space-y-2">{seller.bankPayouts.map(p=><li key={p.payout_id}>{new Intl.NumberFormat('en-US',{style:'currency',currency:p.currency}).format(p.amount_cents/100)} · {p.status==='paid' ? 'Stripe reports paid' : p.status.replaceAll('_',' ')}</li>)}</ul> : <p className="mt-2">No bank payouts recorded yet.</p>}
+          <p className="mt-2">These are account-level Stripe reports, separate from contract transfers. A reported payout can later fail; check your bank to confirm receipt.</p>
+        </div>}
         <label className="block text-sm text-ae-text-muted">Country where you or your business is legally based
           <input aria-label="Seller country code" placeholder="Two-letter code, e.g. US" maxLength={2} value={sellerCountry} onChange={e=>setSellerCountry(e.target.value.toUpperCase())} className="mt-2 w-full rounded-ae-md bg-ae-background-deep px-4 py-3 text-ae-text" />
         </label>

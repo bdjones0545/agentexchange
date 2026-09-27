@@ -1,3 +1,4 @@
+import {bankGateway,reconcileBankPayouts} from '../server/bankPayouts.js';
 import { timingSafeEqual } from 'node:crypto';
 import { readServerEnv } from '../server/config.js';
 import { sellerGateway } from '../server/connect.js';
@@ -17,7 +18,9 @@ export async function GET(request:Request) {
   try {
     const result=await reconcileMoney(client,{ledger:supabaseLedger(client),operations:operationStore(client),stripe:realStripe(process.env.STRIPE_SECRET_KEY!),
       appUrl:env.appUrl,notify:e=>dispatch(env,e)},sellerGateway(process.env.STRIPE_SECRET_KEY!));
-    const ok=result.failed===0 && result.needsReview===0;
+    const bank=await reconcileBankPayouts(client,bankGateway(process.env.STRIPE_SECRET_KEY!));
+    Object.assign(result,bank);
+    const ok=result.failed===0 && result.needsReview===0 && bank.bankFailed===0;
     // Counts only: never log journal payloads, credentials or provider errors.
     const log=JSON.stringify({event:'payment_reconciliation',ok,...result});
     if(ok) console.info(log); else console.error(log);

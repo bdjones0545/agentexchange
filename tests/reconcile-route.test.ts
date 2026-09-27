@@ -1,3 +1,4 @@
+vi.mock('../server/bankPayouts.js',()=>({bankGateway:()=>({}),reconcileBankPayouts:async()=>({bankChecked:0,bankFailed:0})}));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { reconcile }=vi.hoisted(()=>({reconcile:vi.fn()}));
@@ -21,7 +22,7 @@ describe('payment reconciliation monitoring',()=>{
   });
   it('returns success for a healthy run',async()=>{
     reconcile.mockResolvedValue(healthy);
-    const response=await GET(request());expect(response.status).toBe(200);expect(await response.json()).toEqual({ok:true,...healthy});
+    const response=await GET(request());expect(response.status).toBe(200);expect(await response.json()).toEqual({ok:true,...healthy,bankChecked:0,bankFailed:0});
   });
   it.each([{failed:1},{needsReview:1}])('makes unresolved work visible to HTTP monitors: %j',async patch=>{
     reconcile.mockResolvedValue({...healthy,...patch});

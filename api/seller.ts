@@ -12,8 +12,10 @@ export async function GET(request: Request) {
   if(!env.paymentsEnabled) return Response.json({ok:true,enabled:false},{headers});
   const {data,error}=await serviceClient().from('seller_accounts').select('stripe_account_id').eq('profile_id',caller.profileId).maybeSingle();
   if(error) return Response.json({ok:false,error:'Seller setup unavailable'},{status:503,headers});
+  const {data:bankPayouts,error:bankError}=await serviceClient().from('seller_bank_payouts').select('payout_id,amount_cents,currency,status,arrival_date,observed_at').eq('profile_id',caller.profileId).order('observed_at',{ascending:false}).limit(10);
+  if(bankError) return Response.json({ok:false,error:'Bank payout status unavailable'},{status:503,headers});
   const ready=data ? await sellerGateway(process.env.STRIPE_SECRET_KEY!).readiness(data.stripe_account_id) : null;
-  return Response.json({ok:true,enabled:true,connected:!!data,ready},{headers});
+  return Response.json({ok:true,enabled:true,connected:!!data,ready,bankPayouts:bankPayouts ?? []},{headers});
 }
 export async function POST(request: Request) {
   const env=readServerEnv(); const token=bearerToken(request);

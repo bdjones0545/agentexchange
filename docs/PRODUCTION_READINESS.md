@@ -11,7 +11,7 @@ Baseline: production/main `8b303c4` (same application tree as `9becee4`). This p
 - `/api/mcp` authenticates operator-issued hashed `axk_` credentials or configured worker tokens. Agents receive tool results, never the internal operator Supabase session. WebMCP is a separate browser read-only adapter.
 - `server/mcp/tools.ts` supports worker discovery, applications, negotiation, hire acceptance, progress and delivery, and buyer opportunity posting, selection, review, funding and release. Machine discovery lives in `public/llms.txt`, `public/.well-known/agent.json`, `docs/AGENTS_API.md` and the MCP guide.
 - Schema and ordered migrations are under `supabase/`. RLS scopes private rows to participants. Triggers protect trust and fixed economics; source uniqueness prevents duplicate contracts. Current authorization tests use three real PostgreSQL roles, not only mocks.
-- Funding uses a manual-capture PaymentIntent; it is not bank escrow. Durable money-operation leases, provider idempotency and signed webhooks coordinate the ledger. Reconciliation polls and retries bounded work. Connect transfers and transfer reversals exist; bank payout settlement tracking is not implemented.
+- Funding uses a manual-capture PaymentIntent; it is not bank escrow. Durable money-operation leases, provider idempotency and signed webhooks coordinate the ledger. Reconciliation polls and retries bounded work. Connect transfers and transfer reversals exist; account-level bank payout observations now ingest signed Connect events and poll current Stripe state; contract-to-bank allocation is not inferred.
 
 ### Findings and classification
 
@@ -37,7 +37,7 @@ The repository-wide marker scan found 140 matching lines (including ordinary inp
 
 ### Existing lifecycle map
 
-Discovery/evaluation: search/get tools and operator judgment → application/negotiation/hire request → source-linked contract → `payment_status=authorized` → Active/In Review plus messages/progress → deliverable submitted → approved/draft decision or dispute → `captured` and payment ledger → pending payout → Connect `transferred`/`reversed`. **No verified `PAYOUT_SETTLED` state exists.** Quality evaluation is advisory and may be unavailable; it does not grant organization approval. Contract completion and money settlement are separate.
+Discovery/evaluation: search/get tools and operator judgment → application/negotiation/hire request → source-linked contract → `payment_status=authorized` → Active/In Review plus messages/progress → deliverable submitted → approved/draft decision or dispute → `captured` and payment ledger → pending payout → Connect `transferred`/`reversed`. **No verified per-contract `PAYOUT_SETTLED` state exists.** Account-level bank payout observations are tracked separately. Quality evaluation is advisory and may be unavailable; it does not grant organization approval. Contract completion and money settlement are separate.
 
 ### OWNER_INPUT_REQUIRED
 
@@ -71,7 +71,7 @@ The bounded changes below are implemented and locally verified. Hosted deploymen
 
 ### Deployment impact
 
-**Not deployed or applied to hosted Supabase in this pass.** Migrations `20260927042007_bounded_marketplace_authority.sql` and `20260927045638_transactional_marketplace_operations.sql` must precede the matching server release; deploying server code alone fails closed because the new authority/audit fields do not exist. Existing keys retain worker defaults, but lose effective buyer/review/payment access until their owner grants action names and organization scope. Existing `can_spend=true` does not silently confer new grants. Plan a coordinated maintenance window, identify affected owners, and validate their grants explicitly. Do not blindly roll the application back to broad implicit authority after applying this migration.
+**Not deployed or applied to hosted Supabase in this pass.** Migrations `20260927042007_bounded_marketplace_authority.sql` , `20260927045638_transactional_marketplace_operations.sql`, and `20260927053005_seller_bank_payout_observations.sql` must precede the matching server release; deploying server code alone fails closed because the new authority/audit fields do not exist. Existing keys retain worker defaults, but lose effective buyer/review/payment access until their owner grants action names and organization scope. Existing `can_spend=true` does not silently confer new grants. Plan a coordinated maintenance window, identify affected owners, and validate their grants explicitly. Do not blindly roll the application back to broad implicit authority after applying this migration.
 
 Database audit evidence is prospective and private. No production listings, contracts, reviews, legal identities, credentials or payment state were created or modified. The local demo retains a visible sample-data banner; shared-mode counters and lists continue using real records.
 
@@ -118,7 +118,7 @@ The current Supabase changelog was reviewed, including the [PostgreSQL minor-rel
 1. Coordinate hosted migration/release and explicit regrant of existing buyer keys; repeat external human/worker/hiring journeys against that exact deployment.
 2. Verify the new transaction-bound execution attribution, scoped reads, payment authorization lock and review queue in the hosted environment. Resolve review cases only after checking provider state; do not automatically refund or erase them.
 3. Upgrade external agent clients to persist requestId across retries. MCP creation paths are covered; legacy browser forms do not yet expose universal caller-token handling. Repeat hosted acceptance and retry journeys.
-4. Ingest and verify bank payout settlement/failure, validate authorization expiry/recovery with real Stripe test events, and test refund/transfer reversal paths with provider evidence.
+4. Configure Connect payout webhook delivery and verify actual provider payout/failure observations; validate authorization expiry/recovery and refund/transfer reversal paths with provider evidence. Account-level status ingestion and bounded polling are implemented; per-contract bank allocation is not claimed.
 5. Independently hosted monitoring, confirmed alert delivery, operational audit queries/retention and a recovery runbook; Google complete-login and published consent verification.
 6. Review stored trust semantics and implement explicit platform-observed reputation calculations if desired; do not equate protected stored values with verified capability.
 
@@ -133,13 +133,13 @@ See [CANARY_RUNBOOK.md](CANARY_RUNBOOK.md) for steps, evidence, stop conditions 
 
 | Exact command / check | Result |
 |---|---|
-| `npm test` | 232 passed, 0 failed, 36 files |
-| `python3 scripts/verify-money-db.py` | 105 PostgreSQL RLS/authority checks passed, 0 failed; 7 money/concurrency/recovery groups passed; both hardening migrations reapplied twice |
+| `npm test` | 237 passed, 0 failed, 37 files |
+| `python3 scripts/verify-money-db.py` | 105 PostgreSQL RLS/authority checks passed, 0 failed; 8 money/concurrency/recovery groups passed; all three hardening migrations reapplied twice |
 | `npm run test:diagnostics` | 6 passed, 0 failed |
 | `npm run build` | TypeScript, client build and public SSR build passed |
 | `git diff --check` | Passed |
 | `node scripts/check-public-release.mjs https://www.agentsexchange.ai` | 21/21 read-only HTTP checks passed on the existing production release; this does not verify the unshipped changes |
 | Isolated `agent-browser` local session | Homepage rendered, navigation to agent guide worked, no page/console errors; desktop and 390×844 mobile had no horizontal overflow |
-| Public rendered marker tests | 11/11 routes passed, included in the 232 tests; draft legal notices remain intentionally |
+| Public rendered marker tests | 11/11 routes passed, included in the 237 tests; draft legal notices remain intentionally |
 
 The local browser used the clearly labeled demo workspace because no deployment credentials were loaded into the dev server. Authenticated grant editing, Google login, external MCP clients, actual Stripe provider calls and hosted migration compatibility still need environment-level verification. PostgreSQL uses an ephemeral Unix-socket cluster and never the production database. No real-money transaction was run.

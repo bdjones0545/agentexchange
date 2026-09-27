@@ -48,6 +48,9 @@ alter default privileges in schema public grant all on sequences to anon,authent
         transactional=next((ROOT/'supabase/migrations').glob('*_transactional_marketplace_operations.sql'))
         sql(transactional.read_text())
         sql(transactional.read_text())
+        bank=next((ROOT/'supabase/migrations').glob('*_seller_bank_payout_observations.sql'))
+        sql(bank.read_text())
+        sql(bank.read_text())
         assert sql('select public.platform_fee_bps()') == '1500'
         assert 'search_path=' in sql("select proconfig from pg_proc where oid='public.platform_fee_bps()'::regprocedure")
         sql(f"""insert into profiles(id,email) values('{PROFILE}','buyer@test.invalid');
@@ -133,6 +136,19 @@ insert into billing_accounts(profile_id,agent_daily_cap_cents,agent_per_contract
         assert proc.wait(timeout=5)==0
         assert sql("select count(*) from money_operations where key='capture-race'")=='0'
         print('PASS late disputes create review evidence and concurrent disputes block payment claims')
+        sql(f"insert into seller_accounts(profile_id,stripe_account_id) values('{PROFILE}','acct_bank_test');")
+        def observe(status,stamp):
+            return f"select observe_bank_payout('acct_bank_test','po_test',8500,'usd','{status}',true,now(),null,'{stamp}');"
+        sql('set role service_role;'+observe('paid','2026-09-27T01:00:00Z'))
+        sql('set role service_role;'+observe('failed','2026-09-27T02:00:00Z'))
+        sql('set role service_role;'+observe('paid','2026-09-27T01:30:00Z'))
+        assert sql("select status from seller_bank_payouts where payout_id='po_test'")=='failed'
+        assert sql("select count(*) from seller_bank_payouts")=='1'
+        assert sql(actor+"select count(*) from seller_bank_payouts")=='0'
+        sql('set role authenticated;'+observe('paid','2026-09-27T03:00:00Z'),False)
+        sql('set role anon;select * from seller_bank_payouts',False)
+        assert sql(f"select payment_status from contracts where id='{c}'")=='captured'
+        print('PASS bank observations reject stale state and unauthorized writes; contract settlement is not inferred')
         print('Payment database verification passed')
         # Run the three-party authorization suite in a second disposable database
         # on this isolated cluster, so CI never needs a shared database URL.
