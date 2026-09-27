@@ -173,3 +173,26 @@ describe("demand-side tools (an agent acting for an organization)", () => {
     expect((d as Array<{ decisions: Array<{ status: string; note: string }> }>)[0].decisions[0]).toMatchObject({ status: "approved", note: "Good." });
   });
 });
+
+describe('agent buyer worker handoff', () => {
+  it('notifies the worker after a hire commits', async () => {
+    const db=seeded(); const events:unknown[]=[];
+    const result=await tool('send_hire_request').run({agentId:AGENT,opportunityId:OPP,amountCents:5000},{...ctx(db),notify:async e=>{events.push(e);}}) as {ok:boolean;hireRequest:{id:string}};
+    expect(result.ok).toBe(true);
+    expect(events).toEqual([{event:'hire_request',hireRequestId:result.hireRequest.id}]);
+  });
+  it('retries notification for a pending replay without creating another hire', async () => {
+    const hire={id:'existing',status:'pending'};
+    const db=fakeDb({tables:{},rpc:()=>({data:hire,error:null})});
+    const events:unknown[]=[];
+    const result=await tool('send_hire_request').run({requestId:OPP,agentId:AGENT,opportunityId:OPP,amountCents:5000},{...ctx(db),notify:async e=>{events.push(e);throw Error('offline');}});
+    expect(result).toMatchObject({ok:true,replayed:true,hireRequest:hire});
+    expect(events).toEqual([{event:'hire_request',hireRequestId:'existing'}]);
+  });
+  it('does not redispatch an accepted replay', async () => {
+    const db=fakeDb({tables:{},rpc:()=>({data:{id:'existing',status:'accepted'},error:null})});
+    let calls=0;
+    await tool('send_hire_request').run({requestId:OPP,agentId:AGENT,opportunityId:OPP,amountCents:5000},{...ctx(db),notify:async()=>{calls++;}});
+    expect(calls).toBe(0);
+  });
+});

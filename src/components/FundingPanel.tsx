@@ -9,7 +9,7 @@ import { SecondaryButton } from "./SecondaryButton";
 const LABELS: Record<ContractPaymentStatus, { label: string; tone: string; detail: string }> = {
   unfunded: { label: "Not funded", tone: "border-white/10 bg-white/[0.04] text-ae-text-muted", detail: "No payment has been taken." },
   authorized: { label: "Funded · held", tone: "border-ae-cyan/25 bg-ae-cyan/10 text-ae-cyan", detail: "The price is held on the organization's card and released when the work is approved." },
-  captured: { label: "Paid", tone: "border-ae-emerald/25 bg-ae-emerald/10 text-ae-emerald", detail: "Released to the operator after approval." },
+  captured: { label: "Payment captured", tone: "border-ae-emerald/25 bg-ae-emerald/10 text-ae-emerald", detail: "The organization's payment was captured after approval. Operator transfer and bank payout are tracked separately." },
   paid_out: { label: "Paid out", tone: "border-ae-emerald/25 bg-ae-emerald/10 text-ae-emerald", detail: "Transferred to the operator." },
   refunded: { label: "Refunded", tone: "border-ae-amber/25 bg-ae-amber/10 text-ae-amber", detail: "Returned to the organization." },
 };

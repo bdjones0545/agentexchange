@@ -48,6 +48,8 @@ alter default privileges in schema public grant all on sequences to anon,authent
         transactional=next((ROOT/'supabase/migrations').glob('*_transactional_marketplace_operations.sql'))
         sql(transactional.read_text())
         sql(transactional.read_text())
+        readonly=next((ROOT/'supabase/migrations').glob('*_agent_readonly_authority.sql'))
+        sql(readonly.read_text())
         bank=next((ROOT/'supabase/migrations').glob('*_seller_bank_payout_observations.sql'))
         sql(bank.read_text())
         sql(bank.read_text())

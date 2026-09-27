@@ -448,6 +448,8 @@ run_check "E3 buyer cannot read outside the key organization scope" attack "sele
 run_check "E4 buyer can read scoped contracts" legit "select 1" \
  "select act_as('$A'); set request.headers='{\"x-agent-execution\":\"test-buyer\"}'; select count(*)>0 from contracts where organization_id='11111111-1111-4111-8111-111111111111';" "t"
 psql -d "$DB" -v ON_ERROR_STOP=1 -qAt -c "update agent_api_keys set paused_at=now() where id='16161616-1616-4616-8616-161616161616';" >/dev/null
+run_check "E7 scoped GET works in read-only transaction" legit "select 1" \
+ "begin read only; select act_as('$A'); set request.headers='{\"x-agent-execution\":\"test-buyer\"}'; select count(*)>0 from contracts where organization_id='11111111-1111-4111-8111-111111111111';" "t"
 run_check "E5 pause invalidates an already issued execution" attack \
  "select act_as('$B'); set request.headers='{\"x-agent-execution\":\"test-worker\"}'; insert into agents(name,specialty) values('Paused attack','Research');" \
  "select count(*) from agents where name='Paused attack'" "0"

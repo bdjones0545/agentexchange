@@ -1,3 +1,5 @@
+> Current release gate (September 27): NOT READY FOR LIVE MONEY. Staging has passed human funding/capture/transfer and agent hiring/funding. Agent-funded delivery is submitted and awaiting authorized review/capture. Hosted account-deletion success, Connect bank payout/failure delivery, alert delivery, public business address/legal review, and live Stripe verification remain incomplete. Historical checkpoints below describe earlier states; see OPERATIONS_RUNBOOK.md for recovery procedures. The Codex uptime automation is stopped.
+
 # Production readiness — September 27, 2026
 
 ## Audit before mutation
@@ -156,3 +158,39 @@ All three migrations are applied. The test pilot key (`41a82785-b298-4ce2-81f4-2
 - Google owner test brief `d0bc6da5-a192-4c7c-8368-52a7c5534aa5` was created through the staged UI under existing organization `770cede2-c471-4407-b132-f9a3775f2c06`. Exactly one organization remains. The test brief is hidden from public discovery and appears in the owner's hire selector. No hire request or payment was submitted.
 - Legal entity supplied by owner: Efficiency Strength Training, LLC. Public support email and contact address remain pending. Legal pages remain drafts.
 - User requested deletion of the Codex uptime automation; it remains deleted.
+
+## September 27 sandbox buyer-to-worker completion
+
+Google owner canary contract `a2ee8b58-3bb7-4dab-80dd-d7a849337f5e` completed hiring, manual-capture funding, automated worker delivery, human review, and capture. The charge ledger records 5,150 cents captured; the payout records 5,000 cents gross, 750 cents platform fee, and 4,250 cents net. Scheduled reconciliation recorded transfer `tr_3UKNu5GOcsf8J09l0rDMcbgW` at 20:00:24 UTC. Stripe sandbox independently shows a successful $42.50 seller payment and $127.50 total seller balance ($85 prior balance plus $42.50). No real money moved. This verifies transfer to the connected Stripe balance, not bank settlement; Stripe shows $0 in transit to bank. Local payment wording now distinguishes capture from transfer; not deployed yet.
+
+## September 27 agent-buyer verification checkpoint
+
+55 targeted tests passed across agent authority, cards, execution, native tools, and funding. Disposable real PostgreSQL checks passed for concurrent daily spending limits, per-contract caps, duplicate-operation leases, scoped reads, paused executions, forged execution denial, and money-operation access restrictions. These are local verification results, not a hosted agent-buyer end-to-end pass.
+
+Hosted existing pilot grant is active and scoped to AgentExchange Payment Test. Billing has a saved card, a 15,000-cent daily cap, and a 10,300-cent per-contract cap. Raw pilot credential is unavailable. Proposed hosted canary: temporary key restricted to that test organization and send_hire_request/fund_contract; one $50 test hire ($51.50 including fee) to Research and Writing Analyst; denied cross-workspace and unauthorized-action probes, followed by pause/revocation checks. Revoke temporary key after testing. No live payments or expanded access to other organizations. Temporary credential creation and this new test charge await specific approval.
+
+## Hosted agent-buyer canary: handoff defect found
+
+With user-approved temporary staging access, temporary scoped key `e8f2f272-611b-4e2e-a687-96e449027c32` created hire `607b0326-a374-4497-858f-b25a6b211c86` for $50. Same-intent replay returned the same hire. Cross-workspace funding and ungranted release were denied; paused and revoked key requests returned HTTP 401. The key was revoked and local credential removed after testing. No new funding occurred: the request remains pending because MCP send_hire_request omitted worker notification. Local fix notifies after creation and retries notification on pending replay; accepted replays do not dispatch. Must deploy and resume this existing hire before claiming hosted agent-buyer funding verification.
+
+## Staging release and declined canary
+
+Deployment `dpl_7SMPgT6L9BJ1fxuYFciBFGY4jnz6` is READY at https://agentexchange-7nnq-nufdtj6aj-train-efficiency.vercel.app. Production-configured staging, --skip-domain; custom public domain not promoted. Includes worker handoff fix, account deletion, contact/legal updates, and payment capture wording. Full suite: 250 tests in 39 files; production build passed.
+
+Correction to the preceding diagnosis: the MCP notification omission exists, but it was not proven to be the sole cause of the pending hire. The worker independently rejected hire `607b0326-a374-4497-858f-b25a6b211c86` at 20:25:03 UTC before retry on the new deployment. Retry correctly returned the rejected record without dispatching or duplicating it. Existing brief lists $100 while approved offer was $50; rejection reason is not recorded here. No contract/funding occurred. Resume key `b7e4085f-9a88-4ab6-bbec-100cf8510c91` revoked. Hosted successful handoff/funding still needs a suitable accepted test brief; do not override worker rejection.
+
+## Matching agent-buyer brief accepted
+
+Matching $50 sandbox brief `3acb258c-d5e4-49e0-8c09-b26958e99709` was hired via new staged MCP deployment. Worker accepted hire `6ba6d364-cd8c-4076-9872-74a81c33aa3e`, creating contract `7fb604e4-8cc0-45e1-8341-4e2975222da0`. Agent fund_contract returned a generic failure before any payment or money_operations record appeared. Contract remains unfunded; no successful hold is claimed. Scoped contract read reproduced successfully in a rolled-back database diagnostic; service role card/billing read privileges exist. Root cause remains unresolved. Temporary key `55eaa0b0-3b31-407b-b5ab-23863df8b1d6` revoked and local secret removed.
+
+## Funding diagnostic checkpoint
+
+Vercel project environment export withheld sensitive values; the temporary export was deleted. Added fixed-label diagnostic codes to generic MCP funding failures without returning provider/database error text. 39 targeted tests passed. A proposed temporary funding key for reproduction was rejected by automatic approval review as exceeding read-only diagnosis; no key was created and the generated local secret was removed. Exact same-contract $51.50 sandbox retry remains pending explicit approval.
+
+## Agent funding read-only authorization fix
+
+Approved diagnostic retry returned funding_preflight_0 before payment creation. Root cause reproduced: current_agent_execution SELECT FOR SHARE fails in PostgREST GET read-only transactions (SQLSTATE 25006). Migration 20260927205052_agent_readonly_authority applied hosted: read-only transactions read grant state without row locking; writable transactions retain FOR SHARE to serialize pause/revocation against writes. Canonical schema updated. Disposable PostgreSQL/RLS/concurrency suite passed, including new E7 read-only regression. Hosted read-only contract query now succeeds. Contract 7fb604e4-8cc0-45e1-8341-4e2975222da0 remains unfunded; no post-fix funding attempt made. Temporary key 802dc80d-2885-4da0-a88c-48e32ceacc95 revoked and secret deleted.
+
+## Post-fix agent funding passed
+
+Hosted MCP fund_contract succeeded for accepted contract 7fb604e4-8cc0-45e1-8341-4e2975222da0: authorized hold 5,150 cents ($50 price + $1.50 buyer fee), expected operator net 4,250 cents and platform fee 750 cents. This is sandbox funding, not capture or bank settlement. Temporary key 6de5543f-7a79-4bef-933c-9cc824ae1058 revoked after success and local raw credential deleted. Hosted agent creation/acceptance/funding path now passes after the read-only authorization migration.

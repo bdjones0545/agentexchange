@@ -39,7 +39,7 @@ export interface ToolContext {
   /** When true, a contract must be funded (payment_status authorized) before work starts. */
   paymentsEnabled: boolean;
   /** Tell workers something happened (identifiers only). Best-effort. */
-  notify?: (event: { event: "contract_funded" | "deliverable_decision"; contractId: string }) => Promise<unknown>;
+  notify?: (event: { event: "contract_funded" | "deliverable_decision"; contractId: string } | { event: "hire_request"; hireRequestId: string }) => Promise<unknown>;
   /**
    * Quality gate for submit_deliverable (server/gate/deliverableGate.ts). null or
    * undefined means no evaluator is configured: deliverables are accepted and
@@ -897,7 +897,16 @@ export const TOOLS = [
       const op = await ctx.open();
       const replayed=await replayRecord(op,"hire_requests",input);
       if(replayed.error) return fail("send_hire_request",replayed.error);
-      if(replayed.data) return {ok:true,replayed:true,hireRequest:replayed.data};
+      // Replaying a pending request also retries its best-effort worker handoff.
+      const notifyHire = async (hire: Row) => {
+        if (hire.status !== "pending" || typeof hire.id !== "string") return;
+        try { await ctx.notify?.({event:"hire_request",hireRequestId:hire.id}); }
+        catch { /* The committed hire remains retryable with the same requestId. */ }
+      };
+      if(replayed.data) {
+        await notifyHire(replayed.data);
+        return {ok:true,replayed:true,hireRequest:replayed.data};
+      }
       const [{ data: agent }, { data: opp }] = await Promise.all([
         op.db.from("agents").select("id,name").eq("id", input.agentId).maybeSingle(),
         op.db.from("opportunities").select("id,title").eq("id", input.opportunityId).maybeSingle(),
@@ -906,6 +915,7 @@ export const TOOLS = [
       if (!opp) return { ok: false, error: "opportunity not found" };
       const { data, error } = await createRecord(op, "hire_requests", { agent_id: agent.id, agent_name: agent.name, opportunity_id: opp.id, opportunity_title: opp.title, amount_cents: input.amountCents, currency: "USD", status: "pending" }, "id,status,amount_cents,created_at", input);
       if (error) return fail("send_hire_request", error);
+      if (data) await notifyHire(data);
       return { ok: true, hireRequest: data };
     },
   }),
@@ -954,7 +964,11 @@ export const TOOLS = [
         return { ok: true, contractId: input.contractId, paymentStatus: r.paymentStatus, chargedCents: r.quote.totalCents, quote: r.quote };
       } catch (e) {
         if ((e instanceof FundingError || e instanceof MoneyOperationError)) return { ok: false, error: e.message, httpStatus: e.status };
-        return { ok: false, error: "Funding failed; retry or ask the owner to reconcile the payment" };
+        const message = e instanceof Error ? e.message : '';
+        const stages = ['getContract:', 'owner lookup:', 'getBillingAccount:', 'Agent card unavailable', 'Active owner-authorized key required', 'service role unavailable:', 'Neither apiKey nor config.authenticator provided'] as const;
+        const stage = stages.findIndex(prefix => message.startsWith(prefix));
+        console.error('Agent funding failed', { code: stage < 0 ? 'funding_unknown' : `funding_preflight_${stage}`, errorType: e instanceof Error ? e.name : 'unknown' });
+        return { ok: false, error: "Funding failed; ask the owner to reconcile the payment", diagnosticCode: stage < 0 ? 'funding_unknown' : `funding_preflight_${stage}` };
       }
     },
   }),

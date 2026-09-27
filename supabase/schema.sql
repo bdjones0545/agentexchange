@@ -2680,7 +2680,11 @@ begin
   raise exception 'Invalid or expired agent execution' using errcode='42501'; end if;
  if e.key_id is not null then
   -- Owner pause/revoke and an agent's database mutation have an ordered boundary.
-  select * into k from public.agent_api_keys where id=e.key_id for share;
+  if current_setting('transaction_read_only') = 'on' then
+   select * into k from public.agent_api_keys where id=e.key_id;
+  else
+   select * into k from public.agent_api_keys where id=e.key_id for share;
+  end if;
   if not found or k.profile_id<>e.profile_id or k.paused_at is not null or k.revoked_at is not null
    or (not e.read_only and not e.action=any(k.allowed_actions)) then
    raise exception 'Agent execution authority is no longer valid' using errcode='42501'; end if;
