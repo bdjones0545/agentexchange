@@ -28,10 +28,13 @@ A successful preview is not a live-money launch approval.
 
 ## Public release
 
+See [public release checks and runbook](PUBLIC_RELEASE.md) for the verified preview/live comparison and Google publication steps.
+
 - [ ] Review and integrate PR #26, then #27–45 in dependency order, followed by launch-readiness fixes.
 - [ ] Publish the reviewed legal/contact pages to the actual public domain.
 - [ ] Fill Google homepage/privacy/terms branding links with those live pages; complete publication/verification requirements. Do not submit drafts as approved policies.
-- [ ] Configure an actual monitored failure alert destination and verify a synthetic alert. Structured logging and non-200 responses alone do not prove alerts reach anyone.
+- [x] Inspect Vercel alert configuration: the default high-severity rule enables team-owner notifications; no Slack/webhook destination is linked.
+- [ ] Confirm a monitored recipient and verify alert delivery. Existing notification settings, structured logging and non-200 responses alone do not prove alerts reach anyone. Add explicit uptime/missed-run coverage as needed.
 - [ ] Confirm production configuration, webhook signature secret and scheduled reconciliation; keep Stripe in test mode until live-money authorization and provider acceptance are complete.
 - [ ] Deploy the reviewed commit; smoke-test Google sign-in, anonymous HTML, private route access controls, payment guards and cron authentication.
 - [ ] Verify public social cards in an external debugger after deployment.
