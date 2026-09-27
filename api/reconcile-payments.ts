@@ -17,6 +17,13 @@ export async function GET(request:Request) {
   try {
     const result=await reconcileMoney(client,{ledger:supabaseLedger(client),operations:operationStore(client),stripe:realStripe(process.env.STRIPE_SECRET_KEY!),
       appUrl:env.appUrl,notify:e=>dispatch(env,e)},sellerGateway(process.env.STRIPE_SECRET_KEY!));
-    return Response.json({ok:result.failed===0 && result.needsReview===0,...result},{headers:{'cache-control':'no-store'}});
-  } catch { return Response.json({ok:false,error:'Payment reconciliation failed'},{status:500}); }
+    const ok=result.failed===0 && result.needsReview===0;
+    // Counts only: never log journal payloads, credentials or provider errors.
+    const log=JSON.stringify({event:'payment_reconciliation',ok,...result});
+    if(ok) console.info(log); else console.error(log);
+    return Response.json({ok,...result},{status:ok?200:503,headers:{'cache-control':'no-store'}});
+  } catch {
+    console.error(JSON.stringify({event:'payment_reconciliation',ok:false,reason:'runner_failed'}));
+    return Response.json({ok:false,error:'Payment reconciliation failed'},{status:500,headers:{'cache-control':'no-store'}});
+  }
 }

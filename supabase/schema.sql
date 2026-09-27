@@ -1577,6 +1577,7 @@ create or replace function public.platform_fee_bps()
 returns integer
 language sql
 immutable
+set search_path = ''
 as $$
   select 1500
 $$;

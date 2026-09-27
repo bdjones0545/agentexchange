@@ -17,3 +17,12 @@ jobs:
       - run: npm test
       - run: npm run test:diagnostics
       - run: npm run build
+      - run: npm audit --audit-level=moderate
+  database-authorization:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install disposable PostgreSQL test runtime
+        run: sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib libpq-dev
+      - name: Verify spending concurrency and three-party authorization
+        run: python3 scripts/verify-money-db.py
