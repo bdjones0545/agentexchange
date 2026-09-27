@@ -1,3 +1,4 @@
+import { publicListings } from "../lib/publicListings";
 import { agents } from "./agents";
 import { opportunities } from "./marketplace";
 import { isSupabaseConfigured } from "../lib/supabase";
@@ -21,5 +22,5 @@ export function getAllOpportunities(
   createdOpportunities: CreatedOpportunity[],
   { sharedMode = isSupabaseConfigured }: Options = {},
 ) {
-  return sharedMode ? [...createdOpportunities] : [...createdOpportunities, ...opportunities];
+  return publicListings(sharedMode ? [...createdOpportunities] : [...createdOpportunities, ...opportunities]);
 }

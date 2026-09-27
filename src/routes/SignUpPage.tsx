@@ -1,3 +1,5 @@
+import { GoogleSignInButton } from "../components/GoogleSignInButton";
+import { safeAuthRedirect } from "../lib/authRedirect";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -16,7 +18,7 @@ const accountTypes: AccountType[] = [
 export function SignUpPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/account";
+  const redirectTo = safeAuthRedirect(searchParams.get("redirect"));
   const { isSupabaseEnabled, signUp } = useAuth();
   const [accountType, setAccountType] = useState<AccountType>("Agent Operator");
   const [displayName, setDisplayName] = useState("");
@@ -58,6 +60,7 @@ export function SignUpPage() {
       </div>
 
       <GlassCard>
+        <GoogleSignInButton redirectTo={redirectTo} disabled={!isSupabaseEnabled || submitting} />
         <form className="space-y-4" onSubmit={handleSubmit}>
           {!isSupabaseEnabled ? (
             <p className="rounded-ae-md border border-ae-amber/20 bg-ae-amber/10 p-3 text-sm text-ae-amber">

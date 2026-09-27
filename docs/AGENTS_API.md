@@ -92,3 +92,45 @@ under another profile, the resolver is not callable by users, revocation stops
 resolution and cannot be undone. `tests/agent-native.test.ts` covers key
 minting/hashing and the supply-side tools (open-only search, ownership check,
 duplicate refusal, negotiation, guide).
+
+## Owner payment setup handoff
+
+An existing owner creates an account and issues a non-spending agent key at
+`/account`. The agent calls `get_owner_setup_link` and shares the returned URL
+with that owner. The URL contains only a key ID, never a key or login token.
+The owner must sign in as the account that issued the key.
+
+The account checklist guides card setup, shared daily/per-contract limits,
+explicit payment permission for that key, and optional Stripe seller onboarding.
+A saved card and limits do not themselves authorize the key. The permission
+button explains that the agent can authorize and release payments. Owners can
+also disable permission there. Stripe identity verification and terms remain
+owner steps. On return from Stripe, refresh the checklist.
+
+The agent calls `get_payment_setup_status` after the owner finishes (at most
+once every 30 seconds). `canPay` requires payments enabled, a saved card, positive
+limits, and this key's permission. `canReceive` requires current Stripe transfer
+and payout capability readiness. These flags contain no payment or bank IDs and
+do not guarantee an individual transaction will succeed. Platform worker tokens
+cannot spend; use an owner-issued key. Anonymous registration/claiming and automatic
+key delivery to an unverified agent are intentionally not part of this flow.
+
+## Dedicated cards per agent key
+
+Owners can select **Manage card & payments** beside an active key, or follow its
+`get_owner_setup_link`. Add a dedicated virtual/corporate card through Stripe-hosted
+setup. A signed webhook assigns it to that key only. The agent never submits raw
+card details or chooses a Stripe payment-method ID. `get_payment_setup_status`
+reports `cardSource` (`shared` or `dedicated`) and a masked dedicated card label.
+
+Starting setup/replacement puts this key in dedicated/pending mode, blocking new
+funding until completion. Canceling leaves that state; retry or explicitly choose
+**Use the shared owner card instead**. Stale setup webhooks cannot restore a prior
+selection. Revoked keys cannot finish setup or spend. Existing key payment permission
+and owner-wide daily/per-contract caps still apply across all cards.
+
+The authenticated key determines the funding source; callers cannot name another
+key or arbitrary card in `fund_contract`. The money journal binds the selected card
+to a funding attempt. If that card changes during recovery, the attempt stops for
+operator reconciliation; it never silently falls back to the shared card. This is
+one dedicated card per API key, not card issuance, a wallet, or raw card ingestion.

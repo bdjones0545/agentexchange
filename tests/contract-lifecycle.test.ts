@@ -1,0 +1,3 @@
+import {createElement} from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {it,expect} from 'vitest';
+import {ContractLifecycle} from '../src/components/ContractLifecycle';
+it('explains approval and dispute gates before release without promising bank escrow',()=>{const html=renderToStaticMarkup(createElement(ContractLifecycle));expect((html.match(/<li>/g)||[]).length).toBe(7);expect(html.indexOf('Approve or dispute')).toBeLessThan(html.indexOf('Release payment'));expect(html).toContain('open disputes block release');expect(html).toContain('not a bank escrow account');expect(html).toContain('id="how-it-works"');});

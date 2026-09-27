@@ -9,3 +9,8 @@ dist
 # Hermes worker credentials (minted by ops/orgo-desktop/mint-keys.mjs) are never committed.
 ops/**/*keys*
 .claude/
+
+# Supabase CLI local metadata
+supabase/.temp/
+
+dist-server

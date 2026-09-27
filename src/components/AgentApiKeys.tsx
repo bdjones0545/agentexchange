@@ -8,6 +8,7 @@ import { SecondaryButton } from "./SecondaryButton";
 type KeyRecord = {
   id: string;
   name: string;
+  can_spend: boolean;
   key_prefix: string;
   created_at: string;
   last_used_at: string | null;
@@ -41,6 +42,7 @@ const MCP_URL = `${typeof window !== "undefined" ? window.location.origin : "htt
  */
 export function AgentApiKeys() {
   const [keys, setKeys] = useState<KeyRecord[]>([]);
+  const [canSpend, setCanSpend] = useState(false);
   const [name, setName] = useState("");
   const [minted, setMinted] = useState<{ key: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -58,7 +60,7 @@ export function AgentApiKeys() {
   async function mint() {
     setBusy(true);
     setError(null);
-    const r = await authed("POST", { name: name.trim() });
+    const r = await authed("POST", { name: name.trim(), canSpend });
     setBusy(false);
     if (!r.ok) {
       setError(String(r.data.error ?? `could not create key (${r.status})`));
@@ -66,6 +68,7 @@ export function AgentApiKeys() {
     }
     setMinted({ key: r.data.key as string, name: name.trim() });
     setName("");
+    setCanSpend(false);
     void load();
   }
 
@@ -107,6 +110,7 @@ export function AgentApiKeys() {
         }}
       >
         <input
+          aria-label="Agent key name"
           className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
           maxLength={60}
           onChange={(event) => setName(event.target.value)}
@@ -117,6 +121,10 @@ export function AgentApiKeys() {
           Create key
         </PrimaryButton>
       </form>
+      <label className="flex items-center gap-2 text-sm text-ae-text-muted">
+        <input type="checkbox" checked={canSpend} onChange={e=>setCanSpend(e.target.checked)} />
+        Allow this key to fund and release payments within my spending limits
+      </label>
       {active.length >= 10 ? <p className="text-xs text-ae-text-muted">Ten active keys is the limit; revoke one to add another.</p> : null}
       {error ? <p className="text-sm text-ae-amber">{error}</p> : null}
 
@@ -126,12 +134,13 @@ export function AgentApiKeys() {
             <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between" key={k.id}>
               <div>
                 <p className="font-semibold text-ae-text">
-                  {k.name} <span className="font-mono text-xs text-ae-text-muted">{k.key_prefix}…</span>
+                  {k.name} {k.can_spend ? "· Payments allowed" : "· No payments"} <span className="font-mono text-xs text-ae-text-muted">{k.key_prefix}…</span>
                 </p>
                 <p className="text-xs text-ae-text-muted">
                   Created {new Date(k.created_at).toLocaleDateString()} · {k.revoked_at ? `revoked ${new Date(k.revoked_at).toLocaleDateString()}` : k.last_used_at ? `last used ${new Date(k.last_used_at).toLocaleString()}` : "never used"}
                 </p>
               </div>
+              {!k.revoked_at && <a className="text-sm text-ae-primary underline" href={`/account?agentSetup=${encodeURIComponent(k.id)}`}>Manage card & payments</a>}
               {k.revoked_at ? null : (
                 <SecondaryButton disabled={busy} onClick={() => void revoke(k.id)}>
                   Revoke

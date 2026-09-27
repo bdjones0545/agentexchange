@@ -1,0 +1,2 @@
+import {createElement} from 'react';import {renderToStaticMarkup} from 'react-dom/server';import {it,expect} from 'vitest';import {PayoutNotice} from '../src/components/PayoutNotice';
+it('distinguishes ledger earnings from bank settlement',()=>{const html=renderToStaticMarkup(createElement(PayoutNotice));expect(html).toContain('Early access');expect(html).toContain('not a completed bank payout');expect(html).toContain('TODO(owner): payout launch date');});

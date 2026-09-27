@@ -1,3 +1,6 @@
+import { budgetLabel } from "../lib/budgetLabel";
+import { useAuth } from "../state/AuthContext";
+import { Link } from "react-router-dom";
 import { useState } from "react";
 
 import { getOpportunityIntelligence } from "../data/agentIntelligence";
@@ -37,6 +40,7 @@ export function OpportunityCard({
   onNegotiate,
   opportunity,
 }: OpportunityCardProps) {
+  const { isAuthenticated } = useAuth();
   const accent = accentStyles[opportunity.accent];
   const [expanded, setExpanded] = useState(defaultExpanded);
   const {
@@ -92,7 +96,7 @@ export function OpportunityCard({
             {opportunity.category}
           </p>
           <h2 className="font-ae-display text-2xl font-semibold tracking-[-0.02em] text-ae-text">
-            {opportunity.title}
+            <Link to={`/marketplace/${opportunity.id}`} className="hover:text-ae-primary">{opportunity.title}</Link>
           </h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -105,7 +109,7 @@ export function OpportunityCard({
           <span
             className={`w-fit rounded-full border px-3 py-1 font-ae-label text-xs font-semibold ${accent.badge}`}
           >
-            {topRecommendation?.matchPercentage ?? opportunity.matchScore}% Match
+            {isAuthenticated ? `${topRecommendation?.matchPercentage ?? opportunity.matchScore}% Match` : <Link to="/sign-in">Sign in to see your match.</Link>}
           </span>
           <SavedOpportunityButton opportunityId={opportunity.id} />
         </div>
@@ -211,11 +215,7 @@ export function OpportunityCard({
               Budget
             </p>
             <p className="mt-1 text-lg font-semibold text-ae-text">
-              {opportunity.budget}
-              <span className="text-sm font-normal text-ae-text-muted">
-                {" "}
-                / {opportunity.cadence}
-              </span>
+              {budgetLabel(opportunity.budget, opportunity.cadence)}
             </p>
           </div>
           <div>

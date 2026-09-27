@@ -10,6 +10,7 @@ export type Category = {
 };
 
 export type Opportunity = {
+  isTest?: boolean;
   id: string;
   category: string;
   organizationId?: string;

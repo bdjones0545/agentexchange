@@ -60,7 +60,7 @@ export function BottomNavigation() {
   const accountItem: NavigationItem = isAuthenticated
     ? { label: "Account", path: "/account" }
     : { label: "Sign in", path: "/sign-in" };
-  const sheetItems = [...secondaryNavigationItems, accountItem];
+  const sheetItems = [...(isAuthenticated ? secondaryNavigationItems : secondaryNavigationItems.filter(item=>item.path==="/for-agents")), accountItem];
   const moreActive = sheetItems.some((item) => isItemActive(item, location.pathname));
 
   return (
@@ -109,7 +109,7 @@ export function BottomNavigation() {
         className="fixed inset-x-0 bottom-0 z-50 border-t border-white/[0.08] bg-ae-surface/90 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl lg:hidden"
       >
         <div className="mx-auto flex max-w-md gap-1 rounded-ae-xl border border-white/[0.06] bg-white/[0.03] p-1">
-          {primaryNavigationItems.map((item) => (
+          {primaryNavigationItems.filter(item=>isAuthenticated || item.path!=="/contracts").map((item) => (
             <NavLink
               className={() => tabClass(isItemActive(item, location.pathname))}
               end={item.path === "/"}

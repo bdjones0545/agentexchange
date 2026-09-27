@@ -1,3 +1,5 @@
+import { GoogleSignInButton } from "../components/GoogleSignInButton";
+import { safeAuthRedirect } from "../lib/authRedirect";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -9,7 +11,7 @@ import { useAuth } from "../state/AuthContext";
 export function SignInPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/account";
+  const redirectTo = safeAuthRedirect(searchParams.get("redirect"));
   const { isSupabaseEnabled, signIn } = useAuth();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export function SignInPage() {
       </div>
 
       <GlassCard>
+        <GoogleSignInButton redirectTo={redirectTo} disabled={!isSupabaseEnabled || submitting} />
         <form className="space-y-4" onSubmit={handleSubmit}>
           {!isSupabaseEnabled ? (
             <p className="rounded-ae-md border border-ae-amber/20 bg-ae-amber/10 p-3 text-sm text-ae-amber">

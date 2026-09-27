@@ -1,5 +1,6 @@
+import { ListingResults } from "../components/ListingResults";
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { ApplicationModal } from "../components/ApplicationModal";
 import { FilterChip } from "../components/FilterChip";
@@ -21,7 +22,8 @@ const baseFilters = [
 
 export function MarketplacePage() {
   const navigate = useNavigate();
-  const { createdOpportunities, isSharedMode } = useAgentExchange();
+  const [params, setParams]=useSearchParams();
+  const { createdOpportunities, isSharedMode, loading, error } = useAgentExchange();
   const allOpportunities = useMemo(
     () => getAllOpportunities(createdOpportunities),
     [createdOpportunities],
@@ -30,14 +32,15 @@ export function MarketplacePage() {
     () =>
       Array.from(
         new Set([
-          ...baseFilters,
+          "All",
+          ...(params.get("category") ? [params.get("category")!] : []),
           ...allOpportunities.map((opportunity) => opportunity.category),
         ]),
       ),
-    [allOpportunities],
+    [allOpportunities, params],
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState(baseFilters[0]);
+  const [activeFilter, setActiveFilter] = useState(params.get("category") ?? baseFilters[0]);
   const [applicationOpportunity, setApplicationOpportunity] =
     useState<Opportunity | null>(null);
   const [negotiationOpportunity, setNegotiationOpportunity] =
@@ -47,6 +50,7 @@ export function MarketplacePage() {
     const query = searchQuery.trim().toLowerCase();
 
     return allOpportunities.filter((opportunity) => {
+      if(params.get("brief") && opportunity.id !== params.get("brief")) return false;
       const matchesFilter =
         activeFilter === "All" || opportunity.category === activeFilter;
       const matchesSearch =
@@ -64,7 +68,7 @@ export function MarketplacePage() {
 
       return matchesFilter && matchesSearch;
     });
-  }, [activeFilter, allOpportunities, searchQuery]);
+  }, [activeFilter, allOpportunities, searchQuery, params]);
 
   return (
     <section className="space-y-8">
@@ -74,12 +78,12 @@ export function MarketplacePage() {
             Opportunity marketplace
           </p>
           <h1 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text sm:text-5xl lg:max-w-3xl">
-            Match autonomous agents to enterprise briefs.
+            Find your next assignment.
           </h1>
           <p className="mt-3 max-w-2xl text-ae-text-muted">
             {isSharedMode
               ? "Briefs posted by organizations on this marketplace. Apply with an agent you operate, or hire one against a brief you posted."
-              : "Seed and locally created opportunities are searchable and filterable in this browser. No backend, authentication, or payments are included."}
+              : "Explore sample briefs in this demo workspace. Sign in to work with the shared marketplace."}
           </p>
         </div>
         <div className="flex gap-3">
@@ -113,29 +117,19 @@ export function MarketplacePage() {
 
       <div className="flex items-center justify-between gap-4">
         <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-text-muted">
-          {visibleOpportunities.length} opportunities
+          {loading ? "Loading briefs…" : `${visibleOpportunities.length} opportunities`}
         </p>
         <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold text-ae-primary">
-          Trust: Lvl 3+
+          {activeFilter === "All" ? "All categories" : activeFilter}
         </span>
       </div>
 
-      <div className="grid gap-4">
-        {visibleOpportunities.map((opportunity) => (
-          <OpportunityCard
-            key={opportunity.id}
-            onApply={setApplicationOpportunity}
-            onNegotiate={setNegotiationOpportunity}
-            opportunity={opportunity}
-          />
-        ))}
-      </div>
-
-      {visibleOpportunities.length === 0 ? (
-        <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-8 text-center text-ae-text-muted backdrop-blur-2xl">
-          No opportunities match that search.
-        </div>
-      ) : null}
+      <ListingResults loading={loading} error={error} hasResults={visibleOpportunities.length > 0}
+        searchActive={Boolean(searchQuery.trim() || activeFilter !== "All" || params.get("brief"))}
+        noMatches={<><h2 className="text-xl font-semibold text-ae-text">No matching briefs yet</h2><p className="my-3 text-sm">Try a broader search or explore all categories.</p><SecondaryButton onClick={()=>{setSearchQuery("");setActiveFilter("All");setParams({});}}>Clear filters</SecondaryButton></>}
+        introduction={<><h2 className="text-xl font-semibold text-ae-text">Start with a clear brief</h2><p className="mt-2">Post the work you need done, with a scope, budget, and acceptance criteria.</p></>}>
+        <div className="grid gap-4">{visibleOpportunities.map(opportunity => <OpportunityCard key={opportunity.id} onApply={setApplicationOpportunity} onNegotiate={setNegotiationOpportunity} opportunity={opportunity}/>)}</div>
+      </ListingResults>
       <ApplicationModal
         isOpen={Boolean(applicationOpportunity)}
         onClose={() => setApplicationOpportunity(null)}

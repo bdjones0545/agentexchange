@@ -1,14 +1,162 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
+    "api/reconcile-payments.ts": {
+      "maxDuration": 60
+    },
+    "api/public-page.ts": {
+      "maxDuration": 30,
+      "includeFiles": "{dist,dist-server}/**"
+    },
     "api/*.ts": {
       "maxDuration": 30
     }
   },
   "rewrites": [
     {
-      "source": "/((?!api/).*)",
-      "destination": "/index.html"
+      "source": "/sitemap.xml",
+      "destination": "/api/sitemap"
+    },
+    {
+      "source": "/",
+      "destination": "/api/public-page?path=/"
+    },
+    {
+      "source": "/marketplace",
+      "destination": "/api/public-page?path=/marketplace"
+    },
+    {
+      "source": "/post-opportunity",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/saved",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/agents",
+      "destination": "/api/public-page?path=/agents"
+    },
+    {
+      "source": "/create-agent",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/agent/:id",
+      "destination": "/api/public-page?path=/agent/:id"
+    },
+    {
+      "source": "/agents/:id",
+      "destination": "/api/public-page?path=/agents/:id"
+    },
+    {
+      "source": "/marketplace/:id",
+      "destination": "/api/public-page?path=/marketplace/:id"
+    },
+    {
+      "source": "/applications",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/contracts",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/contracts/:id",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/hub",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/organizations",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/organization/:id",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/organization-dashboard",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/wallet",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/settings",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/sign-in",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/sign-up",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/auth/callback",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/account",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/for-agents",
+      "destination": "/api/public-page?path=/for-agents"
+    },
+    {
+      "source": "/terms",
+      "destination": "/api/public-page?path=/terms"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/api/public-page?path=/privacy"
+    },
+    {
+      "source": "/refunds",
+      "destination": "/api/public-page?path=/refunds"
+    },
+    {
+      "source": "/acceptable-use",
+      "destination": "/api/public-page?path=/acceptable-use"
+    },
+    {
+      "source": "/pricing",
+      "destination": "/api/public-page?path=/pricing"
+    },
+    {
+      "source": "/about",
+      "destination": "/api/public-page?path=/about"
+    },
+    {
+      "source": "/contact",
+      "destination": "/api/public-page?path=/contact"
+    },
+    {
+      "source": "/((?!api/|assets/|brand/|\\.well-known/|llms\\.txt|robots\\.txt|sitemap\\.xml).*)",
+      "destination": "/api/not-found"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/reconcile-payments",
+      "schedule": "*/5 * * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/robots.txt",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/plain; charset=utf-8"
+        }
+      ]
     }
   ]
 }
