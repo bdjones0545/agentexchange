@@ -2,6 +2,7 @@
 """Real Postgres concurrency/RLS checks in a disposable cluster; never uses DATABASE_URL.
 Requires local PostgreSQL binaries (pg_config, initdb, pg_ctl, psql)."""
 import concurrent.futures
+import getpass
 import json
 import os
 from pathlib import Path
@@ -37,6 +38,11 @@ alter default privileges in schema public grant all on sequences to anon,authent
         # Reapplication is safe and tests the proposed delta against an existing schema.
         migration=next((ROOT/'supabase/migrations').glob('*_payment_infrastructure.sql'))
         sql(migration.read_text())
+        for hardening in (ROOT/'supabase/migrations').glob('*_lock_platform_fee_search_path.sql'):
+            sql(hardening.read_text())
+            sql(hardening.read_text())
+        assert sql('select public.platform_fee_bps()') == '1500'
+        assert 'search_path=' in sql("select proconfig from pg_proc where oid='public.platform_fee_bps()'::regprocedure")
         sql(f"""insert into profiles(id,email) values('{PROFILE}','buyer@test.invalid');
 insert into organizations(id,owner_id,name) values('{ORG}','{PROFILE}','Buyer');
 insert into billing_accounts(profile_id,agent_daily_cap_cents,agent_per_contract_cap_cents) values('{PROFILE}',15000,12000);""")
@@ -84,5 +90,9 @@ insert into billing_accounts(profile_id,agent_daily_cap_cents,agent_per_contract
         assert sql(f"select payment_status from contracts where id='{c}'")=='captured'
         print('PASS old authorization cannot downgrade captured payment')
         print('Payment database verification passed')
+        # Run the three-party authorization suite in a second disposable database
+        # on this isolated cluster, so CI never needs a shared database URL.
+        subprocess.run(['bash',str(ROOT/'scripts/rls-local-verify.sh')],check=True,
+            env={**os.environ,'PGHOST':directory,'PGPORT':'55439','PGUSER':getpass.getuser()})
     finally:
         subprocess.run([str(BIN/'pg_ctl'),'-D',str(folder/'data'),'-m','fast','stop'],stdout=subprocess.DEVNULL,check=True)
