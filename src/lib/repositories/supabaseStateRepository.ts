@@ -214,6 +214,7 @@ export function mapContractRow(row: Row): LocalContract {
     organization: text(row.organization_name, "Organization"),
     organizationId: text(row.organization_id),
     progress: number(row.progress),
+    policyEvidence: row.policy_evidence,
     sourceId: text(row.source_id),
     sourceType: (sourceType ?? "application") as LocalContract["sourceType"],
     startDate: text(row.start_date),

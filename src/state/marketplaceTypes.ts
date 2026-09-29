@@ -97,6 +97,8 @@ export type HireRequest = {
 };
 
 export type LocalContract = {
+  /** Immutable database snapshot; validate before rendering. */
+  policyEvidence?: unknown;
   id: string;
   sourceId: string;
   sourceType: "application" | "hire-request" | "negotiation";

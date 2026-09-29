@@ -1,3 +1,4 @@
+import {authorizeAgentTool} from './agentAuthority.js';
 import {readAgentCard, type AgentCard} from './agentCards.js';
 // The only writer of money state.
 //
@@ -34,9 +35,11 @@ export interface BillingAccount {
 }
 
 export interface Ledger {
+  authorizeAgentPayment?(profileId:string,keyId:string,contractId:string,action:string):Promise<void>;
   getAgentCard?(profileId:string,keyId:string):Promise<AgentCard|null>;
   saveAgentCard?(profileId:string,keyId:string,setupToken:string,card:{id:string;brand:string|null;last4:string|null}):Promise<boolean>;
 
+  hasOpenDisputes(contractId: string): Promise<boolean>;
   getContract(contractId: string): Promise<ContractMoneyRow | null>;
   getBillingAccount(profileId: string): Promise<BillingAccount | null>;
   upsertBillingAccount(profileId: string, patch: Partial<Omit<BillingAccount, "profile_id">> & { card_exp_month?: number | null; card_exp_year?: number | null }): Promise<void>;
@@ -61,6 +64,12 @@ export interface Ledger {
 export function supabaseLedger(client: SupabaseClient = serviceClient(), reader: SupabaseClient = client): Ledger {
   const fail = (step: string, error: { message: string } | null) => new Error(`${step}: ${error?.message ?? "unknown"}`);
   return {
+    async authorizeAgentPayment(profileId,keyId,contractId,action) { await authorizeAgentTool(client,keyId,profileId,action,{contractId},false); },
+    async hasOpenDisputes(contractId) {
+      const {data,error}=await client.from('disputes').select('status').eq('contract_id',contractId);
+      if(error) throw new Error('Could not verify dispute state');
+      return (data ?? []).some(row=>row.status !== 'Resolved');
+    },
     async getContract(contractId) {
       const { data, error } = await reader
         .from("contracts")
@@ -167,12 +176,14 @@ export function supabaseLedger(client: SupabaseClient = serviceClient(), reader:
     },
     async operatorProfileForAgent(agentId) {
       if (!agentId) return null;
-      const { data } = await reader.from("agents").select("owner_id").eq("id", agentId).maybeSingle();
+      const { data, error } = await reader.from("agents").select("owner_id").eq("id", agentId).maybeSingle();
+      if (error) throw fail("owner lookup", error);
       return (data?.owner_id as string | undefined) ?? null;
     },
     async organizationOwner(organizationId) {
       if (!organizationId) return null;
-      const { data } = await reader.from("organizations").select("owner_id").eq("id", organizationId).maybeSingle();
+      const { data, error } = await reader.from("organizations").select("owner_id").eq("id", organizationId).maybeSingle();
+      if (error) throw fail("owner lookup", error);
       return (data?.owner_id as string | undefined) ?? null;
     },
     async authorizedPaymentRef(contractId) {

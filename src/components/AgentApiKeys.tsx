@@ -9,6 +9,9 @@ type KeyRecord = {
   id: string;
   name: string;
   can_spend: boolean;
+  paused_at: string | null;
+  allowed_actions: string[];
+  organization_ids: string[];
   key_prefix: string;
   created_at: string;
   last_used_at: string | null;
@@ -42,6 +45,10 @@ const MCP_URL = `${typeof window !== "undefined" ? window.location.origin : "htt
  */
 export function AgentApiKeys() {
   const [keys, setKeys] = useState<KeyRecord[]>([]);
+  const [organizations, setOrganizations] = useState<Array<{id:string;name:string}>>([]);
+  const [organizationIds, setOrganizationIds] = useState<string[]>([]);
+  const [hiring, setHiring] = useState(false);
+  const [review, setReview] = useState(false);
   const [canSpend, setCanSpend] = useState(false);
   const [name, setName] = useState("");
   const [minted, setMinted] = useState<{ key: string; name: string } | null>(null);
@@ -55,12 +62,24 @@ export function AgentApiKeys() {
 
   useEffect(() => {
     void load();
+    void (async()=>{
+      if(!supabase) return;
+      const {data:auth}=await supabase.auth.getUser();
+      if(!auth.user) return;
+      const {data:profile}=await supabase.from('profiles').select('id').eq('user_id',auth.user.id).maybeSingle();
+      if(!profile) return;
+      const {data}=await supabase.from('organizations').select('id,name').eq('owner_id',profile.id);
+      setOrganizations(data ?? []);
+    })();
   }, []);
 
   async function mint() {
     setBusy(true);
     setError(null);
-    const r = await authed("POST", { name: name.trim(), canSpend });
+    const allowedActions=['publish_agent','apply_to_opportunity','negotiate_opportunity','respond_to_negotiation','respond_to_hire_request','post_message','submit_deliverable','update_progress',
+      ...(hiring ? ['post_opportunity','accept_application','reject_application','counter_negotiation','accept_negotiation','send_hire_request'] : []),
+      ...(review ? ['review_deliverable'] : []), ...(canSpend ? ['fund_contract','release_payment'] : [])];
+    const r = await authed("POST", { name: name.trim(), canSpend, allowedActions, organizationIds });
     setBusy(false);
     if (!r.ok) {
       setError(String(r.data.error ?? `could not create key (${r.status})`));
@@ -69,6 +88,9 @@ export function AgentApiKeys() {
     setMinted({ key: r.data.key as string, name: name.trim() });
     setName("");
     setCanSpend(false);
+    setHiring(false);
+    setReview(false);
+    setOrganizationIds([]);
     void load();
   }
 
@@ -89,7 +111,7 @@ export function AgentApiKeys() {
         <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">Agent API keys</p>
         <h2 className="mt-2 font-ae-display text-2xl font-semibold text-ae-text">Let your agents work here</h2>
         <p className="mt-2 text-sm leading-6 text-ae-text-muted">
-          A key lets an agent you run act as this account on the marketplace's MCP server: publish a listing, find briefs, apply, negotiate, accept hire requests and deliver. It has exactly your permissions, nothing more. Connect it to <code className="rounded bg-white/[0.08] px-1 py-0.5 font-mono text-xs">{MCP_URL}</code> with <code className="rounded bg-white/[0.08] px-1 py-0.5 font-mono text-xs">Authorization: Bearer &lt;key&gt;</code>.
+          A key lets an agent you run act as this account on the marketplace's MCP server: publish a listing, find briefs, apply, negotiate, accept hire requests and deliver. Worker actions are enabled by default. Hiring, work review and payments require separate grants below. Private reads include your participant records; use a dedicated operator account when read isolation is required. Connect it to <code className="rounded bg-white/[0.08] px-1 py-0.5 font-mono text-xs">{MCP_URL}</code> with <code className="rounded bg-white/[0.08] px-1 py-0.5 font-mono text-xs">Authorization: Bearer &lt;key&gt;</code>.
         </p>
       </div>
 
@@ -117,14 +139,23 @@ export function AgentApiKeys() {
           placeholder="Key name, e.g. research-agent-prod"
           value={name}
         />
-        <PrimaryButton disabled={busy || name.trim().length < 2 || active.length >= 10} type="submit">
+        <PrimaryButton disabled={busy || name.trim().length < 2 || active.length >= 10 || ((hiring || review || canSpend) && organizationIds.length===0)} type="submit">
           Create key
         </PrimaryButton>
       </form>
+      <fieldset className="space-y-2 text-sm text-ae-text-muted">
+        <legend className="font-semibold text-ae-text">Buyer authority for this key</legend>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={hiring} onChange={e=>setHiring(e.target.checked)}/> Post work, negotiate and hire</label>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={review} onChange={e=>setReview(e.target.checked)}/> Approve work and request revisions</label>
+        <p>Choose the organizations this key may act for. An empty selection grants no buyer mutations.</p>
+        {organizations.map(org=><label className="flex items-center gap-2" key={org.id}><input type="checkbox" checked={organizationIds.includes(org.id)} onChange={e=>setOrganizationIds(ids=>e.target.checked ? [...ids,org.id] : ids.filter(id=>id!==org.id))}/>{org.name}</label>)}
+        {!organizations.length && <p>Create an organization before granting buyer authority.</p>}
+      </fieldset>
       <label className="flex items-center gap-2 text-sm text-ae-text-muted">
         <input type="checkbox" checked={canSpend} onChange={e=>setCanSpend(e.target.checked)} />
         Allow this key to fund and release payments within my spending limits
       </label>
+      {(hiring || review || canSpend) && organizationIds.length===0 && <p className="text-xs text-ae-amber">Select at least one organization to grant buyer authority.</p>}
       {active.length >= 10 ? <p className="text-xs text-ae-text-muted">Ten active keys is the limit; revoke one to add another.</p> : null}
       {error ? <p className="text-sm text-ae-amber">{error}</p> : null}
 
@@ -134,12 +165,18 @@ export function AgentApiKeys() {
             <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between" key={k.id}>
               <div>
                 <p className="font-semibold text-ae-text">
-                  {k.name} {k.can_spend ? "· Payments allowed" : "· No payments"} <span className="font-mono text-xs text-ae-text-muted">{k.key_prefix}…</span>
+                  {k.name} {k.paused_at ? "· Paused" : ""} {k.can_spend ? "· Payments allowed" : "· No payments"} <span className="font-mono text-xs text-ae-text-muted">{k.key_prefix}…</span>
                 </p>
                 <p className="text-xs text-ae-text-muted">
                   Created {new Date(k.created_at).toLocaleDateString()} · {k.revoked_at ? `revoked ${new Date(k.revoked_at).toLocaleDateString()}` : k.last_used_at ? `last used ${new Date(k.last_used_at).toLocaleString()}` : "never used"}
                 </p>
               </div>
+              {!k.revoked_at && <SecondaryButton disabled={busy} onClick={async()=>{
+                setBusy(true);
+                const r=await authed('PATCH',{id:k.id,paused:!k.paused_at});
+                if(!r.ok) setError(String(r.data.error ?? 'Could not change pause'));
+                setBusy(false); void load();
+              }}>{k.paused_at ? 'Resume' : 'Pause'}</SecondaryButton>}
               {!k.revoked_at && <a className="text-sm text-ae-primary underline" href={`/account?agentSetup=${encodeURIComponent(k.id)}`}>Manage card & payments</a>}
               {k.revoked_at ? null : (
                 <SecondaryButton disabled={busy} onClick={() => void revoke(k.id)}>

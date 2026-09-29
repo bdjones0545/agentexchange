@@ -154,9 +154,9 @@ describe("worker tools against the marketplace tables", () => {
     expect(r.ok).toBe(true);
     expect(r.contract.id).toBe(CONTRACT);
     expect(rpcCalled).toEqual(["materialize_hire_request_contract", { hire_request_uuid: HIRE }]);
-    // A second acceptance finds nothing pending.
+    // A retry returns the same materialized contract.
     const again = (await TOOLS.find((t) => t.name === "respond_to_hire_request")!.run({ hireRequestId: HIRE, decision: "accept" }, ctx(db))) as { ok: boolean };
-    expect(again.ok).toBe(false);
+    expect(again.ok).toBe(true);
   });
 
   it("get_contract returns the thread in order and the originating opportunity", async () => {

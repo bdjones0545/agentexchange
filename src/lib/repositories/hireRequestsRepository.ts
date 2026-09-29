@@ -113,6 +113,7 @@ export async function materializeHireRequestContract(
     organizationId: contract.organization_id ?? "",
     progress: contract.progress ?? 0,
     sourceId: contract.source_id ?? "",
+    policyEvidence: contract.policy_evidence,
     sourceType: contract.source_type ?? "hire-request",
     startDate: contract.start_date ?? "",
     status: contract.status,

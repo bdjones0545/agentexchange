@@ -1,0 +1,15 @@
+import {beforeEach,it,expect,vi} from 'vitest';
+const m=vi.hoisted(()=>({caller:vi.fn(),getUser:vi.fn(),rpc:vi.fn(),deleteUser:vi.fn()}));
+vi.mock('../server/config.js',()=>({readServerEnv:()=>({})}));
+vi.mock('../server/caller.js',()=>({bearerToken:(r:Request)=>r.headers.get('authorization')?.replace('Bearer ','')??null,callerProfile:m.caller}));
+vi.mock('../server/service.js',()=>({serviceClient:()=>({rpc:m.rpc,auth:{admin:{deleteUser:m.deleteUser}}})}));
+import {POST} from '../api/delete-account';
+const request=(body:unknown={confirmation:'DELETE'},token='human')=>new Request('https://example.test/api/delete-account',{method:'POST',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},body:JSON.stringify(body)});
+beforeEach(()=>{vi.resetAllMocks();m.caller.mockResolvedValue({profileId:'profile',client:{auth:{getUser:m.getUser}}});m.getUser.mockResolvedValue({data:{user:{id:'verified-user',last_sign_in_at:new Date().toISOString()}}});m.rpc.mockResolvedValue({data:true});m.deleteUser.mockResolvedValue({error:null});});
+it('deletes only the verified caller, ignoring a supplied target',async()=>{expect((await POST(request({confirmation:'DELETE',userId:'victim'}))).status).toBe(200);expect(m.deleteUser).toHaveBeenCalledWith('verified-user');});
+it('rejects missing confirmation',async()=>{expect((await POST(request({}))).status).toBe(400);expect(m.deleteUser).not.toHaveBeenCalled();});
+it('rejects agent credentials',async()=>{expect((await POST(request(undefined,'axk_test'))).status).toBe(401);expect(m.deleteUser).not.toHaveBeenCalled();});
+it('requires recent sign-in',async()=>{m.getUser.mockResolvedValue({data:{user:{id:'u',last_sign_in_at:'2020-01-01'}}});expect((await POST(request())).status).toBe(403);expect(m.deleteUser).not.toHaveBeenCalled();});
+it('blocks retained records',async()=>{m.rpc.mockResolvedValue({data:false});expect((await POST(request())).status).toBe(409);expect(m.deleteUser).not.toHaveBeenCalled();});
+it('fails closed without deployed guard',async()=>{m.rpc.mockResolvedValue({error:{message:'missing function'}});expect((await POST(request())).status).toBe(503);expect(m.deleteUser).not.toHaveBeenCalled();});
+it('never reports success after provider failure',async()=>{m.deleteUser.mockResolvedValue({error:{message:'constraint'}});expect((await POST(request())).status).toBe(409);});

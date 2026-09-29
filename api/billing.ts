@@ -1,3 +1,4 @@
+import { policyWriteResponse } from '../server/policyEnforcement.js';
 import { MoneyOperationError, operationStore } from "../server/moneyOperations.js";
 // The operator's card for agent-funded contracts.
 //   GET  /api/billing            saved card (brand/last4) and the agent daily cap
@@ -52,6 +53,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   const a = await auth(request);
   if (!a.ok) return a.response;
+  const policyDenied = await policyWriteResponse(a.client); if (policyDenied) return policyDenied;
   const body = (await request.json().catch(() => ({}))) as { action?: unknown; agentDailyCapCents?: unknown; agentPerContractCapCents?: unknown };
   if (body.action === "cap") {
     const cap = Number(body.agentDailyCapCents);

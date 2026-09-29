@@ -2443,3 +2443,655 @@ grant all on public.agent_payment_cards to service_role;
 create policy agent_payment_cards_owner_read on public.agent_payment_cards for select to authenticated
 using (profile_id = public.current_profile_id());
 create index agent_payment_cards_profile_idx on public.agent_payment_cards(profile_id);
+
+-- BEGIN bounded marketplace authority
+-- Existing keys retain worker capabilities, but hiring, review and payment actions
+-- require explicit owner grants after this migration. No historical rows removed.
+alter table public.agent_api_keys add column if not exists paused_at timestamptz;
+alter table public.agent_api_keys add column if not exists organization_ids uuid[] not null default '{}';
+alter table public.agent_api_keys add column if not exists allowed_actions text[] not null default array[
+ 'publish_agent','apply_to_opportunity','negotiate_opportunity','respond_to_negotiation','respond_to_hire_request','post_message','submit_deliverable','update_progress'];
+
+-- A single operator cannot be both the worker and the approving organization.
+create or replace function public.is_contract_org_side(contract_uuid uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+ select exists(select 1 from public.contracts c where c.id=contract_uuid
+  and public.is_organization_owner(c.organization_id) and not public.is_agent_owner(c.agent_id))
+$$;
+revoke all on function public.is_contract_org_side(uuid) from public,anon;
+grant execute on function public.is_contract_org_side(uuid) to authenticated;
+
+create or replace function public.enforce_deliverable_update_authority()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+ if public.current_profile_id() is null then return new; end if;
+ if new.contract_id is distinct from old.contract_id or new.id is distinct from old.id or new.created_at is distinct from old.created_at then
+  raise exception 'Deliverable identity is immutable' using errcode='42501'; end if;
+ if old.status='approved' and to_jsonb(new)-'updated_at' is distinct from to_jsonb(old)-'updated_at' then
+  raise exception 'Approved work is immutable' using errcode='42501'; end if;
+ if old.status <> 'draft' and (new.title is distinct from old.title or new.notes is distinct from old.notes or new.gate is distinct from old.gate) then
+  raise exception 'Only draft work can be edited' using errcode='42501'; end if;
+ if new.decisions is distinct from old.decisions then
+  if old.status<>'submitted' or new.status not in ('approved','draft') or new.status=old.status then raise exception 'Decisions require a submitted work transition' using errcode='42501'; end if;
+  if jsonb_typeof(new.decisions)<>'array' or jsonb_array_length(new.decisions)<>jsonb_array_length(old.decisions)+1
+   or exists(select 1 from jsonb_array_elements(old.decisions) with ordinality x(value,n) where new.decisions->((n-1)::int) is distinct from value) then
+   raise exception 'Decision history is append-only' using errcode='42501'; end if;
+ end if;
+ if new.status is distinct from old.status and not ((old.status='draft' and new.status='submitted') or (old.status='submitted' and new.status in ('approved','draft'))) then
+  raise exception 'Invalid deliverable transition' using errcode='42501'; end if;
+ if (old.status='submitted' and new.status in ('approved','draft')) or new.approved_at is distinct from old.approved_at or new.decisions is distinct from old.decisions then
+  if not public.is_contract_org_side(old.contract_id) then raise exception 'Only an independent organization reviewer can decide work' using errcode='42501'; end if;
+ end if;
+ return new;
+end $$;
+revoke all on function public.enforce_deliverable_update_authority() from public,anon,authenticated;
+
+-- A review is evidence of approved work, not a self-asserted listing attribute.
+drop policy if exists reviews_organization_insert on public.reviews;
+create policy reviews_organization_insert on public.reviews for insert to authenticated with check (
+ reviewer_id=public.current_profile_id() and public.is_contract_org_side(contract_id)
+ and exists(select 1 from public.contracts c where c.id=reviews.contract_id and c.agent_id=reviews.agent_id)
+ and exists(select 1 from public.contract_deliverables d where d.contract_id=reviews.contract_id)
+ and not exists(select 1 from public.contract_deliverables d where d.contract_id=reviews.contract_id and d.status<>'approved')
+);
+
+-- Contract creation and application acceptance commit together, including browser writes.
+create or replace function public.accept_contract_application() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare a public.applications%rowtype;
+begin
+ if new.source_type='application' then
+  select * into a from public.applications where id=new.source_id for update;
+  if not found or a.agent_id is distinct from new.agent_id or a.status not in ('pending','accepted') then
+   raise exception 'Application is not eligible for a contract' using errcode='42501'; end if;
+  update public.applications set status='accepted' where id=a.id;
+ end if;
+ return new;
+end $$;
+revoke all on function public.accept_contract_application() from public,anon,authenticated;
+drop trigger if exists contracts_accept_application on public.contracts;
+create trigger contracts_accept_application after insert on public.contracts for each row execute function public.accept_contract_application();
+
+-- Lock the contract before changing delivery evidence, so concurrent decisions
+-- serialize and the derived summary observes the previous decision's commit.
+create or replace function public.lock_delivery_contract() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare c public.contracts%rowtype;
+begin
+ select * into c from public.contracts where id=new.contract_id for update;
+ if public.current_profile_id() is not null then
+  if c.status in ('Paused','Disputed','Cancelled') or exists(select 1 from public.disputes where contract_id=c.id and status<>'Resolved') then
+   raise exception 'Resolve the contract hold before changing delivery' using errcode='42501'; end if;
+  if c.amount_cents>0 and c.payment_status not in ('authorized','captured','paid_out') then
+   raise exception 'Priced work requires funding authorization' using errcode='42501'; end if;
+  if tg_op='INSERT' and (new.status='approved' or new.approved_at is not null or jsonb_array_length(new.decisions)>0) then
+   raise exception 'New work must be submitted before independent review' using errcode='42501'; end if;
+ end if;
+ return new;
+end $$;
+revoke all on function public.lock_delivery_contract() from public,anon,authenticated;
+drop trigger if exists a_lock_delivery_contract on public.contract_deliverables;
+create trigger a_lock_delivery_contract before insert or update on public.contract_deliverables for each row execute function public.lock_delivery_contract();
+create or replace function public.summarize_contract_delivery() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare total integer; approved integer; submitted integer; derived_progress integer;
+begin
+ select count(*),count(*) filter(where status='approved'),count(*) filter(where status='submitted'),
+ coalesce(round(avg(case when status='approved' then 100 when status='submitted' then 50 else 0 end)),0)
+ into total,approved,submitted,derived_progress from public.contract_deliverables where contract_id=new.contract_id;
+ update public.contracts set status=case when total>0 and total=approved then 'Completed' when submitted>0 then 'In Review' else 'Active' end,
+ progress=derived_progress where id=new.contract_id and status not in ('Paused','Disputed','Cancelled');
+ return new;
+end $$;
+revoke all on function public.summarize_contract_delivery() from public,anon,authenticated;
+drop trigger if exists delivery_summary on public.contract_deliverables;
+create trigger delivery_summary after insert or update on public.contract_deliverables for each row execute function public.summarize_contract_delivery();
+
+-- Evidence has no cascading resource foreign keys: deleting a source cannot erase it.
+create table if not exists public.economic_audit (
+ id uuid primary key default gen_random_uuid(),
+ occurred_at timestamptz not null default clock_timestamp(),
+ actor_profile_id uuid,
+ actor_kind text not null,
+ organization_id uuid,
+ resource_table text not null,
+ resource_id text not null,
+ action text not null,
+ authority jsonb not null default '{}'::jsonb,
+ previous_state jsonb,
+ next_state jsonb,
+ provider_ref text
+);
+alter table public.economic_audit enable row level security;
+revoke all on public.economic_audit from public,anon,authenticated,service_role;
+grant select,insert on public.economic_audit to service_role;
+create index if not exists economic_audit_resource on public.economic_audit(resource_table,resource_id,occurred_at);
+create or replace function public.prevent_audit_rewrite() returns trigger
+language plpgsql set search_path='' as $$ begin raise exception 'Economic audit is append-only' using errcode='42501'; end $$;
+revoke all on function public.prevent_audit_rewrite() from public,anon,authenticated;
+drop trigger if exists economic_audit_immutable on public.economic_audit;
+create trigger economic_audit_immutable before update or delete on public.economic_audit for each row execute function public.prevent_audit_rewrite();
+create or replace function public.record_economic_change() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare before_row jsonb; after_row jsonb; r jsonb; org uuid; cid uuid;
+begin
+ if tg_op<>'INSERT' then before_row=to_jsonb(old); end if;
+ if tg_op<>'DELETE' then after_row=to_jsonb(new); end if;
+ r=coalesce(after_row,before_row);
+ -- Store contractual evidence but never card details, key hashes, tokens or raw provider payloads.
+ before_row=before_row-'metadata'-'key_hash'-'key_prefix'-'setup_token'-'payment_method_id';
+ after_row=after_row-'metadata'-'key_hash'-'key_prefix'-'setup_token'-'payment_method_id';
+ if tg_table_name='organizations' then org=(r->>'id')::uuid;
+ elsif r ? 'organization_id' then org=(r->>'organization_id')::uuid;
+ elsif r ? 'contract_id' then
+  cid=(r->>'contract_id')::uuid;
+  select organization_id into org from public.contracts where id=cid;
+ elsif r ? 'opportunity_id' then
+  select organization_id into org from public.opportunities where id=(r->>'opportunity_id')::uuid;
+ end if;
+ insert into public.economic_audit(actor_profile_id,actor_kind,organization_id,resource_table,resource_id,action,authority,previous_state,next_state,provider_ref)
+ values(public.current_profile_id(),case when public.current_profile_id() is null then 'platform' else 'operator_session' end,org,tg_table_name,coalesce(r->>'id',r->>'key',r->>'profile_id'),tg_op,
+ jsonb_build_object('boundary','RLS and database triggers'),before_row,after_row,coalesce(r->>'provider_ref',r->>'payment_intent_id'));
+ return coalesce(new,old);
+end $$;
+revoke all on function public.record_economic_change() from public,anon,authenticated;
+do $$ declare t text; begin
+ foreach t in array array['opportunities','applications','negotiations','hire_requests','contracts','contract_deliverables','disputes','reviews','payments','payouts','agent_api_keys','billing_accounts'] loop
+  execute format('drop trigger if exists economic_evidence on public.%I',t);
+  execute format('create trigger economic_evidence after insert or update or delete on public.%I for each row execute function public.record_economic_change()',t);
+ end loop;
+end $$;
+
+-- Completed means approved work, never merely a caller-supplied progress label.
+create or replace function public.guard_contract_completion() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ if public.current_profile_id() is null then return new; end if;
+ if (new.status='Completed' or new.progress=100) and
+ (not exists(select 1 from public.contract_deliverables where contract_id=new.id)
+  or exists(select 1 from public.contract_deliverables where contract_id=new.id and status<>'approved')) then
+  raise exception 'Completion requires all deliverables approved' using errcode='42501'; end if;
+ if old.status in ('Paused','Disputed','Cancelled') and new.status is distinct from old.status and not public.is_contract_org_side(old.id) then
+  raise exception 'Only the organization may resume this contract' using errcode='42501'; end if;
+ return new;
+end $$;
+revoke all on function public.guard_contract_completion() from public,anon,authenticated;
+drop trigger if exists contract_completion_guard on public.contracts;
+create trigger contract_completion_guard before update on public.contracts for each row execute function public.guard_contract_completion();
+
+-- A participant cannot impersonate the opposite party in the contract thread.
+create or replace function public.attribute_contract_message() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare c public.contracts%rowtype;
+begin
+ if public.current_profile_id() is null then return new; end if;
+ select * into c from public.contracts where id=new.contract_id;
+ if public.is_agent_owner(c.agent_id) then new.sender_type='Agent';new.author=c.agent_name;
+ elsif public.is_organization_owner(c.organization_id) then new.sender_type='Organization';new.author=c.organization_name;
+ else raise exception 'Contract participant required' using errcode='42501'; end if;
+ return new;
+end $$;
+revoke all on function public.attribute_contract_message() from public,anon,authenticated;
+drop trigger if exists contract_message_attribution on public.contract_messages;
+create trigger contract_message_attribution before insert on public.contract_messages for each row execute function public.attribute_contract_message();
+
+-- BEGIN transactional marketplace operations
+-- Acceptance and its contract are one transaction for every authenticated path.
+create or replace function public.materialize_accepted_source() returns trigger
+language plpgsql security invoker set search_path='' as $$
+begin
+ if public.current_profile_id() is null then return new; end if;
+ if tg_table_name='hire_requests' then perform public.materialize_hire_request_contract(new.id);
+ else perform public.materialize_negotiation_contract(new.id); end if;
+ return new;
+end $$;
+revoke all on function public.materialize_accepted_source() from public,anon,authenticated;
+drop trigger if exists accepted_hire_contract on public.hire_requests;
+create trigger accepted_hire_contract after update on public.hire_requests for each row
+ when (new.status='accepted' and old.status is distinct from new.status) execute function public.materialize_accepted_source();
+drop trigger if exists accepted_negotiation_contract on public.negotiations;
+create trigger accepted_negotiation_contract after update on public.negotiations for each row
+ when (new.status='accepted' and old.status is distinct from new.status) execute function public.materialize_accepted_source();
+
+-- Server-issued short-lived execution context. Agents never receive the nonce or JWT.
+create table if not exists public.agent_executions (
+ id uuid primary key,
+ token_hash text not null unique,
+ profile_id uuid not null references public.profiles(id),
+ key_id uuid references public.agent_api_keys(id),
+ action text not null,
+ read_only boolean not null,
+ expires_at timestamptz not null,
+ created_at timestamptz not null default now()
+);
+alter table public.agent_executions enable row level security;
+revoke all on public.agent_executions from public,anon,authenticated,service_role;
+grant select,insert on public.agent_executions to service_role;
+alter table public.economic_audit add column if not exists execution_id uuid;
+
+create or replace function public.current_agent_execution() returns public.agent_executions
+language plpgsql security definer set search_path='' as $$
+declare token text; e public.agent_executions%rowtype; k public.agent_api_keys%rowtype;
+begin
+ token=nullif(coalesce(nullif(current_setting('request.headers',true),'')::jsonb,'{}'::jsonb)->>'x-agent-execution','');
+ if token is null then return null; end if;
+ select * into e from public.agent_executions where token_hash=encode(sha256(convert_to(token,'UTF8')),'hex');
+ if not found or e.expires_at<=clock_timestamp() or e.profile_id is distinct from public.current_profile_id() then
+  raise exception 'Invalid or expired agent execution' using errcode='42501'; end if;
+ if e.key_id is not null then
+  -- Owner pause/revoke and an agent's database mutation have an ordered boundary.
+  if current_setting('transaction_read_only') = 'on' then
+   select * into k from public.agent_api_keys where id=e.key_id;
+  else
+   select * into k from public.agent_api_keys where id=e.key_id for share;
+  end if;
+  if not found or k.profile_id<>e.profile_id or k.paused_at is not null or k.revoked_at is not null
+   or (not e.read_only and not e.action=any(k.allowed_actions)) then
+   raise exception 'Agent execution authority is no longer valid' using errcode='42501'; end if;
+ end if;
+ return e;
+end $$;
+revoke all on function public.current_agent_execution() from public,anon,authenticated;
+
+create or replace function public.agent_organization_allowed(org uuid) returns boolean
+language plpgsql security definer set search_path='' as $$
+declare e public.agent_executions%rowtype; permitted boolean;
+begin
+ e=public.current_agent_execution();
+ if e.id is null then return true; end if;
+ if e.key_id is null then return false; end if;
+ select org=any(organization_ids) into permitted from public.agent_api_keys where id=e.key_id;
+ return coalesce(permitted,false);
+end $$;
+revoke all on function public.agent_organization_allowed(uuid) from public,anon;
+grant execute on function public.agent_organization_allowed(uuid) to authenticated;
+create or replace function public.is_organization_owner(organization_uuid uuid) returns boolean
+language sql volatile security definer set search_path='' as $$
+ select exists(select 1 from public.organizations where id=organization_uuid and owner_id=public.current_profile_id())
+ and public.agent_organization_allowed(organization_uuid)
+$$;
+revoke all on function public.is_organization_owner(uuid) from public,anon;
+grant execute on function public.is_organization_owner(uuid) to authenticated;
+
+-- Attach exact execution provenance to each row audit in its own transaction.
+create or replace function public.attribute_economic_execution() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare e public.agent_executions%rowtype;
+begin
+ e=public.current_agent_execution();
+ if e.id is not null then
+  if e.read_only then raise exception 'Read-only execution cannot mutate data' using errcode='42501'; end if;
+  new.execution_id=e.id;
+  new.actor_kind='agent';
+  new.authority=new.authority || jsonb_build_object('keyId',e.key_id,'action',e.action,'executionId',e.id);
+ end if;
+ return new;
+end $$;
+revoke all on function public.attribute_economic_execution() from public,anon,authenticated;
+drop trigger if exists audit_execution_attribution on public.economic_audit;
+create trigger audit_execution_attribution before insert on public.economic_audit for each row execute function public.attribute_economic_execution();
+do $$ declare t text; begin
+ foreach t in array array['agents','contract_messages','deliverable_gate_events'] loop
+  execute format('drop trigger if exists economic_evidence on public.%I',t);
+  execute format('create trigger economic_evidence after insert or update or delete on public.%I for each row execute function public.record_economic_change()',t);
+ end loop;
+end $$;
+
+-- Opportunity authorship must not bypass the key's organization scope.
+create or replace function public.is_opportunity_org_side(opportunity_uuid uuid) returns boolean
+language sql volatile security definer set search_path='' as $$
+ select exists(select 1 from public.opportunities o where o.id=opportunity_uuid
+ and (o.owner_id=public.current_profile_id() or public.is_organization_owner(o.organization_id))
+ and public.agent_organization_allowed(o.organization_id))
+$$;
+revoke all on function public.is_opportunity_org_side(uuid) from public,anon;
+grant execute on function public.is_opportunity_org_side(uuid) to authenticated;
+drop policy if exists applications_participant_read on public.applications;
+create policy applications_participant_read on public.applications for select to authenticated using (
+ owner_id=public.current_profile_id() or public.is_agent_owner(agent_id) or public.is_opportunity_org_side(opportunity_id));
+drop policy if exists negotiations_participant_read on public.negotiations;
+create policy negotiations_participant_read on public.negotiations for select to authenticated using (
+ owner_id=public.current_profile_id() or public.is_agent_owner(agent_id) or public.is_opportunity_org_side(opportunity_id));
+drop policy if exists hire_requests_participant_read on public.hire_requests;
+create policy hire_requests_participant_read on public.hire_requests for select to authenticated using (
+ (owner_id=public.current_profile_id() and public.is_opportunity_org_side(opportunity_id)) or public.is_agent_owner(agent_id));
+
+-- Caller tokens bind intent to one committed row, including concurrent retries.
+create table if not exists public.marketplace_requests (
+ profile_id uuid not null default public.current_profile_id() references public.profiles(id),
+ resource_table text not null,
+ request_id uuid not null,
+ intent jsonb not null,
+ resource_id uuid not null,
+ created_at timestamptz not null default now(),
+ primary key(profile_id,resource_table,request_id)
+);
+alter table public.marketplace_requests enable row level security;
+revoke all on public.marketplace_requests from public,anon,authenticated;
+grant select,insert on public.marketplace_requests to authenticated;
+drop policy if exists own_marketplace_requests on public.marketplace_requests;
+create policy own_marketplace_requests on public.marketplace_requests for select to authenticated using(profile_id=public.current_profile_id());
+drop policy if exists insert_marketplace_requests on public.marketplace_requests;
+create policy insert_marketplace_requests on public.marketplace_requests for insert to authenticated with check(profile_id=public.current_profile_id());
+create or replace function public.replay_marketplace_record(p_table text,p_request uuid,p_intent jsonb) returns jsonb
+language plpgsql security invoker set search_path='' as $$
+declare receipt public.marketplace_requests%rowtype; result jsonb;
+begin
+ if p_table not in ('agents','opportunities','applications','negotiations','hire_requests','contract_messages','contract_deliverables') then raise exception 'Unsupported creation resource'; end if;
+ select * into receipt from public.marketplace_requests where profile_id=public.current_profile_id() and resource_table=p_table and request_id=p_request;
+ if not found then return null; end if;
+ if receipt.intent is distinct from p_intent then raise exception 'Request ID reused with different intent' using errcode='22023'; end if;
+ execute format('select to_jsonb(t) from public.%I t where id=$1',p_table) into result using receipt.resource_id;
+ if result is null then raise exception 'Original resource is no longer accessible' using errcode='42501'; end if;
+ return result;
+end $$;
+create or replace function public.create_marketplace_record(p_table text,p_request uuid,p_intent jsonb,p_row jsonb,p_revision uuid default null) returns jsonb
+language plpgsql security invoker set search_path='' as $$
+declare result jsonb; columns_sql text; values_sql text;
+begin
+ if public.current_profile_id() is null or p_request is null then raise exception 'Authenticated caller and request ID required'; end if;
+ if p_table not in ('agents','opportunities','applications','negotiations','hire_requests','contract_messages','contract_deliverables') then raise exception 'Unsupported creation resource'; end if;
+ perform pg_advisory_xact_lock(hashtextextended(public.current_profile_id()::text||':'||p_table||':'||p_request::text,0));
+ result=public.replay_marketplace_record(p_table,p_request,p_intent);
+ if result is not null then return result; end if;
+ if jsonb_typeof(p_row)<>'object' or p_row='{}'::jsonb then raise exception 'Record required'; end if;
+ select string_agg(format('%I',k),',' order by k),string_agg(format('r.%I',k),',' order by k) into columns_sql,values_sql from jsonb_object_keys(p_row) k;
+ if p_revision is null then
+  execute format('insert into public.%I (%s) select %s from jsonb_populate_record(null::public.%I,$1) r returning to_jsonb(%I.*)',p_table,columns_sql,values_sql,p_table,p_table) into result using p_row;
+ else
+  if p_table<>'contract_deliverables' then raise exception 'Only draft deliveries can be revised'; end if;
+  execute format('update public.contract_deliverables set (%s)=(select %s from jsonb_populate_record(null::public.contract_deliverables,$1) r) where id=$2 and status=''draft'' returning to_jsonb(contract_deliverables.*)',columns_sql,values_sql) into result using p_row,p_revision;
+ end if;
+ if result is null then raise exception 'Creation or revision was not authorized' using errcode='42501'; end if;
+ insert into public.marketplace_requests(resource_table,request_id,intent,resource_id) values(p_table,p_request,p_intent,(result->>'id')::uuid);
+ return result;
+end $$;
+revoke all on function public.replay_marketplace_record(text,uuid,jsonb),public.create_marketplace_record(text,uuid,jsonb,jsonb,uuid) from public,anon;
+grant execute on function public.replay_marketplace_record(text,uuid,jsonb),public.create_marketplace_record(text,uuid,jsonb,jsonb,uuid) to authenticated;
+
+create or replace function public.begin_money_operation(
+  p_key text, p_kind text, p_profile uuid, p_contract uuid, p_request jsonb, p_amount integer
+) returns jsonb language plpgsql security invoker set search_path = '' as $$
+declare op public.money_operations%rowtype; b public.billing_accounts%rowtype; spent bigint; token uuid; c public.contracts%rowtype; k public.agent_api_keys%rowtype; e public.agent_executions%rowtype; required_action text;
+begin
+  -- A dispute and payment authorization serialize on the same contract row.
+  if p_contract is not null then
+    select * into c from public.contracts where id=p_contract for update;
+    if not found then raise exception 'Contract unavailable'; end if;
+  end if;
+  if p_request ? 'agentKeyId' then
+    required_action=case when p_kind='fund_agent' then 'fund_contract' else 'release_payment' end;
+    select * into k from public.agent_api_keys where id=(p_request->>'agentKeyId')::uuid for share;
+    if not found or k.profile_id is distinct from p_profile or k.paused_at is not null or k.revoked_at is not null
+      or not k.can_spend or not required_action=any(k.allowed_actions) or not c.organization_id=any(k.organization_ids) then
+      raise exception 'Current agent payment authority required'; end if;
+    if not exists(select 1 from public.organizations where id=c.organization_id and owner_id=p_profile)
+      or not exists(select 1 from public.agents where id=c.agent_id and owner_id<>p_profile) then
+      raise exception 'Independent buyer and worker required'; end if;
+  end if;
+  if p_request ? 'executionId' then
+    select * into e from public.agent_executions where id=(p_request->>'executionId')::uuid;
+    if not found or e.profile_id is distinct from p_profile or e.key_id is distinct from (p_request->>'agentKeyId')::uuid
+      or e.action is distinct from required_action or e.read_only then raise exception 'Payment execution provenance mismatch'; end if;
+  end if;
+  if p_kind = 'fund_agent' then
+    select * into b from public.billing_accounts where profile_id = p_profile for update;
+    if not found then raise exception 'no billing account'; end if;
+  end if;
+  insert into public.money_operations(key, kind, profile_id, contract_id, request, amount_cents)
+    values(p_key, p_kind, p_profile, p_contract, p_request, p_amount) on conflict do nothing;
+  select * into op from public.money_operations where key = p_key for update;
+  if op.kind <> p_kind or op.profile_id is distinct from p_profile or op.contract_id is distinct from p_contract
+     or (op.request-'executionId') <> (p_request-'executionId') or op.amount_cents <> p_amount then
+    raise exception 'operation conflict: original request must be reused';
+  end if;
+  if op.completed_at is not null then return jsonb_build_object('state','done','result',op.result); end if;
+  if op.lease_until > now() then return jsonb_build_object('state','busy'); end if;
+  if p_kind in ('capture','transfer') then
+    if c.status in ('Paused','Disputed','Cancelled') or exists(select 1 from public.disputes where contract_id=c.id and status is distinct from 'Resolved') then
+      raise exception 'Open dispute or held contract blocks payment authorization'; end if;
+    if not exists(select 1 from public.contract_deliverables where contract_id=c.id)
+      or exists(select 1 from public.contract_deliverables where contract_id=c.id and status<>'approved') then
+      raise exception 'Every deliverable must be approved before payment authorization'; end if;
+  end if;
+  if p_kind = 'fund_agent' then
+    -- Retry of a reservation does not consume the budget twice. Pending reservations
+    -- never age out automatically; completed charges count for the rolling window.
+    select coalesce(sum(amount_cents),0) into spent from public.money_operations
+      where profile_id = p_profile and kind = 'fund_agent' and key <> p_key
+        and (completed_at is null or created_at > now() - interval '24 hours');
+    -- Include pre-migration agent charges so rollout cannot reset the cap.
+    select spent + coalesce(sum(p.amount_cents),0) into spent from public.payments p
+      join public.contracts budget_contract on budget_contract.id=p.contract_id join public.organizations o on o.id=budget_contract.organization_id
+      where o.owner_id=p_profile and p.authorized_by='agent' and p.kind='charge'
+        and p.status in ('authorized','captured') and p.created_at > now()-interval '24 hours'
+        and not exists(select 1 from public.money_operations m where m.contract_id=budget_contract.id and m.kind='fund_agent');
+    if p_amount > b.agent_per_contract_cap_cents or spent + p_amount > b.agent_daily_cap_cents then
+      raise exception 'agent spend cap exceeded; owner approval required';
+    end if;
+  end if;
+  -- Stripe may prune idempotency keys after 24h. Never recreate an unknown charge
+  -- or transfer after that window. Reconciliation must resolve it first.
+  if p_kind <> 'webhook' and op.attempts > 0 and op.created_at < now()-interval '23 hours' then
+    return jsonb_build_object('state','review');
+  end if;
+  token := gen_random_uuid();
+  update public.money_operations set lease_token=token, lease_until=now()+interval '5 minutes', attempts=attempts+1 where key=p_key;
+  if p_kind in ('fund_agent','capture','cancel','transfer') then
+    insert into public.economic_audit(actor_profile_id,actor_kind,organization_id,resource_table,resource_id,action,authority,execution_id,next_state)
+    values(p_profile,case when k.id is null then 'platform' else 'agent' end,c.organization_id,'money_operations',p_key,'payment_authorized',
+      jsonb_build_object('keyId',k.id,'boundary','committed payment authorization'),e.id,jsonb_build_object('kind',p_kind));
+  end if;
+  return jsonb_build_object('state','acquired','token',token);
+end $$;
+
+-- An external provider call already authorized cannot be atomically recalled.
+-- Record late disputes and revocations for reconciliation, without hiding them.
+create table if not exists public.payment_review_cases (
+ id uuid primary key default gen_random_uuid(),
+ operation_key text not null references public.money_operations(key),
+ reason text not null,
+ source_id uuid not null,
+ status text not null default 'open' check(status in ('open','resolved')),
+ resolution_notes text,
+ created_at timestamptz not null default now(),
+ unique(operation_key,reason,source_id)
+);
+alter table public.payment_review_cases enable row level security;
+revoke all on public.payment_review_cases from public,anon,authenticated;
+grant select,insert,update on public.payment_review_cases to service_role;
+create or replace function public.coordinate_dispute_payment() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ perform 1 from public.contracts where id=new.contract_id for update;
+ if new.status is distinct from 'Resolved' then
+  insert into public.payment_review_cases(operation_key,reason,source_id)
+   select key,'dispute_after_authorization',new.id from public.money_operations
+   where contract_id=new.contract_id and kind in ('capture','transfer') and attempts>0
+   on conflict do nothing;
+ end if;
+ return new;
+end $$;
+revoke all on function public.coordinate_dispute_payment() from public,anon,authenticated;
+drop trigger if exists disputes_coordinate_payment on public.disputes;
+create trigger disputes_coordinate_payment before insert or update on public.disputes for each row execute function public.coordinate_dispute_payment();
+create or replace function public.coordinate_key_payment() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ if new.paused_at is not null or new.revoked_at is not null or not new.can_spend
+  or new.allowed_actions is distinct from old.allowed_actions or new.organization_ids is distinct from old.organization_ids then
+  insert into public.payment_review_cases(operation_key,reason,source_id)
+   select key,'authority_changed_after_authorization',new.id from public.money_operations
+   where request->>'agentKeyId'=new.id::text and completed_at is null and attempts>0 on conflict do nothing;
+ end if;
+ return new;
+end $$;
+revoke all on function public.coordinate_key_payment() from public,anon,authenticated;
+drop trigger if exists key_coordinate_payment on public.agent_api_keys;
+create trigger key_coordinate_payment after update on public.agent_api_keys for each row execute function public.coordinate_key_payment();
+
+-- BEGIN bank payout observations
+-- Account-level provider observations, never inferred contract settlement.
+create table if not exists public.seller_bank_payouts (
+ account_id text not null,
+ payout_id text not null,
+ profile_id uuid not null references public.profiles(id),
+ amount_cents bigint not null check(amount_cents>=0),
+ currency text not null,
+ status text not null check(status in ('pending','in_transit','paid','failed','canceled')),
+ automatic boolean not null,
+ arrival_date timestamptz,
+ failure_code text,
+ observed_at timestamptz not null,
+ failure_reviewed_at timestamptz,
+ failure_resolution_notes text,
+ check(failure_reviewed_at is null or length(trim(coalesce(failure_resolution_notes,'')))>0),
+ primary key(account_id,payout_id)
+);
+alter table public.seller_bank_payouts enable row level security;
+revoke all on public.seller_bank_payouts from public,anon,authenticated;
+grant select on public.seller_bank_payouts to authenticated;
+grant select,insert,update on public.seller_bank_payouts to service_role;
+drop policy if exists seller_bank_payout_owner on public.seller_bank_payouts;
+create policy seller_bank_payout_owner on public.seller_bank_payouts for select to authenticated using(profile_id=public.current_profile_id());
+alter table public.seller_accounts add column if not exists bank_checked_at timestamptz;
+create or replace function public.observe_bank_payout(p_account text,p_payout text,p_amount bigint,p_currency text,p_status text,p_automatic boolean,p_arrival timestamptz,p_failure text,p_observed timestamptz)
+returns void language plpgsql security invoker set search_path='' as $$
+declare owner_uuid uuid;
+begin
+ select profile_id into owner_uuid from public.seller_accounts where stripe_account_id=p_account;
+ if not found then raise exception 'Unknown connected seller'; end if;
+ insert into public.seller_bank_payouts(account_id,payout_id,profile_id,amount_cents,currency,status,automatic,arrival_date,failure_code,observed_at)
+ values(p_account,p_payout,owner_uuid,p_amount,upper(p_currency),p_status,p_automatic,p_arrival,p_failure,p_observed)
+ on conflict(account_id,payout_id) do update set amount_cents=excluded.amount_cents,currency=excluded.currency,status=excluded.status,
+ automatic=excluded.automatic,arrival_date=excluded.arrival_date,failure_code=excluded.failure_code,observed_at=excluded.observed_at
+ where public.seller_bank_payouts.observed_at<excluded.observed_at;
+end $$;
+revoke all on function public.observe_bank_payout(text,text,bigint,text,text,boolean,timestamptz,text,timestamptz) from public,anon,authenticated;
+grant execute on function public.observe_bank_payout(text,text,bigint,text,text,boolean,timestamptz,text,timestamptz) to service_role;
+
+-- Versioned policy acceptance (server-written; no user metadata trust).
+create table if not exists public.policy_acceptances (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  policy_version text not null,
+  policy_digest text not null check (policy_digest ~ '^[a-f0-9]{64}$'),
+  policy_snapshot jsonb not null,
+  adult boolean not null check (adult),
+  agreed boolean not null check (agreed),
+  authority boolean not null check (authority),
+  accepted_at timestamptz not null default now(),
+  primary key (user_id, policy_version, policy_digest)
+);
+alter table public.policy_acceptances enable row level security;
+revoke all on public.policy_acceptances from public, anon, authenticated, service_role;
+grant select, insert on public.policy_acceptances to service_role;
+grant select on public.policy_acceptances to authenticated;
+drop policy if exists policy_acceptance_owner_read on public.policy_acceptances;
+create policy policy_acceptance_owner_read on public.policy_acceptances for select to authenticated
+  using (user_id = (select auth.uid()));
+-- Inactive until the reviewed application release and DB configuration agree.
+create schema if not exists policy_private;
+revoke all on schema policy_private from public, anon, authenticated;
+create table if not exists policy_private.requirement (
+ singleton boolean primary key default true check (singleton),
+ active boolean not null default false,
+ version text,
+ digest text,
+ check (not active or (version is not null and digest ~ '^[a-f0-9]{64}$'))
+);
+insert into policy_private.requirement(singleton) values(true) on conflict do nothing;
+revoke all on policy_private.requirement from public, anon, authenticated, service_role;
+
+create or replace function public.current_policy_accepted(expected_version text, expected_digest text)
+returns boolean language plpgsql stable security definer set search_path = '' as $$
+declare r policy_private.requirement;
+begin
+ select * into r from policy_private.requirement where singleton;
+ if not found or auth.uid() is null then return false; end if;
+ if not r.active or r.version is distinct from expected_version or r.digest is distinct from expected_digest then return false; end if;
+ return exists(select 1 from public.policy_acceptances a where a.user_id=auth.uid() and a.policy_version=r.version and a.policy_digest=r.digest);
+end $$;
+revoke all on function public.current_policy_accepted(text,text) from public,anon;
+grant execute on function public.current_policy_accepted(text,text) to authenticated;
+
+create or replace function policy_private.guard_write()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare r policy_private.requirement;
+begin
+ -- Trusted provider reconciliation and account-deletion cascades retain their existing permissions.
+ if auth.uid() is null then
+   if tg_op='DELETE' then return old; end if; return new;
+ end if;
+ select * into r from policy_private.requirement where singleton;
+ if not found then raise exception 'Policy configuration unavailable' using errcode='42501'; end if;
+ if not r.active then
+   if tg_op='DELETE' then return old; end if; return new;
+ end if;
+ -- Revocation/pause must remain possible without accepting changed terms.
+ if tg_table_name='agent_api_keys' and tg_op='UPDATE' then
+   if (to_jsonb(new)-'revoked_at'-'paused_at')=(to_jsonb(old)-'revoked_at'-'paused_at')
+      and (new.revoked_at is not null or new.paused_at is not null)
+      and (old.revoked_at is null or new.revoked_at=old.revoked_at)
+      and (old.paused_at is null or new.paused_at=old.paused_at) then return new; end if;
+ end if;
+ if not exists(select 1 from public.policy_acceptances a where a.user_id=auth.uid() and a.policy_version=r.version and a.policy_digest=r.digest) then
+   raise exception 'Human operator policy acceptance required' using errcode='42501';
+ end if;
+ if tg_op='DELETE' then return old; end if; return new;
+end $$;
+revoke all on function policy_private.guard_write() from public,anon,authenticated;
+-- Profiles remain available for signup; disputes, read access, deletion and provider ledgers are not gated.
+do $$ declare t text; begin
+ foreach t in array array['organizations','agents','opportunities','applications','negotiations','hire_requests','saved_opportunities','contracts','contract_milestones','contract_deliverables','contract_messages','reviews','agent_api_keys','billing_accounts','agent_payment_cards'] loop
+  execute format('drop trigger if exists policy_acceptance_write on public.%I',t);
+  execute format('create trigger policy_acceptance_write before insert or update or delete on public.%I for each row execute function policy_private.guard_write()',t);
+ end loop;
+end $$;
+-- Prospective evidence only. No backfill or implied acceptance for older contracts.
+alter table public.contracts add column if not exists policy_evidence jsonb;
+create or replace function policy_private.record_contract_policy()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+ r policy_private.requirement;
+ buyer uuid;
+ seller uuid;
+ buyer_acceptance public.policy_acceptances;
+ seller_acceptance public.policy_acceptances;
+begin
+ if tg_op='UPDATE' then
+   if new.policy_evidence is distinct from old.policy_evidence then
+     raise exception 'Contract policy evidence is immutable' using errcode='42501';
+   end if;
+   if old.policy_evidence is not null and
+      (new.organization_id is distinct from old.organization_id or new.agent_id is distinct from old.agent_id) then
+     raise exception 'Accepted contract parties cannot be replaced' using errcode='42501';
+   end if;
+   return new;
+ end if;
+ -- Never trust evidence provided by a browser, agent, or service caller.
+ new.policy_evidence := null;
+ select * into r from policy_private.requirement where singleton for share;
+ if not found then raise exception 'Policy configuration unavailable' using errcode='42501'; end if;
+ if not r.active then return new; end if;
+ select p.user_id into buyer from public.organizations o join public.profiles p on p.id=o.owner_id where o.id=new.organization_id;
+ select p.user_id into seller from public.agents a join public.profiles p on p.id=a.owner_id where a.id=new.agent_id;
+ if buyer is null or seller is null then raise exception 'Both contract operators are required' using errcode='42501'; end if;
+ select * into buyer_acceptance from public.policy_acceptances where user_id=buyer and policy_version=r.version and policy_digest=r.digest;
+ if not found then raise exception 'Buyer operator must accept current policies' using errcode='42501'; end if;
+ select * into seller_acceptance from public.policy_acceptances where user_id=seller and policy_version=r.version and policy_digest=r.digest;
+ if not found then raise exception 'Seller operator must accept current policies' using errcode='42501'; end if;
+ if buyer_acceptance.policy_snapshot is distinct from seller_acceptance.policy_snapshot then
+   raise exception 'Policy evidence mismatch' using errcode='42501';
+ end if;
+ new.policy_evidence := jsonb_build_object(
+   'version',r.version,'digest',r.digest,'documents',buyer_acceptance.policy_snapshot,
+   'buyer_user_id',buyer,'buyer_accepted_at',buyer_acceptance.accepted_at,
+   'seller_user_id',seller,'seller_accepted_at',seller_acceptance.accepted_at,
+   'recorded_at',statement_timestamp(),
+   'scope','Operator policy acceptance at contract creation; not a signature on negotiated exceptions');
+ return new;
+end $$;
+revoke all on function policy_private.record_contract_policy() from public,anon,authenticated;
+drop trigger if exists contract_policy_evidence on public.contracts;
+create trigger contract_policy_evidence before insert or update on public.contracts
+for each row execute function policy_private.record_contract_policy();

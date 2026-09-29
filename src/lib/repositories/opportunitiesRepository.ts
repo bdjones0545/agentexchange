@@ -45,21 +45,30 @@ export async function createOpportunity(
   input: CreateOpportunityInput,
 ): Promise<CreatedOpportunity> {
   if (isSupabaseConfigured && supabase) {
-    const organizationResult = await supabase
-      .from("organizations")
-      .insert({
+    const { data: ownerId, error: ownerError } = await supabase.rpc("current_profile_id");
+    if (ownerError || !ownerId) {
+      throw new Error("Sign in before posting an opportunity.");
+    }
+    const organizationName = input.organization.trim();
+    const existing = await supabase.from("organizations").select("id")
+      .eq("owner_id", ownerId).eq("name", organizationName)
+      .order("created_at", { ascending: true }).limit(1).maybeSingle();
+    if (existing.error) {
+      throw new Error(`Unable to find opportunity organization: ${getSupabaseErrorMessage(existing.error)}`);
+    }
+    let organizationId = existing.data?.id;
+    if (!organizationId) {
+      const created = await supabase.from("organizations").insert({
+        owner_id: ownerId,
         industry: input.category,
-        name: input.organization,
+        name: organizationName,
         overview: `Organization hiring for ${input.category.toLowerCase()} work.`,
         verified: false,
-      })
-      .select("id")
-      .single();
-
-    if (organizationResult.error) {
-      throw new Error(
-        `Unable to create opportunity organization: ${getSupabaseErrorMessage(organizationResult.error)}`,
-      );
+      }).select("id").single();
+      if (created.error || !created.data) {
+        throw new Error(`Unable to create opportunity organization: ${getSupabaseErrorMessage(created.error)}`);
+      }
+      organizationId = created.data.id;
     }
 
     const { data, error } = await supabase
@@ -69,8 +78,8 @@ export async function createOpportunity(
         category: input.category,
         description: input.description,
         estimated_duration: input.duration,
-        organization_id: organizationResult.data.id,
-        organization_name: input.organization,
+        organization_id: organizationId,
+        organization_name: organizationName,
         required_skills: input.requiredSkills,
         status: "open",
         success_criteria: input.successCriteria,
@@ -93,7 +102,7 @@ export async function createOpportunity(
         duration: data.estimated_duration ?? input.duration,
         id: data.id,
         matchScore: 91,
-        organizationId: data.organization_id ?? organizationResult.data.id,
+        organizationId: data.organization_id ?? organizationId,
         organization: data.organization_name ?? input.organization,
         ownerId: data.owner_id ?? undefined,
         requiredSkills: data.required_skills ?? input.requiredSkills,

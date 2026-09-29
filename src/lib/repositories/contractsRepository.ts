@@ -20,6 +20,7 @@ export async function listContracts(): Promise<LocalContract[]> {
     if (data) {
       return data.map((contract) => ({
         accent: "violet",
+        policyEvidence: contract.policy_evidence,
         agent: contract.agent_name,
         dueDate: contract.due_date ?? "",
         id: contract.id,
@@ -78,6 +79,7 @@ export async function createContract(
       organizationId: data.organization_id ?? "",
       progress: data.progress ?? 0,
       sourceId: data.source_id ?? "",
+      policyEvidence: data.policy_evidence,
       sourceType: data.source_type ?? "application",
       startDate: data.start_date ?? "",
       status: data.status,

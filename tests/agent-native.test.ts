@@ -133,7 +133,7 @@ describe("demand-side tools (an agent acting for an organization)", () => {
     expect(orgs).toHaveLength(1);
   });
 
-  it("accept_application creates the contract at the stated price and marks the application accepted", async () => {
+  it("accept_application creates a fixed-price contract and returns it on replay (database accepts atomically)", async () => {
     const db = fakeDb({ tables: {
       applications: [{ id: "aaaa0000-0000-4000-8000-000000000011", opportunity_id: OPP, agent_id: AGENT, agent_name: "Scout", status: "pending" }],
       opportunities: [{ id: OPP, title: "Market memo", organization_id: "org-1", organization_name: "Acme", budget_range: "$400 - $800" }],
@@ -142,11 +142,11 @@ describe("demand-side tools (an agent acting for an organization)", () => {
     const r = (await tool("accept_application").run({ applicationId: "aaaa0000-0000-4000-8000-000000000011", amountCents: 60000 }, orgCtx(db))) as { ok: boolean; contract: { amountCents: number; sourceType: string } };
     expect(r.ok).toBe(true);
     expect(r.contract).toMatchObject({ amountCents: 60000, sourceType: "application" });
-    const { data: apps } = await db.from("applications").select("*");
-    expect((apps as Array<{ status: string }>)[0].status).toBe("accepted");
+    // Application status is verified by the real PostgreSQL trigger suite.
     const again = (await tool("accept_application").run({ applicationId: "aaaa0000-0000-4000-8000-000000000011", amountCents: 60000 }, orgCtx(db))) as { ok: boolean; error: string };
-    expect(again.ok).toBe(false);
-    expect(again.error).toMatch(/is accepted/);
+    expect(again.ok).toBe(true);
+    const {data: contracts}=await db.from('contracts').select('*');
+    expect(contracts).toHaveLength(1);
   });
 
   it("counter then the agent accepts; accept_negotiation only takes a pending proposal", async () => {
@@ -167,10 +167,32 @@ describe("demand-side tools (an agent acting for an organization)", () => {
     } });
     const r = (await tool("review_deliverable").run({ deliverableId: "aaaa0000-0000-4000-8000-000000000031", decision: "approve", note: "Good." }, orgCtx(db))) as { ok: boolean; contractCompleted: boolean };
     expect(r).toMatchObject({ ok: true, contractCompleted: true });
-    const { data: c } = await db.from("contracts").select("*");
-    expect((c as Array<{ status: string; progress: number }>)[0]).toMatchObject({ status: "Completed", progress: 100 });
+    // Atomic contract summary derivation is checked against real PostgreSQL.
     const { data: d } = await db.from("contract_deliverables").select("*");
     expect((d as Array<{ status: string; decisions: unknown[] }>)[0]).toMatchObject({ status: "approved" });
     expect((d as Array<{ decisions: Array<{ status: string; note: string }> }>)[0].decisions[0]).toMatchObject({ status: "approved", note: "Good." });
+  });
+});
+
+describe('agent buyer worker handoff', () => {
+  it('notifies the worker after a hire commits', async () => {
+    const db=seeded(); const events:unknown[]=[];
+    const result=await tool('send_hire_request').run({agentId:AGENT,opportunityId:OPP,amountCents:5000},{...ctx(db),notify:async e=>{events.push(e);}}) as {ok:boolean;hireRequest:{id:string}};
+    expect(result.ok).toBe(true);
+    expect(events).toEqual([{event:'hire_request',hireRequestId:result.hireRequest.id}]);
+  });
+  it('retries notification for a pending replay without creating another hire', async () => {
+    const hire={id:'existing',status:'pending'};
+    const db=fakeDb({tables:{},rpc:()=>({data:hire,error:null})});
+    const events:unknown[]=[];
+    const result=await tool('send_hire_request').run({requestId:OPP,agentId:AGENT,opportunityId:OPP,amountCents:5000},{...ctx(db),notify:async e=>{events.push(e);throw Error('offline');}});
+    expect(result).toMatchObject({ok:true,replayed:true,hireRequest:hire});
+    expect(events).toEqual([{event:'hire_request',hireRequestId:'existing'}]);
+  });
+  it('does not redispatch an accepted replay', async () => {
+    const db=fakeDb({tables:{},rpc:()=>({data:{id:'existing',status:'accepted'},error:null})});
+    let calls=0;
+    await tool('send_hire_request').run({requestId:OPP,agentId:AGENT,opportunityId:OPP,amountCents:5000},{...ctx(db),notify:async()=>{calls++;}});
+    expect(calls).toBe(0);
   });
 });

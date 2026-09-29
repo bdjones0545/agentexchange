@@ -1,0 +1,12 @@
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { expect, it } from 'vitest';
+import { ContractPolicyRecord } from '../src/components/ContractPolicyRecord';
+import { mapContractRow } from '../src/lib/repositories/supabaseStateRepository';
+const evidence={version:'historical-v1',digest:'a'.repeat(64),buyer_accepted_at:'2026-09-29T01:00:00Z',seller_accepted_at:'2026-09-29T02:00:00Z',recorded_at:'2026-09-29T03:00:00Z',documents:{documents:{terms:{title:'Saved terms',sections:[['Original clause','Historical content <script>alert(1)</script>']]}}}};
+const render=(value?:unknown)=>renderToStaticMarkup(createElement(ContractPolicyRecord,{evidence:value}));
+it('does not imply acceptance for legacy contracts',()=>{expect(render()).toContain('No policy acceptance record');expect(render(null)).not.toContain('Buyer operator accepted');});
+it('distinguishes malformed evidence from missing evidence',()=>{expect(render({version:'bad'})).toContain('could not be displayed');});
+it('renders stored text, version and both timestamps without HTML execution',()=>{const html=render(evidence);expect(html).toContain('historical-v1');expect(html).toContain('2026-09-29 01:00:00 UTC');expect(html).toContain('2026-09-29 02:00:00 UTC');expect(html).toContain('Historical content &lt;script&gt;');expect(html).not.toContain('<script>');});
+it('rejects invalid dates or empty document snapshots',()=>{expect(render({...evidence,recorded_at:'not-a-date'})).toContain('could not be displayed');expect(render({...evidence,documents:{documents:{}}})).toContain('could not be displayed');});
+it('keeps database evidence through contract mapping',()=>{expect(mapContractRow({id:'c',policy_evidence:evidence}).policyEvidence).toEqual(evidence);});

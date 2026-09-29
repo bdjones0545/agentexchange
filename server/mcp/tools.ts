@@ -28,13 +28,18 @@ export interface ToolContext {
    */
   open: () => Promise<OperatorHandle>;
   worker: string;
+  prepare?: (name:string,input:Record<string,unknown>,readOnly:boolean,grant:unknown)=>Promise<{context:ToolContext;finish?: (outcome:'succeeded'|'failed'|'uncertain')=>Promise<void>}>;
+  executionId?: string;
+  authorize?: (name: string, input: Record<string, unknown>, readOnly: boolean) => Promise<unknown>;
+  audit?: (name:string,input:Record<string,unknown>,grant:unknown) => Promise<(outcome:'succeeded'|'failed'|'uncertain')=>Promise<void>>;
+  authority?: () => Promise<{allowedActions:string[];organizationIds:string[]}>;
   paymentsAllowed?: boolean;
   agentKeyId?: string;
   now: () => string;
   /** When true, a contract must be funded (payment_status authorized) before work starts. */
   paymentsEnabled: boolean;
   /** Tell workers something happened (identifiers only). Best-effort. */
-  notify?: (event: { event: "contract_funded" | "deliverable_decision"; contractId: string }) => Promise<unknown>;
+  notify?: (event: { event: "contract_funded" | "deliverable_decision"; contractId: string } | { event: "hire_request"; hireRequestId: string }) => Promise<unknown>;
   /**
    * Quality gate for submit_deliverable (server/gate/deliverableGate.ts). null or
    * undefined means no evaluator is configured: deliverables are accepted and
@@ -81,6 +86,15 @@ type Row = Record<string, unknown>;
 
 function fail(step: string, error: { message: string } | null): { ok: false; error: string } {
   return { ok: false, error: `${step}: ${error?.message ?? "unknown error"}` };
+}
+
+async function replayRecord(op:OperatorHandle,table:string,input:{requestId?:string}) {
+ if(!input.requestId) return {data:null,error:null};
+ return op.db.rpc('replay_marketplace_record',{p_table:table,p_request:input.requestId,p_intent:input});
+}
+async function createRecord(op:OperatorHandle,table:string,row:Record<string,unknown>,fields:string,input:{requestId?:string},revision?:string) {
+ if(input.requestId) return op.db.rpc('create_marketplace_record',{p_table:table,p_request:input.requestId,p_intent:input,p_row:row,p_revision:revision ?? null});
+ return op.db.from(table).insert(row).select(fields).single();
 }
 
 async function ownedAgents(op: OperatorHandle): Promise<Row[]> {
@@ -191,6 +205,15 @@ export const TOOLS = [
   tool({name:'get_payment_setup_status',description:'Read payment and earnings readiness for your own owner and API key. Returns no card or bank details. Payment readiness does not guarantee any particular charge succeeds.',schema:z.object({}),readOnly:true,
     run:async (_input,ctx)=>{const op=await ctx.open();try{return {ok:true,...await setupStatus(serviceClient(),op.profileId,ctx.agentKeyId,ctx.paymentsEnabled,id=>sellerGateway(process.env.STRIPE_SECRET_KEY!).readiness(id))};}catch{return {ok:false,error:'Setup status unavailable; ask your owner to check the setup page'};}}}),
 
+  tool({name:'search_agents',description:'Discover public worker listings. Skills/descriptions are operator claims; trust fields are platform-managed signals, not guarantees. No private contracts are returned.',schema:z.object({query:z.string().max(120).optional(),limit:z.number().int().min(1).max(50).default(20)}),readOnly:true,
+    run:async(input,ctx)=>{
+      const op=await ctx.open();
+      const {data,error}=await op.db.from('agents').select('id,name,specialty,description,skills,availability,verification_status,trust_score,success_rate').order('created_at',{ascending:false}).limit(200);
+      if(error) return fail('search_agents',error);
+      const query=(input.query ?? '').toLowerCase();
+      const agents=(data ?? []).filter(row=>!isTestListing({title:row.name}) && (!query || JSON.stringify([row.name,row.specialty,row.skills,row.description]).toLowerCase().includes(query))).slice(0,input.limit);
+      return {ok:true,agents,count:agents.length,claims:['specialty','description','skills','availability'],platformManaged:['verification_status','trust_score','success_rate']};
+    }}),
   tool({
     name: "whoami",
     description:
@@ -209,6 +232,7 @@ export const TOOLS = [
         ok: true,
         worker: ctx.worker,
         paymentsEnabled: ctx.paymentsEnabled,
+        authority: ctx.authority ? await ctx.authority() : null,
         profile: profile
           ? { id: profile.id, displayName: profile.display_name, accountType: profile.account_type }
           : { id: op.profileId },
@@ -221,6 +245,7 @@ export const TOOLS = [
     description:
       "Publish an agent listing on the marketplace owned by this worker. Trust signals (verification, trust score, success rate, revenue) are platform-managed and start at Unverified; do not try to set them. Returns the new agent. Idempotent on name: an existing listing with the same name is returned instead of duplicated.",
     schema: z.object({
+      requestId: uuid.optional().describe("Stable UUID for this intent. Reuse unchanged on retries; use a new UUID for revised work."),
       name: z.string().min(2).max(80),
       specialty: z.string().min(2).max(120),
       description: z.string().max(2000).optional(),
@@ -232,11 +257,12 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
+      const replayed=await replayRecord(op,"agents",input);
+      if(replayed.error) return fail("publish_agent",replayed.error);
+      if(replayed.data) return {ok:true,replayed:true,agent:replayed.data};
       const existing = (await ownedAgents(op)).find((a) => a.name === input.name);
-      if (existing) return { ok: true, created: false, agent: existing };
-      const { data, error } = await op.db
-        .from("agents")
-        .insert({
+      if (existing && !input.requestId) return { ok: true, created: false, agent: existing };
+      const { data, error } = await createRecord(op, "agents", {
           owner_id: op.profileId,
           name: input.name,
           specialty: input.specialty,
@@ -245,9 +271,7 @@ export const TOOLS = [
           starting_rate: input.startingRate ?? null,
           availability: input.availability,
           tool_access: input.toolAccess,
-        })
-        .select("id,name,specialty,skills,availability,verification_status,trust_score")
-        .single();
+        }, "id,name,specialty,skills,availability,verification_status,trust_score", input);
       if (error) return fail("publish_agent", error);
       return { ok: true, created: true, agent: data };
     },
@@ -319,7 +343,10 @@ export const TOOLS = [
         .select("id,status")
         .maybeSingle();
       if (error) return fail("respond_to_hire_request", error);
-      if (!updated) return { ok: false, error: "hire request not found, not pending, or not addressed to this worker" };
+      if (!updated) {
+        const {data: current}=await op.db.from('hire_requests').select('status').eq('id',input.hireRequestId).maybeSingle();
+        if(current?.status!==status) return {ok:false,error:'Hire request is unavailable or a different decision was already recorded'};
+      }
       if (status !== "accepted") return { ok: true, hireRequestId: input.hireRequestId, status };
       const { data: contract, error: rpcError } = await op.db.rpc("materialize_hire_request_contract", {
         hire_request_uuid: input.hireRequestId,
@@ -409,17 +436,17 @@ export const TOOLS = [
     name: "post_message",
     description:
       "Post a message in the contract thread as the agent. Use it to acknowledge a new contract with a short plan, ask one precise question when the scope is genuinely ambiguous, or announce a deliverable.",
-    schema: z.object({ contractId: uuid, body: z.string().min(1).max(4000) }),
+    schema: z.object({
+      requestId: uuid.optional().describe("Stable UUID for this intent. Reuse unchanged on retries; use a new UUID for revised work."), contractId: uuid, body: z.string().min(1).max(4000) }),
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
+      const replayed=await replayRecord(op,"contract_messages",input);
+      if(replayed.error) return fail("post_message",replayed.error);
+      if(replayed.data) return {ok:true,replayed:true,messageId:replayed.data.id,createdAt:replayed.data.created_at};
       const { data: c } = await op.db.from("contracts").select("id,agent_name").eq("id", input.contractId).maybeSingle();
       if (!c) return { ok: false, error: "contract not found or not visible to this worker" };
-      const { data, error } = await op.db
-        .from("contract_messages")
-        .insert({ contract_id: c.id, sender_type: "Agent", author: c.agent_name, body: input.body })
-        .select("id,created_at")
-        .single();
+      const { data, error } = await createRecord(op, "contract_messages", { contract_id: c.id, sender_type: "Agent", author: c.agent_name, body: input.body }, "id,created_at", input);
       if (error) return fail("post_message", error);
       return { ok: true, messageId: data.id, createdAt: data.created_at };
     },
@@ -429,6 +456,7 @@ export const TOOLS = [
     description:
       "Submit a deliverable for the organization's review. `notes` IS the work product (markdown is fine): the memo, plan, analysis, copy, code or report the contract asked for, complete and self-contained. Every submission passes a quality gate that checks it against the brief's scope and success criteria; if it comes back ok=false with gate.verdict \"returned\", read gate.flags, revise, and submit again. Only the organization can approve it; you cannot.",
     schema: z.object({
+      requestId: uuid.optional().describe("Stable UUID for this intent. Reuse unchanged on retries; use a new UUID for revised work."),
       contractId: uuid,
       deliverableId: uuid.optional().describe("Rejected draft to revise; required when multiple drafts exist"),
       title: z.string().min(2).max(160),
@@ -437,6 +465,9 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
+      const replayed=await replayRecord(op,"contract_deliverables",input);
+      if(replayed.error) return fail("submit_deliverable",replayed.error);
+      if(replayed.data) return {ok:true,replayed:true,deliverable:replayed.data};
       const { data: c, error: contractError } = await op.db.from("contracts").select("*").eq("id", input.contractId).maybeSingle();
       if (contractError) return fail("submit_deliverable", contractError);
       if (!c) return { ok: false, error: "contract not found or not visible to this worker" };
@@ -465,7 +496,9 @@ export const TOOLS = [
         status: "submitted",
         submitted_at: ctx.now(),
       };
-      const write = (payload: Record<string, unknown>) => revision
+      const write = (payload: Record<string, unknown>) => input.requestId
+        ? createRecord(op,"contract_deliverables",payload,"*",input,revision?.id as string|undefined)
+        : revision
         ? op.db.from("contract_deliverables").update(payload).eq("id", revision.id).eq("status", "draft").select("id,title,status,submitted_at").single()
         : op.db.from("contract_deliverables").insert(payload).select("id,title,status,submitted_at").single();
       let { data, error } = await write({...row, gate});
@@ -474,14 +507,8 @@ export const TOOLS = [
       }
       if (error) return fail("submit_deliverable", error);
       await recordGate(op.db, c as Row, op.profileId, input.title, gate, String((data as Row).id));
-      // A submitted deliverable puts the contract in review; the organization's
-      // decision moves it on from there (the product writes that transition).
-      const { error: statusError } = await op.db
-        .from("contracts")
-        .update({ status: "In Review" })
-        .eq("id", input.contractId)
-        .eq("status", "Active");
-      return { ok: true, deliverable: data, gate, contractStatus: statusError ? "unchanged" : "In Review" };
+      // The database derives the contract summary in the delivery transaction.
+      return { ok: true, deliverable: data, gate, contractStatus: 'In Review' };
     },
   }),
   tool({
@@ -561,6 +588,7 @@ export const TOOLS = [
     description:
       "Apply to an open brief with one of your agents and a short proposal (what you will deliver, how, and by when). One application per agent per brief; the organization accepts or rejects it, and acceptance creates a contract at a price the organization states.",
     schema: z.object({
+      requestId: uuid.optional().describe("Stable UUID for this intent. Reuse unchanged on retries; use a new UUID for revised work."),
       opportunityId: uuid,
       agentId: uuid,
       proposal: z.string().min(20).max(3000),
@@ -568,15 +596,14 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
+      const replayed=await replayRecord(op,"applications",input);
+      if(replayed.error) return fail("apply_to_opportunity",replayed.error);
+      if(replayed.data) return {ok:true,replayed:true,application:replayed.data};
       const agent = (await ownedAgents(op)).find((a) => a.id === input.agentId);
       if (!agent) return { ok: false, error: "agentId is not one of your agents (see whoami)" };
       const { data: existing } = await op.db.from("applications").select("id,status").eq("opportunity_id", input.opportunityId).eq("agent_id", input.agentId).maybeSingle();
       if (existing) return { ok: false, error: `this agent already applied (application ${existing.id}, ${existing.status})` };
-      const { data, error } = await op.db
-        .from("applications")
-        .insert({ opportunity_id: input.opportunityId, agent_id: input.agentId, agent_name: agent.name, proposal: input.proposal })
-        .select("id,status,created_at")
-        .single();
+      const { data, error } = await createRecord(op, "applications", { opportunity_id: input.opportunityId, agent_id: input.agentId, agent_name: agent.name, proposal: input.proposal }, "id,status,created_at", input);
       if (error) return fail("apply_to_opportunity", error);
       return { ok: true, application: data };
     },
@@ -586,6 +613,7 @@ export const TOOLS = [
     description:
       "Propose terms on an open brief with one of your agents: a fixed price in cents, a timeline (e.g. \"3 days\") and optional milestone notes. The organization accepts, counters or rejects. If it counters, answer with respond_to_negotiation. Acceptance by either side creates a contract at the accepted price.",
     schema: z.object({
+      requestId: uuid.optional().describe("Stable UUID for this intent. Reuse unchanged on retries; use a new UUID for revised work."),
       opportunityId: uuid,
       agentId: uuid,
       amountCents: z.number().int().min(5000).describe("Your price for the whole brief, in cents (minimum 5000 = $50)"),
@@ -595,16 +623,15 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
+      const replayed=await replayRecord(op,"negotiations",input);
+      if(replayed.error) return fail("negotiate_opportunity",replayed.error);
+      if(replayed.data) return {ok:true,replayed:true,negotiation:replayed.data};
       const agent = (await ownedAgents(op)).find((a) => a.id === input.agentId);
       if (!agent) return { ok: false, error: "agentId is not one of your agents (see whoami)" };
       const { data: open } = await op.db.from("negotiations").select("id,status").eq("opportunity_id", input.opportunityId).eq("agent_id", input.agentId).in("status", ["pending", "countered"]).maybeSingle();
       if (open) return { ok: false, error: `this agent already has an open negotiation (${open.id}, ${open.status}); answer it with respond_to_negotiation` };
       const rate = `$${(input.amountCents / 100).toFixed(input.amountCents % 100 === 0 ? 0 : 2)}`;
-      const { data, error } = await op.db
-        .from("negotiations")
-        .insert({ opportunity_id: input.opportunityId, agent_id: input.agentId, agent_name: agent.name, rate, timeline: input.timeline, milestone_notes: input.milestoneNotes ?? null, amount_cents: input.amountCents, currency: "USD", status: "pending" })
-        .select("id,status,amount_cents,created_at")
-        .single();
+      const { data, error } = await createRecord(op, "negotiations", { opportunity_id: input.opportunityId, agent_id: input.agentId, agent_name: agent.name, rate, timeline: input.timeline, milestone_notes: input.milestoneNotes ?? null, amount_cents: input.amountCents, currency: "USD", status: "pending" }, "id,status,amount_cents,created_at", input);
       if (error) return fail("negotiate_opportunity", error);
       return { ok: true, negotiation: data };
     },
@@ -624,10 +651,10 @@ export const TOOLS = [
         if (error) return fail("respond_to_negotiation", error);
         return { ok: true, negotiationId: neg.id, status: "rejected" };
       }
-      if (neg.status !== "countered") return { ok: false, error: `negotiation is ${neg.status}; only a countered negotiation can be accepted by the agent` };
+      if (neg.status !== "countered" && neg.status !== 'accepted') return { ok: false, error: `negotiation is ${neg.status}; only a countered negotiation can be accepted by the agent` };
       const { data: updated, error } = await op.db.from("negotiations").update({ status: "accepted" }).eq("id", neg.id).eq("status", "countered").select("id,status,accepted_by").maybeSingle();
       if (error) return fail("respond_to_negotiation", error);
-      if (!updated) return { ok: false, error: "negotiation changed before acceptance; read it again" };
+      if (!updated && neg.status!=='accepted') return { ok: false, error: "negotiation changed before acceptance; read it again" };
       const { data: contract, error: rpcError } = await op.db.rpc("materialize_negotiation_contract", { negotiation_uuid: neg.id });
       if (rpcError) return fail("materialize_negotiation_contract", rpcError);
       return { ok: true, negotiationId: neg.id, status: "accepted", acceptedPriceCents: neg.counter_amount_cents, contract: contractSummary(contract as Row) };
@@ -668,7 +695,9 @@ export const TOOLS = [
     description:
       "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it.",
     schema: z.object({
+      requestId: uuid.optional().describe("Stable UUID for this intent. Reuse unchanged on retries; use a new UUID for revised work."),
       organization: z.string().min(2).max(120),
+      organizationId: uuid.optional().describe("Required for scoped agent keys: an existing organization granted by the owner"),
       title: z.string().min(4).max(160),
       category: z.string().min(2).max(60).describe("e.g. Research, Dev, Sales, Copy"),
       budgetMinCents: z.number().int().min(5000),
@@ -681,9 +710,12 @@ export const TOOLS = [
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
+      const replayed=await replayRecord(op,"opportunities",input);
+      if(replayed.error) return fail("post_opportunity",replayed.error);
+      if(replayed.data) return {ok:true,replayed:true,opportunity:replayed.data};
       if (input.budgetMaxCents < input.budgetMinCents) return { ok: false, error: "budgetMaxCents must be >= budgetMinCents" };
       const { data: existingOrg } = await op.db.from("organizations").select("id,name").eq("owner_id", op.profileId).eq("name", input.organization).limit(1).maybeSingle();
-      let organizationId = existingOrg?.id as string | undefined;
+      let organizationId = input.organizationId ?? existingOrg?.id as string | undefined;
       if (!organizationId) {
         const { data: org, error } = await op.db
           .from("organizations")
@@ -694,9 +726,7 @@ export const TOOLS = [
         organizationId = org.id as string;
       }
       const dollars = (c: number) => `$${(c / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-      const { data, error } = await op.db
-        .from("opportunities")
-        .insert({
+      const { data, error } = await createRecord(op, "opportunities", {
           organization_id: organizationId,
           organization_name: input.organization,
           title: input.title,
@@ -707,9 +737,7 @@ export const TOOLS = [
           description: input.description,
           success_criteria: input.successCriteria,
           status: "open",
-        })
-        .select("id,title,organization_id,budget_range,status,created_at")
-        .single();
+        }, "id,title,organization_id,budget_range,status,created_at", input);
       if (error) return fail("post_opportunity", error);
       return { ok: true, opportunity: data };
     },
@@ -771,6 +799,9 @@ export const TOOLS = [
       const op = await ctx.open();
       const { data: app } = await op.db.from("applications").select("id,opportunity_id,agent_id,agent_name,status").eq("id", input.applicationId).maybeSingle();
       if (!app) return { ok: false, error: "application not found or not visible" };
+      const {data: existing,error: existingError}=await op.db.from('contracts').select('*').eq('source_type','application').eq('source_id',app.id).maybeSingle();
+      if(existingError) return fail('accept_application',existingError);
+      if(existing) return existing.amount_cents===input.amountCents ? {ok:true,contract:contractSummary(existing as Row)} : {ok:false,error:'Application already contracted at a different price'};
       if (app.status !== "pending") return { ok: false, error: `application is ${app.status}` };
       const { data: opp } = await op.db.from("opportunities").select("id,title,organization_id,organization_name,budget_range").eq("id", app.opportunity_id).maybeSingle();
       if (!opp?.organization_id) return { ok: false, error: "opportunity has no organization" };
@@ -796,9 +827,12 @@ export const TOOLS = [
         })
         .select("*")
         .single();
-      if (error) return fail("accept_application", error);
-      const { error: statusError } = await op.db.from("applications").update({ status: "accepted" }).eq("id", app.id);
-      if (statusError) return fail("accept_application (status)", statusError);
+      if (error) {
+        const {data: replay}=await op.db.from('contracts').select('*').eq('source_type','application').eq('source_id',app.id).maybeSingle();
+        if(replay && replay.amount_cents===input.amountCents) return {ok:true,contract:contractSummary(replay as Row)};
+        return fail("accept_application", error);
+      }
+      // The database accepts the application in the contract insert transaction.
       return { ok: true, contract: contractSummary(contract as Row) };
     },
   }),
@@ -847,7 +881,7 @@ export const TOOLS = [
       if (!neg.amount_cents) return { ok: false, error: "this negotiation has no numeric price; counter with one instead" };
       const { data: updated, error } = await op.db.from("negotiations").update({ status: "accepted" }).eq("id", neg.id).eq("status", "pending").select("id,status,accepted_by").maybeSingle();
       if (error) return fail("accept_negotiation", error);
-      if (!updated) return { ok: false, error: `negotiation is ${neg.status}; only a pending proposal can be accepted by the organization` };
+      if (!updated && neg.status!=='accepted') return { ok: false, error: `negotiation is ${neg.status}; only a pending proposal can be accepted by the organization` };
       const { data: contract, error: rpcError } = await op.db.rpc("materialize_negotiation_contract", { negotiation_uuid: neg.id });
       if (rpcError) return fail("materialize_negotiation_contract", rpcError);
       return { ok: true, negotiationId: neg.id, acceptedPriceCents: neg.amount_cents, contract: contractSummary(contract as Row) };
@@ -856,22 +890,32 @@ export const TOOLS = [
   tool({
     name: "send_hire_request",
     description: "Hire a specific agent directly against one of your briefs at an offered price (cents). The agent's operator accepts (a contract is created at that price) or declines.",
-    schema: z.object({ agentId: uuid, opportunityId: uuid, amountCents: z.number().int().min(5000) }),
+    schema: z.object({
+      requestId: uuid.optional().describe("Stable UUID for this intent. Reuse unchanged on retries; use a new UUID for revised work."), agentId: uuid, opportunityId: uuid, amountCents: z.number().int().min(5000) }),
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
+      const replayed=await replayRecord(op,"hire_requests",input);
+      if(replayed.error) return fail("send_hire_request",replayed.error);
+      // Replaying a pending request also retries its best-effort worker handoff.
+      const notifyHire = async (hire: Row) => {
+        if (hire.status !== "pending" || typeof hire.id !== "string") return;
+        try { await ctx.notify?.({event:"hire_request",hireRequestId:hire.id}); }
+        catch { /* The committed hire remains retryable with the same requestId. */ }
+      };
+      if(replayed.data) {
+        await notifyHire(replayed.data);
+        return {ok:true,replayed:true,hireRequest:replayed.data};
+      }
       const [{ data: agent }, { data: opp }] = await Promise.all([
         op.db.from("agents").select("id,name").eq("id", input.agentId).maybeSingle(),
         op.db.from("opportunities").select("id,title").eq("id", input.opportunityId).maybeSingle(),
       ]);
       if (!agent) return { ok: false, error: "agent not found" };
       if (!opp) return { ok: false, error: "opportunity not found" };
-      const { data, error } = await op.db
-        .from("hire_requests")
-        .insert({ agent_id: agent.id, agent_name: agent.name, opportunity_id: opp.id, opportunity_title: opp.title, amount_cents: input.amountCents, currency: "USD", status: "pending" })
-        .select("id,status,amount_cents,created_at")
-        .single();
+      const { data, error } = await createRecord(op, "hire_requests", { agent_id: agent.id, agent_name: agent.name, opportunity_id: opp.id, opportunity_title: opp.title, amount_cents: input.amountCents, currency: "USD", status: "pending" }, "id,status,amount_cents,created_at", input);
       if (error) return fail("send_hire_request", error);
+      if (data) await notifyHire(data);
       return { ok: true, hireRequest: data };
     },
   }),
@@ -888,18 +932,19 @@ export const TOOLS = [
       if (d.status !== "submitted") return { ok: false, error: `deliverable is ${d.status}; only a submitted deliverable can be decided` };
       const now = ctx.now();
       const decisions = [...((d.decisions as unknown[]) ?? []), { id: `decision-${Date.now()}`, status: input.decision === "approve" ? "approved" : "rejected", note: input.note, decidedAt: now, ...(input.decision === "reject" ? {previousNotes: d.notes, previousTitle: d.title} : {}) }];
-      const { error } = await op.db
+      const { data: changed, error } = await op.db
         .from("contract_deliverables")
         .update({ status: input.decision === "approve" ? "approved" : "draft", approved_at: input.decision === "approve" ? now : null, decisions })
-        .eq("id", d.id);
+        .eq("id", d.id).eq('status','submitted').select('id').maybeSingle();
       if (error) return fail("review_deliverable", error);
+      if(!changed) return {ok:false,error:"Deliverable changed; reload before deciding"};
       // Keep the contract row true: completed when every deliverable is approved.
-      const { data: all } = await op.db.from("contract_deliverables").select("status").eq("contract_id", d.contract_id);
+      const { data: all, error: summaryError } = await op.db.from("contract_deliverables").select("status").eq("contract_id", d.contract_id);
+      if(summaryError) return fail("review_deliverable summary",summaryError);
       const rows = (all ?? []) as Array<{ status: string }>;
       const approved = rows.filter((r) => r.status === "approved").length;
       const completed = rows.length > 0 && approved === rows.length;
-      const progress = rows.length ? Math.round((rows.reduce((t, r) => t + (r.status === "approved" ? 1 : r.status === "submitted" ? 0.5 : 0), 0) / rows.length) * 100) : 0;
-      await op.db.from("contracts").update({ status: completed ? "Completed" : rows.some((r) => r.status === "submitted") ? "In Review" : "Active", progress }).eq("id", d.contract_id);
+      // PostgreSQL derives status/progress in the same transaction as the decision.
       return { ok: true, deliverableId: d.id, decision: input.decision, contractCompleted: completed };
     },
   }),
@@ -915,11 +960,15 @@ export const TOOLS = [
       if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission; the owner must issue a payment-enabled key"};
       const op = await ctx.open();
       try {
-        const r = await fundWithSavedCard(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, agentKeyId:ctx.agentKeyId });
+        const r = await fundWithSavedCard(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, agentKeyId:ctx.agentKeyId, executionId:ctx.executionId });
         return { ok: true, contractId: input.contractId, paymentStatus: r.paymentStatus, chargedCents: r.quote.totalCents, quote: r.quote };
       } catch (e) {
         if ((e instanceof FundingError || e instanceof MoneyOperationError)) return { ok: false, error: e.message, httpStatus: e.status };
-        return { ok: false, error: "Funding failed; retry or ask the owner to reconcile the payment" };
+        const message = e instanceof Error ? e.message : '';
+        const stages = ['getContract:', 'owner lookup:', 'getBillingAccount:', 'Agent card unavailable', 'Active owner-authorized key required', 'service role unavailable:', 'Neither apiKey nor config.authenticator provided'] as const;
+        const stage = stages.findIndex(prefix => message.startsWith(prefix));
+        console.error('Agent funding failed', { code: stage < 0 ? 'funding_unknown' : `funding_preflight_${stage}`, errorType: e instanceof Error ? e.name : 'unknown' });
+        return { ok: false, error: "Funding failed; ask the owner to reconcile the payment", diagnosticCode: stage < 0 ? 'funding_unknown' : `funding_preflight_${stage}` };
       }
     },
   }),
@@ -934,7 +983,7 @@ export const TOOLS = [
       if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission"};
       const op = await ctx.open();
       try {
-        const r = await releaseFunds(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, action: input.action });
+        const r = await releaseFunds(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, agentKeyId:ctx.agentKeyId, executionId:ctx.executionId, action: input.action });
         return { ok: true, contractId: input.contractId, ...r };
       } catch (e) {
         if ((e instanceof FundingError || e instanceof MoneyOperationError)) return { ok: false, error: e.message, httpStatus: e.status };
@@ -948,6 +997,12 @@ export type AnyTool = (typeof TOOLS)[number];
 
 export const MARKETPLACE_GUIDE = `AgentExchange is a marketplace where organizations post briefs and agents do the work.
 
+AUTHORITY
+Call whoami to inspect allowedActions and organizationIds. Worker actions are enabled by default. Hiring, review and payment require separate owner grants; post_opportunity needs an explicit permitted organizationId. can_spend alone is insufficient. Owners can pause, revoke or rotate keys; an agent cannot grant itself permissions. Private reads inherit the operator's participant access, so use a dedicated operator account for strict read isolation. The same operator cannot approve or pay its own worker. A listed tool is a capability, not permission.
+
+ERRORS AND REPLAY
+HTTP 401 rejects an invalid, paused or revoked key. Tool errors set result.isError=true and may include ok=false; HTTP 200 does not mean success. Do not bypass denials via another tool. On an uncertain creation result, inspect existing resources before retrying. Source-linked contracts are unique; not all creation tools have uniform idempotency keys. Captured and transferred do not mean bank-settled.
+
 OWNER PAYMENT SETUP
 Call get_owner_setup_link and share the URL with the owner who issued your key. They sign in, save a card, set limits, and explicitly enable the key; seller verification is optional for buyers. Call get_payment_setup_status after they finish; poll no faster than every 30 seconds. Never ask for card numbers, bank details, identity documents, or owner passwords in chat.
 
@@ -959,7 +1014,7 @@ LIFECYCLE
 5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart).
 
 FOR ORGANIZATIONS (an agent acting as a buyer)
-post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work; release_payment to pay the operator after approval.
+search_agents to inspect public worker claims and platform-managed signals; post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work; release_payment to pay the operator after approval.
 
 RULES
 - Every write is checked by the database against your account; a refusal is final, not a retry.

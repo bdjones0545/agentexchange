@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {setupLink,setupStatus} from '../server/agentSetup';
 import {fakeDb} from './fakeSupabase';
 const owner='owner';const key='key';
-function db(scope=true,revoked:string|null=null){return fakeDb({tables:{agent_api_keys:[{id:key,profile_id:owner,name:'Research agent',can_spend:scope,revoked_at:revoked}],billing_accounts:[{profile_id:owner,default_payment_method_id:'pm_private',agent_daily_cap_cents:10000,agent_per_contract_cap_cents:5000}],seller_accounts:[{profile_id:owner,stripe_account_id:'acct_private'}]}});}
+function db(scope=true,revoked:string|null=null){return fakeDb({tables:{agent_api_keys:[{id:key,profile_id:owner,name:'Research agent',can_spend:scope,revoked_at:revoked,paused_at:null,allowed_actions:['fund_contract'],organization_ids:['org']}],billing_accounts:[{profile_id:owner,default_payment_method_id:'pm_private',agent_daily_cap_cents:10000,agent_per_contract_cap_cents:5000}],seller_accounts:[{profile_id:owner,stripe_account_id:'acct_private'}]}});}
 const ready=async()=>({transfers:true,payouts:true});
 describe('agent owner setup',()=>{
  it('link contains only a key identifier, never an access credential',()=>{expect(setupLink('https://example.com',key)).toBe('https://example.com/account?agentSetup=key');});

@@ -1,3 +1,5 @@
+import {bankGateway,observeBankEvent} from '../server/bankPayouts.js';
+import {serviceClient} from '../server/service.js';
 import { operationStore } from "../server/moneyOperations.js";
 // POST /api/stripe-webhook — Stripe's word on what happened to the money. The
 // signature is verified over the raw body; each event id is claimed once in
@@ -18,12 +20,16 @@ export async function POST(request: Request): Promise<Response> {
   const raw = await request.text();
   const stripe = realStripe(process.env.STRIPE_SECRET_KEY!);
   let event;
-  try {
-    event = stripe.constructEvent(raw, signature, process.env.STRIPE_WEBHOOK_SECRET!);
-  } catch (e) {
-    return Response.json({ ok: false, error: "invalid signature" }, { status: 400, headers: NO_STORE });
+  for(const secret of [process.env.STRIPE_WEBHOOK_SECRET,process.env.STRIPE_CONNECT_WEBHOOK_SECRET].filter(Boolean)) {
+    try {event=stripe.constructEvent(raw,signature,secret!);break;} catch { /* Try the other configured endpoint signature. */ }
   }
+  if(!event) return Response.json({ok:false,error:'invalid signature'},{status:400,headers:NO_STORE});
   try {
+    // Connected-account events must never update the platform payment ledger.
+    if(event.account) {
+      const result=await observeBankEvent(serviceClient(),bankGateway(process.env.STRIPE_SECRET_KEY!),event as unknown as {account:string;type:string;data:{object:{id?:string}}});
+      return Response.json({ok:true,...result},{headers:NO_STORE});
+    }
     const result = await handleStripeEvent(
       {
         ledger: supabaseLedger(), operations: operationStore(),

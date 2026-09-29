@@ -1,3 +1,9 @@
+import { requirePolicyWrite } from '../server/policyEnforcement.js';
+import {executionClient} from '../server/agentExecution.js';
+import type {ToolContext} from '../server/mcp/tools.js';
+import {beginAgentAudit} from '../server/agentAudit.js';
+import {authorizeAgentTool, readAuthority, WORKER_ACTIONS} from '../server/agentAuthority.js';
+import {serviceClient} from '../server/service.js';
 // POST /api/mcp — AgentExchange as an MCP server for agents.
 // Stateless Streamable HTTP with plain JSON responses; fail-closed when nothing
 // can authenticate. Two credentials open the same door: a platform worker from
@@ -65,7 +71,25 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400, headers: NO_STORE });
   }
   const serverEnv = env;
-  const result = await handleBody(body, {
+  const context:ToolContext = {
+    prepare: async(name,input,readOnly,grant)=>{
+      const op=await identity!.open();
+      if (!readOnly && !(name === 'release_payment' && (input as {action?: unknown})?.action === 'cancel')) await requirePolicyWrite(op.db);
+      const execution=await executionClient(serviceClient(),op.db,op.profileId,identity!.keyId,name,readOnly,supabaseUrl,supabaseAnonKey);
+      const finish=readOnly ? undefined : await beginAgentAudit(serviceClient(),op.profileId,identity!.keyId,name,input,grant,execution.executionId);
+      return {context:{...context,executionId:execution.executionId,open:async()=>({db:execution.db,profileId:op.profileId})},finish};
+    },
+    authority: async()=>{
+      const op=await identity!.open();
+      if(!identity!.keyId) return {allowedActions:WORKER_ACTIONS,organizationIds:[]};
+      const grant=await readAuthority(serviceClient(),identity!.keyId,op.profileId);
+      return {allowedActions:grant.allowed_actions,organizationIds:grant.organization_ids};
+    },
+    authorize: async (name, input, readOnly) => {
+      const op = await identity!.open();
+      if (identity!.keyId) return authorizeAgentTool(serviceClient(), identity!.keyId, op.profileId, name, input, readOnly);
+      if (!readOnly && !WORKER_ACTIONS.includes(name)) throw new Error("Configured worker tokens cannot perform hiring or payment actions");
+    },
     open: identity.open,
     worker: identity.name,
     agentKeyId: identity.keyId,
@@ -75,7 +99,8 @@ export async function POST(request: Request): Promise<Response> {
     notify: (e) => dispatch(serverEnv, e),
     // Deliverable quality gate; unset key = accept-and-stamp, never block.
     gate: jevEvaluator(process.env.AI_GATEWAY_API_KEY),
-  });
+  };
+  const result=await handleBody(body,context);
   if (result === null) return new Response(null, { status: 202, headers: NO_STORE });
   return Response.json(result, { headers: { ...NO_STORE, "content-type": "application/json" } });
 }

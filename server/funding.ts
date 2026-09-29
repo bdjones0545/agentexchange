@@ -35,6 +35,9 @@ async function requireOrgSide(ledger: Ledger, contractId: string, callerProfileI
   if (!contract) throw new FundingError(404, "contract not found");
   const owner = await ledger.organizationOwner(contract.organization_id);
   if (!owner || owner !== callerProfileId) throw new FundingError(403, "only the organization side may do this");
+  const workerOwner = await ledger.operatorProfileForAgent(contract.agent_id);
+  if (!workerOwner) throw new FundingError(409, "Worker ownership could not be verified");
+  if (workerOwner === callerProfileId) throw new FundingError(403, "Self-dealing payments are not permitted");
   return contract;
 }
 
@@ -312,6 +315,7 @@ async function releaseFundsCore(
 
   // Release only when every deliverable has been approved: the same condition
   // the product uses to call a contract Completed.
+  if (await deps.ledger.hasOpenDisputes(contract.id)) throw new FundingError(409, "Open marketplace dispute blocks payment release");
   const summary = await deps.ledger.deliverableSummary(contract.id);
   if (summary.total === 0 || summary.approved !== summary.total) {
     throw new FundingError(409, `release requires every deliverable approved (${summary.approved} of ${summary.total})`);
@@ -335,20 +339,22 @@ async function ensurePayout(deps: FundingDeps, contract: Awaited<ReturnType<Ledg
     grossCents: quote.amountCents, feeCents: quote.platformFeeCents, currency: quote.currency, paymentIntentId });
 }
 
-async function fundingOperation<T>(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; selectedPaymentMethod?:string}, kind: string, run: () => Promise<T>): Promise<T> {
+async function fundingOperation<T>(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; executionId?:string; selectedPaymentMethod?:string}, kind: string, run: () => Promise<T>): Promise<T> {
   const contract = await requireOrgSide(deps.ledger, input.contractId, input.callerProfileId);
   let quote: Quote;
   try { quote = quoteContract(contract.amount_cents ?? 0, contract.platform_fee_bps, contract.currency); }
   catch { throw new FundingError(409, 'Contract has no valid agreed price'); }
   if (quote.currency !== 'USD') throw new FundingError(409, 'Payment launch supports USD contracts only');
   return runMoneyOperation(deps.operations, { key: `fund:${contract.id}`, kind, profileId: input.callerProfileId,
-    contractId: contract.id, amountCents: quote.totalCents, request: {contractId: contract.id, quote, ...(input.agentKeyId ? {agentKeyId:input.agentKeyId,selectedPaymentMethod:input.selectedPaymentMethod} : {})} }, run);
+    contractId: contract.id, amountCents: quote.totalCents, request: {contractId: contract.id, quote, ...(input.executionId ? {executionId:input.executionId} : {}), ...(input.agentKeyId ? {agentKeyId:input.agentKeyId,selectedPaymentMethod:input.selectedPaymentMethod} : {})} }, run);
 }
 export async function createFunding(deps: FundingDeps, input: {contractId: string; callerProfileId: string; customerEmail?: string}) {
   return fundingOperation(deps, input, 'fund_human', () => createFundingCore(deps, input));
 }
-export async function fundWithSavedCard(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; selectedPaymentMethod?:string}) {
+export async function fundWithSavedCard(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; executionId?:string; selectedPaymentMethod?:string}) {
   if(input.agentKeyId) {
+    if(!deps.ledger.authorizeAgentPayment) throw new FundingError(503,'Agent authority storage unavailable');
+    await deps.ledger.authorizeAgentPayment(input.callerProfileId,input.agentKeyId,input.contractId,'fund_contract');
     if(!deps.ledger.getAgentCard) throw new FundingError(503,'Agent card storage unavailable');
     const card=await deps.ledger.getAgentCard(input.callerProfileId,input.agentKeyId);
     const account=await deps.ledger.getBillingAccount(input.callerProfileId);
@@ -362,10 +368,15 @@ export async function fundWithSavedCard(deps: FundingDeps, input: {contractId: s
   if (!['authorized','captured'].includes(current.payment_status)) throw new FundingError(409, 'Previous funding is no longer active; operator reconciliation required');
   return {...result,paymentStatus:current.payment_status};
 }
-export async function releaseFunds(deps: FundingDeps, input: {contractId: string; callerProfileId: string; action: 'capture' | 'cancel'}) {
+export async function releaseFunds(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; executionId?:string; action: 'capture' | 'cancel'}) {
+  if(input.agentKeyId) {
+    if(!deps.ledger.authorizeAgentPayment) throw new FundingError(503,'Agent authority storage unavailable');
+    await deps.ledger.authorizeAgentPayment(input.callerProfileId,input.agentKeyId,input.contractId,'release_payment');
+  }
   const contract = await requireOrgSide(deps.ledger, input.contractId, input.callerProfileId);
   if (!['authorized','captured'].includes(contract.payment_status)) throw new FundingError(409, 'Contract is not funded');
   if (input.action === 'capture') {
+    if (await deps.ledger.hasOpenDisputes(contract.id)) throw new FundingError(409, "Open marketplace dispute blocks payment release");
     const summary = await deps.ledger.deliverableSummary(contract.id);
     if (summary.total === 0 || summary.approved !== summary.total) throw new FundingError(409, 'Release requires every deliverable approved');
   }
