@@ -8,14 +8,18 @@ import { operationStore } from '../server/moneyOperations.js';
 import { reconcileMoney } from '../server/reconcile.js';
 import { serviceClient } from '../server/service.js';
 import { realStripe } from '../server/stripe.js';
+import { reportReconciliationHeartbeat } from '../server/reconciliationHeartbeat.js';
 export async function GET(request:Request) {
   const expected=process.env.CRON_SECRET;
   const supplied=request.headers.get('authorization') ?? '';
   if(!expected || Buffer.byteLength(supplied)!==Buffer.byteLength(`Bearer ${expected}`) || !timingSafeEqual(Buffer.from(supplied),Buffer.from(`Bearer ${expected}`))) return Response.json({error:'Unauthorized'},{status:401});
-  const env=readServerEnv();
-  if(!env?.paymentsEnabled) return Response.json({error:'Payments disabled'},{status:503});
-  const client=serviceClient();
   try {
+    const env=readServerEnv();
+    if(!env?.paymentsEnabled) {
+      await reportReconciliationHeartbeat(false);
+      return Response.json({error:'Payments disabled'},{status:503,headers:{'cache-control':'no-store'}});
+    }
+    const client=serviceClient();
     const result=await reconcileMoney(client,{ledger:supabaseLedger(client),operations:operationStore(client),stripe:realStripe(process.env.STRIPE_SECRET_KEY!),
       appUrl:env.appUrl,notify:e=>dispatch(env,e)},sellerGateway(process.env.STRIPE_SECRET_KEY!));
     const bank=await reconcileBankPayouts(client,bankGateway(process.env.STRIPE_SECRET_KEY!));
@@ -24,9 +28,11 @@ export async function GET(request:Request) {
     // Counts only: never log journal payloads, credentials or provider errors.
     const log=JSON.stringify({event:'payment_reconciliation',ok,...result});
     if(ok) console.info(log); else console.error(log);
+    await reportReconciliationHeartbeat(ok);
     return Response.json({ok,...result},{status:ok?200:503,headers:{'cache-control':'no-store'}});
   } catch {
     console.error(JSON.stringify({event:'payment_reconciliation',ok:false,reason:'runner_failed'}));
+    await reportReconciliationHeartbeat(false);
     return Response.json({ok:false,error:'Payment reconciliation failed'},{status:500,headers:{'cache-control':'no-store'}});
   }
 }

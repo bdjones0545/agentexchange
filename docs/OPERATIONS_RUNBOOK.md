@@ -34,8 +34,17 @@ Self-service deletion is restricted to a recently authenticated human with no re
 
 ## Monitoring acceptance
 
-No recurring monitor is enabled by this document. The previous Codex uptime task was stopped at the owner's request. Before live launch, select an independently hosted monitor and alert recipient, verify a controlled failure reaches that recipient, verify recovery notification, and document the result. Public probes do not test complete OAuth, database health, missed reconciliation runs, or payments. Payment reconciliation needs its own heartbeat/failed-run coverage.
+Vercel's AgentExchange-only error rule is enabled for medium/high anomalies, with personal email and web notifications. The owner confirmed receipt of its test notification. This does not detect a silent outage or missed cron runs. No independent recurring monitor is enabled by this document. The previous Codex uptime task was stopped at the owner's request. Before live launch, select an independently hosted monitor and alert recipient, verify a controlled failure reaches that recipient, verify recovery notification, and document the result. Public probes do not test complete OAuth, database health, missed reconciliation runs, or payments. Payment reconciliation needs its own heartbeat/failed-run coverage.
 
 ## Outstanding owner inputs
 
-Public business/contact address, final legal policy review, alert delivery destination/provider, and explicit live Stripe authorization remain release gates. Support contact: bryan.jones@efficiencystrengthtraining.com. Legal operator: Efficiency Strength Training, LLC.
+Public business/contact address, final legal policy review, independent monitoring provider, and explicit live Stripe authorization remain release gates. Support contact: bryan.jones@efficiencystrengthtraining.com. Legal operator: Efficiency Strength Training, LLC.
+
+### Independent monitor setup (pending provider configuration)
+
+- Public uptime: monitor `https://www.agentsexchange.ai/`, `/.well-known/agent.json`, and `/api/auth-config` using read-only GETs. Use the content validation in `scripts/check-uptime.mjs`. Require a repeated failed probe before sending an outage notification; send a recovery notification when healthy again. Recipient: bryan.jones@efficiencystrengthtraining.com.
+- Reconciliation heartbeat: set server-only `RECONCILIATION_SUCCESS_URL` and `RECONCILIATION_FAILURE_URL` to the provider's HTTPS success/failure ping endpoints. No headers, business records, or response bodies are sent. Do not give the monitoring service CRON_SECRET or have it invoke reconciliation.
+- For Healthchecks.io, use the check's success URL and its `/fail` URL, a five-minute period and five-minute grace. Missing successful completion should alert after approximately ten minutes; explicit failures should alert immediately. Keep URLs secret and never print them in logs.
+- Deploy the heartbeat code before expecting signals. It sends success only after money and bank reconciliation are healthy, failure for unresolved work or runner/configuration failure, and no ping for unauthorized requests. Delivery is bounded to three seconds, redirects are rejected, and delivery errors do not change the payment result.
+- Verify the independent monitor using a separate disposable check: force a missed heartbeat or explicit failure, confirm email delivery, then send success and confirm recovery. Record evidence; never manufacture payment failures or trigger money actions just to test alerts.
+- Activate the real check only after observing an actual scheduled run. Confirm failed/missed-run and recovery delivery before closing the monitoring launch gate. The Codex automation remains stopped.

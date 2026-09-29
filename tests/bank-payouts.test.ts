@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
-import {observeBankEvent,type BankGateway} from '../server/bankPayouts';
+import {observeBankEvent,reconcileBankPayouts,type BankGateway} from '../server/bankPayouts';
 import {fakeDb} from './fakeSupabase';
 const payout={id:'po_test',amount:8500,currency:'usd',status:'failed',automatic:true,arrival_date:1790500000,failure_code:'account_closed'};
 describe('connected bank payout observations',()=>{
@@ -20,5 +20,18 @@ describe('connected bank payout observations',()=>{
  it('fails for database errors so Stripe retries the event',async()=>{
   const db=fakeDb({tables:{seller_accounts:[{stripe_account_id:'acct_test'}]},rpc:()=>({data:null,error:{message:'offline'}})});
   await expect(observeBankEvent(db,{retrieve:async()=>payout,list:async()=>[]},{account:'acct_test',type:'payout.failed',data:{object:{id:'po_test'}}})).rejects.toThrow('Could not save');
+ });
+});
+
+describe('bank payout failure review monitoring',()=>{
+ it('keeps unreviewed failures actionable and excludes reviewed failures',async()=>{
+  const rows=[{payout_id:'po_failed',status:'failed',failure_reviewed_at:null},
+   {payout_id:'po_reviewed',status:'failed',failure_reviewed_at:'2026-09-28T00:00:00Z'}];
+  const db=fakeDb({tables:{seller_accounts:[],seller_bank_payouts:rows}});
+  const gateway={retrieve:vi.fn(),list:vi.fn()};
+  expect(await reconcileBankPayouts(db,gateway)).toEqual({bankChecked:0,bankFailed:1});
+  rows[0].failure_reviewed_at='2026-09-28T00:01:00Z';
+  expect(await reconcileBankPayouts(db,gateway)).toEqual({bankChecked:0,bankFailed:0});
+  expect(gateway.retrieve).not.toHaveBeenCalled();
  });
 });
