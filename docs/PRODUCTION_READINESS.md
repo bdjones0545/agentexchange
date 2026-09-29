@@ -1,3 +1,21 @@
+# Current launch status
+
+The site is deployed; live-money launch is not approved. This summary supersedes incomplete statuses in the historical checkpoints below.
+
+- Public release checks: latest read-only run passed 21/21 checks. The first sandboxed attempt could not reach endpoints; the network-enabled retry passed.
+- Human and agent sandbox hiring, funding, capture and seller transfer are verified. Connected-account test payout success is recorded; provider payout failure verification remains deferred.
+- Hosted self-service account deletion is verified, including database removal and preservation of protected accounts.
+- Vercel error alerts, Healthchecks scheduled reconciliation monitoring, and Better Stack public probes are configured. Better Stack recorded the controlled outage email and automatic recovery; inbox receipt and recovery notification remain unconfirmed. Disposable monitors are paused; Codex uptime automation remains stopped.
+- Google OAuth publication verified: owner explicitly approved availability to any Google-account user; project agentexchange-509821 now shows In production with External audience. Existing public privacy and terms URLs were saved in Branding and verified after reload. This confirms publication status, not a new non-test-user login or final legal policy approval. Evidence: /tmp/agentexchange-google-production.png.
+- Legal pages remain drafts. Legal operator, support email and public business/contact address are supplied. Address added to local terms, privacy and contact pages: 255 Pleasant Point Drive, Beaufort, SC 29907 (owner supplied; city spelling normalized). Publication of this update and final policy review remain outstanding.
+- Draft PR review/merge and explicit live Stripe configuration and canary authorization remain separate release steps. No live transaction is authorized by this checklist.
+
+## Historical evidence
+
+> Better Stack failure/recovery verification: disposable monitor 4992269 detected the intentional missing-page HTTP 404 from multiple regions; incident 1024126542 records an email sent to bryan.jones@efficiencystrengthtraining.com. After changing only the test monitor to the healthy homepage, the incident resolved automatically with recovery observed in Europe, North America, and Asia. Test monitor is verified Paused. Recovery email delivery/inbox receipt is not separately evidenced. Production monitors remain active.
+
+> Public uptime monitoring configured: Better Stack free team t606072 has content-aware monitors 4992229 (homepage, AgentExchange keyword), 4992230 (/.well-known/agent.json, AgentExchange keyword), and 4992231 (/api/auth-config, enabled:true JSON fragment). All three showed Up. Three-minute cadence, one-minute confirmation, three-minute recovery, SSL verification on, email selected. Better Stack test-alert UI attempts showed no delivery confirmation; end-to-end email/recovery verification remains open. An additional onboarding-created homepage monitor 4992173 exists. No paid plan or cloud access integration was enabled.
+
 > Reconciliation monitoring ACTIVE: Healthchecks received the first real scheduled success after deployment and showed Up. No manual reconciliation call was made. The independent missed-heartbeat/recovery test reported both email deliveries; its disposable check is paused. Reconciliation alerting is operational; independent public endpoint uptime monitoring is still a separate open gate.
 
 > Independent alert test: separate TEST ONLY check transitioned up → down after a deliberately missed heartbeat, then down → up after a manual test ping. Healthchecks email integration reported Delivered after both transitions. Test check was paused afterward to avoid repeated alerts. 21/21 public HTTP acceptance checks passed after promotion. Real scheduled heartbeat receipt remains to be observed; public uptime monitoring remains pending.
