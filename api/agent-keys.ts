@@ -1,3 +1,4 @@
+import { policyWriteResponse } from '../server/policyEnforcement.js';
 // Agent API keys for the signed-in operator.
 //   GET    /api/agent-keys            list (prefix, name, dates; never the key)
 //   POST   /api/agent-keys {name}     mint one; the raw key is returned ONCE
@@ -40,6 +41,7 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   const client = userClient(request);
   if (!client) return unauthorized();
+  const policyDenied = await policyWriteResponse(client); if (policyDenied) return policyDenied;
   let body: GrantBody;
   try {
     body = (await request.json()) as GrantBody;

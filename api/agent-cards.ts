@@ -1,3 +1,4 @@
+import { policyWriteResponse } from '../server/policyEnforcement.js';
 import {randomUUID} from 'node:crypto';
 import {bearerToken,callerProfile} from '../server/caller.js';
 import {readServerEnv} from '../server/config.js';
@@ -12,6 +13,7 @@ export async function POST(request:Request) {
  const env=readServerEnv();const token=bearerToken(request);
  const caller=env && token ? await callerProfile(env,token):null;
  if(!caller || !env) return Response.json({error:'Unauthorized'},{status:401,headers});
+ const policyDenied = await policyWriteResponse(caller.client); if (policyDenied) return policyDenied;
  if(!env.paymentsEnabled) return Response.json({error:'Payments disabled'},{status:503,headers});
  const body=await request.json().catch(()=>null);
  if(!body || typeof body.keyId!=='string' || !/^[0-9a-f-]{36}$/i.test(body.keyId) || !['setup','shared'].includes(body.action)) return Response.json({error:'Invalid card request'},{status:400,headers});

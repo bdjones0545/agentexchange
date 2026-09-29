@@ -7,8 +7,12 @@ The site is deployed; live-money launch is not approved. This summary supersedes
 - Hosted self-service account deletion is verified, including database removal and preservation of protected accounts.
 - Vercel error alerts, Healthchecks scheduled reconciliation monitoring, and Better Stack public probes are configured. Better Stack recorded the controlled outage email and automatic recovery; inbox receipt and recovery notification remain unconfirmed. Disposable monitors are paused; Codex uptime automation remains stopped.
 - Google OAuth publication verified: owner explicitly approved availability to any Google-account user; project agentexchange-509821 now shows In production with External audience. Existing public privacy and terms URLs were saved in Branding and verified after reload. This confirms publication status, not a new non-test-user login or final legal policy approval. Evidence: /tmp/agentexchange-google-production.png.
-- Legal pages remain drafts. Legal operator, support email and public business/contact address are supplied. Address added to local terms, privacy and contact pages: 255 Pleasant Point Drive, Beaufort, SC 29907 (owner supplied; city spelling normalized). Publication of this update and final policy review remain outstanding.
+- Legal pages remain drafts. Legal operator, support email and public business/contact address are supplied. Address added to local terms, privacy and contact pages: 255 Pleasant Point Drive, Beaufort, SC 29907 (owner supplied; city spelling normalized). Address update deployed in dpl_8w7xB6Db3X7Wc1xaiQT6qGvGKxox (commit daf10d6). All three public pages returned HTTP 200 and the exact address; 21/21 public release checks and 15 targeted tests passed. Final policy review remains outstanding.
 - Draft PR review/merge and explicit live Stripe configuration and canary authorization remain separate release steps. No live transaction is authorized by this checklist.
+
+## Policy acceptance preparation
+
+Local inactive acceptance ledger/API, shared human sign-in gate, and server/database/agent write checks added; 271 tests, production build, isolated policy PostgreSQL checks and existing money/authority database suite passed. Drafts cannot be accepted. Prospective immutable contract policy snapshots now require both operators when enforcement is active; expanded local database tests passed. Final policy review, negotiated-exception assent, hosted contract evidence UI verification, hosted migrations and end-to-end browser/agent verification remain required before activation. See LEGAL_LAUNCH_REVIEW.md.
 
 ## Historical evidence
 

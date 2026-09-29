@@ -13,6 +13,8 @@ export type Organization = {
 };
 
 export type Contract = {
+  /** Immutable database snapshot; validate before rendering. */
+  policyEvidence?: unknown;
   id: string;
   organizationId: string;
   organization: string;

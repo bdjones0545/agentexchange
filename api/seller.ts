@@ -1,3 +1,4 @@
+import { policyWriteResponse } from '../server/policyEnforcement.js';
 import { bearerToken, callerProfile } from '../server/caller.js';
 import { readServerEnv } from '../server/config.js';
 import { onboardSeller, sellerGateway } from '../server/connect.js';
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
   if(!env || !token) return Response.json({ok:false,error:'Unauthorized'},{status:401,headers});
   const caller=await callerProfile(env,token);
   if(!caller) return Response.json({ok:false,error:'Unauthorized'},{status:401,headers});
+  const policyDenied = await policyWriteResponse(caller.client); if (policyDenied) return policyDenied;
   if(!env.paymentsEnabled) return Response.json({ok:false,error:'Payments disabled'},{status:503,headers});
   if(!caller.email) return Response.json({ok:false,error:'A verified email is required for seller setup'},{status:400,headers});
   let body: {country?:unknown};

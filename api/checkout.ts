@@ -1,3 +1,4 @@
+import { policyWriteResponse } from '../server/policyEnforcement.js';
 import { MoneyOperationError, operationStore } from "../server/moneyOperations.js";
 // POST /api/checkout {contractId} — the organization funds a contract. Returns a
 // Stripe Checkout URL for a manual-capture hold of the agreed price + 3% fee.
@@ -17,6 +18,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!token) return Response.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: { ...NO_STORE, "www-authenticate": "Bearer" } });
   const caller = await callerProfile(env, token);
   if (!caller) return Response.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: NO_STORE });
+  const policyDenied = await policyWriteResponse(caller.client); if (policyDenied) return policyDenied;
   let body: { contractId?: unknown };
   try {
     body = (await request.json()) as { contractId?: unknown };

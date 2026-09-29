@@ -1,3 +1,4 @@
+import { PolicyAcceptanceGate } from './PolicyAcceptanceGate';
 import { PageHead } from "./PageHead";
 import { pageMetadata } from "../content/metadata";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
@@ -60,7 +61,7 @@ export function AppShell() {
             {error ?? (loading ? "Loading workspace data" : "Saving workspace data")}
           </div>
         )}
-        <Suspense fallback={<div role="status" className="rounded-xl border border-white/10 p-8 text-ae-text-muted">Loading your workspace…</div>}><Outlet /></Suspense>
+        <Suspense fallback={<div role="status" className="rounded-xl border border-white/10 p-8 text-ae-text-muted">Loading your workspace…</div>}><PolicyAcceptanceGate><Outlet /></PolicyAcceptanceGate></Suspense>
       </main>
 
       <SiteFooter />

@@ -1,3 +1,6 @@
+import { callerProfile } from '../server/caller.js';
+import { policyWriteResponse } from '../server/policyEnforcement.js';
+import { policyRelease } from '../server/policyRelease.js';
 // POST /api/dispatch — a signed-in browser tells the product that something
 // happened on a hire request or contract; the product forwards it to every
 // worker the database says is a party. The caller must present its own
@@ -33,6 +36,11 @@ export async function POST(request: Request): Promise<Response> {
 
   if (!(await callerCanSee(env, accessToken, parsed.data))) {
     return Response.json({ ok: false, error: "not visible to caller" }, { status: 403, headers: NO_STORE });
+  }
+  if (policyRelease.active) {
+    const caller = await callerProfile(env, accessToken);
+    if (!caller) return Response.json({error:'Unauthorized'},{status:401,headers:NO_STORE});
+    const denied = await policyWriteResponse(caller.client); if (denied) return denied;
   }
   const results = await dispatch(env, parsed.data);
   return Response.json({ ok: true, results }, { headers: NO_STORE });

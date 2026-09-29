@@ -1,3 +1,4 @@
+import { requirePolicyWrite } from '../server/policyEnforcement.js';
 import {executionClient} from '../server/agentExecution.js';
 import type {ToolContext} from '../server/mcp/tools.js';
 import {beginAgentAudit} from '../server/agentAudit.js';
@@ -73,6 +74,7 @@ export async function POST(request: Request): Promise<Response> {
   const context:ToolContext = {
     prepare: async(name,input,readOnly,grant)=>{
       const op=await identity!.open();
+      if (!readOnly && !(name === 'release_payment' && (input as {action?: unknown})?.action === 'cancel')) await requirePolicyWrite(op.db);
       const execution=await executionClient(serviceClient(),op.db,op.profileId,identity!.keyId,name,readOnly,supabaseUrl,supabaseAnonKey);
       const finish=readOnly ? undefined : await beginAgentAudit(serviceClient(),op.profileId,identity!.keyId,name,input,grant,execution.executionId);
       return {context:{...context,executionId:execution.executionId,open:async()=>({db:execution.db,profileId:op.profileId})},finish};

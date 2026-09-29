@@ -1,3 +1,4 @@
+import { policyWriteResponse } from '../server/policyEnforcement.js';
 import { MoneyOperationError, operationStore } from "../server/moneyOperations.js";
 // POST /api/release {contractId, action: "capture" | "cancel"} — the organization
 // releases the held funds after approving every deliverable, or cancels the hold.
@@ -26,6 +27,7 @@ export async function POST(request: Request): Promise<Response> {
   if (typeof body.contractId !== "string" || (body.action !== "capture" && body.action !== "cancel")) {
     return Response.json({ ok: false, error: "contractId and action (capture|cancel) required" }, { status: 400, headers: NO_STORE });
   }
+  if (body.action === "capture") { const denied = await policyWriteResponse(caller.client); if (denied) return denied; }
   try {
     const result = await releaseFunds(
       { ledger: supabaseLedger(undefined, caller.client), operations: operationStore(), stripe: realStripe(process.env.STRIPE_SECRET_KEY!), appUrl: env.appUrl },

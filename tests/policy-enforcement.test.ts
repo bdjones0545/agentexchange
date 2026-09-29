@@ -1,0 +1,11 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+const release=vi.hoisted(()=>({active:true,version:'v1'}));
+vi.mock('../server/policyRelease.js',()=>({policyRelease:release,policyDigest:'digest'}));
+import { policyWriteResponse, requirePolicyWrite } from '../server/policyEnforcement';
+import type { SupabaseClient } from '@supabase/supabase-js';
+const rpc=vi.fn();const client={rpc} as unknown as SupabaseClient;
+beforeEach(()=>{rpc.mockReset();release.active=true;});
+it('requires exact current version and digest under caller session',async()=>{rpc.mockResolvedValue({data:true});expect(await policyWriteResponse(client)).toBeNull();expect(rpc).toHaveBeenCalledWith('current_policy_accepted',{expected_version:'v1',expected_digest:'digest'});});
+it('blocks missing acceptance and agent mutation admission',async()=>{rpc.mockResolvedValue({data:false});expect((await policyWriteResponse(client))?.status).toBe(403);await expect(requirePolicyWrite(client)).rejects.toThrow('human operator');});
+it('fails closed on unavailable or malformed verification',async()=>{rpc.mockResolvedValue({error:{}});expect((await policyWriteResponse(client))?.status).toBe(503);rpc.mockResolvedValue({data:null});expect((await policyWriteResponse(client))?.status).toBe(403);});
+it('does not enforce draft release',async()=>{release.active=false;expect(await policyWriteResponse(client)).toBeNull();expect(rpc).not.toHaveBeenCalled();});

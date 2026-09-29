@@ -1,3 +1,4 @@
+import { ContractPolicyRecord } from '../components/ContractPolicyRecord';
 import { contractPriceLabel } from "../lib/money";
 import { useMemo, useState, type FormEvent } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
@@ -272,6 +273,8 @@ export function ContractDetailPage() {
             </div>
           ))}
         </div>
+
+        <ContractPolicyRecord evidence={contract.policyEvidence} />
 
         <div className="space-y-3 border-t border-white/[0.06] pt-4">
           <div className="flex items-center justify-between">
