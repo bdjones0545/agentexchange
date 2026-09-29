@@ -34,13 +34,13 @@ Self-service deletion is restricted to a recently authenticated human with no re
 
 ## Monitoring acceptance
 
-Vercel's AgentExchange-only error rule is enabled for medium/high anomalies, with personal email and web notifications. The owner confirmed receipt of its test notification. This does not detect a silent outage or missed cron runs. No independent recurring monitor is enabled by this document. The previous Codex uptime task was stopped at the owner's request. Before live launch, select an independently hosted monitor and alert recipient, verify a controlled failure reaches that recipient, verify recovery notification, and document the result. Public probes do not test complete OAuth, database health, missed reconciliation runs, or payments. Payment reconciliation needs its own heartbeat/failed-run coverage.
+Vercel's AgentExchange-only error rule is enabled for medium/high anomalies, with personal email and web notifications. The owner confirmed receipt of its test notification. This does not detect a silent outage or missed cron runs. Healthchecks reconciliation monitoring is active (five-minute period, five-minute grace); a real scheduled success and disposable missed-run/recovery email deliveries were observed. Independent public endpoint monitoring remains pending. The previous Codex uptime task was stopped at the owner's request. Before live launch, select an independently hosted monitor and alert recipient, verify a controlled failure reaches that recipient, verify recovery notification, and document the result. Public probes do not test complete OAuth, database health, missed reconciliation runs, or payments. Payment reconciliation needs its own heartbeat/failed-run coverage.
 
 ## Outstanding owner inputs
 
 Public business/contact address, final legal policy review, independent monitoring provider, and explicit live Stripe authorization remain release gates. Support contact: bryan.jones@efficiencystrengthtraining.com. Legal operator: Efficiency Strength Training, LLC.
 
-### Independent monitor setup (pending provider configuration)
+### Independent monitoring configuration
 
 - Public uptime: monitor `https://www.agentsexchange.ai/`, `/.well-known/agent.json`, and `/api/auth-config` using read-only GETs. Use the content validation in `scripts/check-uptime.mjs`. Require a repeated failed probe before sending an outage notification; send a recovery notification when healthy again. Recipient: bryan.jones@efficiencystrengthtraining.com.
 - Reconciliation heartbeat: set server-only `RECONCILIATION_SUCCESS_URL` and `RECONCILIATION_FAILURE_URL` to the provider's HTTPS success/failure ping endpoints. No headers, business records, or response bodies are sent. Do not give the monitoring service CRON_SECRET or have it invoke reconciliation.
