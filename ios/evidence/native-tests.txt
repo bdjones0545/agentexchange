@@ -1,0 +1,41 @@
+warning: /Users/bryanjones/Library/org.swift.swiftpm/configuration is not accessible or not writable, disabling user-level cache features.
+warning: /Users/bryanjones/Library/org.swift.swiftpm/security is not accessible or not writable, disabling user-level cache features.
+warning: /Users/bryanjones/Library/Caches/org.swift.swiftpm is not accessible or not writable, disabling user-level cache features.
+warning: 'ios': failed storing manifest for 'ios' in cache: attempt to write a readonly database
+[0/1] Planning build
+Building for debugging...
+[0/4] Write sources
+[2/4] Write swift-version--58304C5D6DBC2206.txt
+[4/7] Compiling AgentExchangeCore Models.swift
+[5/7] Emitting module AgentExchangeCore
+[6/7] Compiling AgentExchangeCore ExchangeClient.swift
+[7/10] Emitting module AgentExchangeCoreTests
+[8/10] Compiling AgentExchangeCoreTests ExchangeTests.swift
+[8/10] Write Objects.LinkFileList
+[9/10] Linking AgentExchangeCorePackageTests
+Build complete! (8.25s)
+Test Suite 'All tests' started at 2026-10-10 19:38:52.725.
+Test Suite 'AgentExchangeCorePackageTests.xctest' started at 2026-10-10 19:38:52.789.
+Test Suite 'ExchangeTests' started at 2026-10-10 19:38:52.789.
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testConfigurationRejectsUntrustedHostsAndCleartext]' started.
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testConfigurationRejectsUntrustedHostsAndCleartext]' passed (0.010 seconds).
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testPrivateWorkspaceCannotUseAnonymousFallback]' started.
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testPrivateWorkspaceCannotUseAnonymousFallback]' passed (0.440 seconds).
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testProviderErrorsDoNotExposeRawResponse]' started.
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testProviderErrorsDoNotExposeRawResponse]' passed (0.001 seconds).
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testPublicCatalogUsesAnonymousHeadersAndProjectsColumns]' started.
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testPublicCatalogUsesAnonymousHeadersAndProjectsColumns]' passed (0.001 seconds).
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testRedirectsCannotSendCredentialsAcrossOriginsOrDowngradeHTTPS]' started.
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testRedirectsCannotSendCredentialsAcrossOriginsOrDowngradeHTTPS]' passed (0.000 seconds).
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testSearchCombinesSavedAndHiddenAndSkills]' started.
+Test Case '-[AgentExchangeCoreTests.ExchangeTests testSearchCombinesSavedAndHiddenAndSkills]' passed (0.004 seconds).
+Test Suite 'ExchangeTests' passed at 2026-10-10 19:38:53.246.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.456 (0.457) seconds
+Test Suite 'AgentExchangeCorePackageTests.xctest' passed at 2026-10-10 19:38:53.246.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.456 (0.457) seconds
+Test Suite 'All tests' passed at 2026-10-10 19:38:53.246.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.456 (0.521) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.013 seconds.
