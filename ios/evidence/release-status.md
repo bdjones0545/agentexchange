@@ -21,6 +21,8 @@ Source: `release/ios-app-store`, based on `harden/bounded-marketplace` at `7e00f
 - Public production HTTP checks: 21/21 pass.
 - Simulator app compilation passes. Unsigned generic iOS archive builds. These are not distribution-signed artifacts and cannot be uploaded as-is.
 
+GitHub draft PR: https://github.com/bdjones0545/agentexchange/pull/50. At commit `5d29b7c`, web CI, database authorization CI, native tests/build CI and the Vercel preview all passed. Subsequent changes must pass their own checks. The final unsigned archive is preserved under `release-evidence/agentexchange-2026-10-10/AgentExchange-1.0-UNSIGNED.xcarchive.zip` in the shared workspace.
+
 ## Open release gates
 
 1. Apple account: Chrome and Safari both show App Store Connect sign-in. App identity, signing team, existing listing, agreements, availability, review state and upload access are unverified.
@@ -31,6 +33,6 @@ Source: `release/ios-app-store`, based on `harden/bounded-marketplace` at `7e00f
 6. Marketplace live money: existing handoff still leaves live Stripe activation, provider failure/refund/reversal evidence and operational review pending. Local/database passes do not close those gates.
 7. Store preparation: verified screenshots, listing/privacy/age-rating answers, review access and final signed build remain outstanding.
 
-The initial iPhone simulator stalled at “Waiting on System App”; it was shut down without deleting its data. That attempt did not verify app rendering. Do not treat compiler success as visual or authenticated acceptance.
+The initial iPhone simulator stalled at “Waiting on System App”; a new isolated iPhone 17 simulator also failed to finish startup. Both were shut down without deleting data. Neither attempt verified app rendering. Do not treat compiler success as visual or authenticated acceptance.
 
 References: [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/), [Supabase password authentication](https://supabase.com/docs/guides/auth/passwords).

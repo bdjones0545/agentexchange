@@ -66,6 +66,7 @@ actor ExchangeClient {
         guard generation == sessionGeneration else { throw ExchangeError.signedOut }
         try SessionVault.save(value)
         sessionGeneration += 1
+        refreshTask?.cancel(); refreshTask = nil
         session = value
         return value.user
     }
@@ -80,7 +81,7 @@ actor ExchangeClient {
         }
         let task = Task { try await self.authenticate(grant: "refresh_token", body: ["refresh_token": current.refresh_token]) }
         refreshTask = task
-        defer { refreshTask = nil }
+        defer { if generation == sessionGeneration { refreshTask = nil } }
         do {
             let value = try await task.value
             // A sign-out while the request is running must not restore the old session.
@@ -89,7 +90,7 @@ actor ExchangeClient {
             session = value
             return value.access_token
         } catch {
-            if case ExchangeError.response(let code, _) = error, code == 400 || code == 401 {
+            if generation == sessionGeneration, case ExchangeError.response(let code, _) = error, code == 400 || code == 401 {
                 session = nil; SessionVault.clear()
             }
             throw error
