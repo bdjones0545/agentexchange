@@ -8,7 +8,7 @@ struct RootView: View {
         TabView {
             NavigationStack { AgentsView() }.tabItem { Label("Discover", systemImage: "sparkle.magnifyingglass") }
             NavigationStack { WorkView() }.id(store.user?.id ?? "signed-out").tabItem { Label("My work", systemImage: "briefcase") }
-            NavigationStack { AccountView() }.tabItem { Label("Account", systemImage: "person.crop.circle") }
+            NavigationStack { AccountView() }.id(store.user?.id ?? "signed-out").tabItem { Label("Account", systemImage: "person.crop.circle") }
         }
     }
 }
@@ -61,6 +61,8 @@ struct AgentDetailView: View {
     @EnvironmentObject private var store: ExchangeStore
     @Environment(\.dismiss) private var dismiss
     @State private var report = false
+    @State private var blockError: String?
+    @State private var blocking = false
     var body: some View {
         List {
             Section {
@@ -83,10 +85,22 @@ struct AgentDetailView: View {
             Section {
                 ShareLink(item: ExchangeClient.website.appendingPathComponent("agents/\(agent.id)")) { Label("Share profile", systemImage: "square.and.arrow.up") }
                 Button("Report this profile", systemImage: "flag") { report = true }
+                if store.user != nil {
+                    Button("Block this operator", systemImage: "person.slash", role: .destructive) {
+                        Task {
+                            blocking = true
+                            defer { blocking = false }
+                            do { try await store.client.block(agentID: agent.id); await store.loadAgents(); dismiss() }
+                            catch { blockError = error.localizedDescription }
+                        }
+                    }.disabled(blocking)
+                    Text("Blocking hides this operator’s profiles and prevents new contact in either direction. Existing contract records remain available.").font(.caption).foregroundStyle(.secondary)
+                }
+                if let blockError { Text(blockError).foregroundStyle(.red) }
                 Button("Hide this agent on this device", systemImage: "eye.slash", role: .destructive) { store.hide(agent.id); dismiss() }
             }
         }.navigationTitle("Agent profile").navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $report) { SupportView(subject: "Agent profile report: \(agent.id)") }
+            .sheet(isPresented: $report) { ReportView(kind: "agent", targetID: agent.id) }
     }
 }
 struct WorkView: View {
@@ -126,6 +140,7 @@ struct ContractView: View {
     @State private var error: String?
     @State private var loading = true
     @State private var report = false
+    @State private var reportedContent: ReportTarget?
     var body: some View {
         List {
             Section {
@@ -145,6 +160,7 @@ struct ContractView: View {
                         Text(item.title).font(.headline)
                         Text(item.status).font(.caption).foregroundStyle(.secondary)
                         if let notes = item.notes { Text(notes).textSelection(.enabled) }
+                        Button("Report deliverable", systemImage: "flag") { reportedContent = ReportTarget(kind: "deliverable", id: item.id) }.font(.caption)
                     }.padding(.vertical, 6)
                 }
             }
@@ -155,13 +171,19 @@ struct ContractView: View {
                         Text(message.author).font(.headline)
                         Text(message.body).textSelection(.enabled)
                         Text(message.created_at.prefix(10)).font(.caption).foregroundStyle(.secondary)
+                        Button("Report message", systemImage: "flag") { reportedContent = ReportTarget(kind: "message", id: message.id) }.font(.caption)
                     }.padding(.vertical, 6)
                 }
             }
-            Section { Button("Contact support about this contract", systemImage: "questionmark.circle") { report = true } }
+            Section {
+                Button("Report this contract", systemImage: "flag") { reportedContent = ReportTarget(kind: "contract", id: contract.id) }
+                if contract.agent_id != nil { BlockOperatorButton(contractID: contract.id) }
+                Button("Contact support about this contract", systemImage: "questionmark.circle") { report = true }
+            }
         }.navigationTitle("Contract").navigationBarTitleDisplayMode(.inline)
             .task { await load() }.refreshable { await load() }
             .sheet(isPresented: $report) { SupportView(subject: "Contract support: \(contract.id)") }
+            .sheet(item: $reportedContent) { ReportView(kind: $0.kind, targetID: $0.id) }
     }
     private func load() async {
         loading = true
@@ -215,11 +237,24 @@ struct AccountView: View {
                 }
             }
             if let error { Section { Text(error).foregroundStyle(.red).accessibilityLabel("Error: \(error)") } }
+            if let deletionNotice = store.deletionNotice { Section("Account deletion") { Text(deletionNotice) } }
+            if store.disconnectApple {
+                Section("Disconnect Sign in with Apple") {
+                    Text("Your AgentExchange account has been deleted. To remove its Apple authorization, open Settings → your name → Sign in with Apple → AgentExchange → Stop Using Apple ID.")
+                    Link("Apple’s instructions", destination: URL(string: "https://support.apple.com/en-us/102571")!)
+                }
+            }
+            if store.user != nil {
+                Section("Safety and requests") {
+                    NavigationLink("Reports and deletion requests") { SafetyRequestsView() }
+                    NavigationLink("Blocked operators") { BlockedOperatorsView() }
+                }
+            }
             Section("Help and privacy") {
                 Button("Contact support", systemImage: "envelope") { support = true }
-                Link("Privacy policy", destination: ExchangeClient.website.appendingPathComponent("privacy"))
-                Link("Terms of service", destination: ExchangeClient.website.appendingPathComponent("terms"))
-                Link("Acceptable use", destination: ExchangeClient.website.appendingPathComponent("acceptable-use"))
+                Link("Privacy policy", destination: ExchangeClient.website.appendingPathComponent("ios-privacy"))
+                Link("Terms of service", destination: ExchangeClient.website.appendingPathComponent("ios-terms"))
+                Link("Acceptable use", destination: ExchangeClient.website.appendingPathComponent("ios-terms"))
             }
             Section("On this device") {
                 if !store.hidden.isEmpty { Button("Restore \(store.hidden.count) hidden agents") { store.restoreHidden() } }
@@ -228,7 +263,7 @@ struct AccountView: View {
             if store.user != nil {
                 Section {
                     Button("Delete account", role: .destructive) { deletion = true }
-                } footer: { Text("Sign in again before deleting. Accounts with marketplace or billing records require a support review.") }
+                } footer: { Text("Sign in again before deleting. Accounts with retained marketplace or billing records submit a deletion request here. Check its status in Reports and deletion requests.") }
             }
             Section { Text("AgentExchange · 1.0\nEfficiency Strength Training, LLC").font(.caption).foregroundStyle(.secondary) }
         }.navigationTitle("Account")
@@ -237,12 +272,12 @@ struct AccountView: View {
                 TextField("Type DELETE", text: $confirmation)
                 Button("Cancel", role: .cancel) { confirmation = "" }
                 Button("Delete account", role: .destructive) { Task { await deleteAccount() } }.disabled(confirmation != "DELETE" || busy)
-            } message: { Text("Eligible accounts will be permanently deleted. This cannot be undone. Type DELETE to confirm.") }
+            } message: { Text("Eligible accounts will be permanently deleted. Accounts with retained records submit a deletion request for review within 30 days. Records required by law may be retained. Type DELETE to confirm.") }
     }
     private func signInWithGoogle() async {
         busy = true; error = nil
         defer { busy = false }
-        do { store.user = try await googleSignIn.signIn(client: store.client) }
+        do { store.user = try await googleSignIn.signIn(client: store.client); await store.loadAgents() }
         catch let failure as ASWebAuthenticationSessionError where failure.code == .canceledLogin { }
         catch { self.error = "Google sign-in could not be completed. Please try again or contact support." }
     }
@@ -255,20 +290,27 @@ struct AccountView: View {
                   let token = credential.identityToken,
                   let idToken = String(data: token, encoding: .utf8) else { throw ExchangeError.invalidResponse }
             store.user = try await store.client.signInWithApple(idToken: idToken, nonce: nonce)
+            await store.loadAgents()
         } catch let failure as ASAuthorizationError where failure.code == .canceled { }
         catch { self.error = "Apple sign-in could not be completed. Please try again or contact support." }
     }
     private func signIn() async {
         busy = true; error = nil
         defer { busy = false; password = "" }
-        do { store.user = try await store.client.signIn(email: email, password: password) }
+        do { store.user = try await store.client.signIn(email: email, password: password); await store.loadAgents() }
         catch { self.error = error.localizedDescription }
     }
     private func deleteAccount() async {
         guard confirmation == "DELETE" else { return }
         busy = true
         defer { busy = false; confirmation = "" }
-        do { try await store.client.deleteAccount(); store.user = nil; store.contracts = []; error = nil }
+        do {
+            let result = try await store.client.deleteAccount()
+            store.deletionNotice = result.message ?? "Your account has been deleted."
+            store.disconnectApple = result.appleDisconnectRequired ?? false
+            if result.status == "deleted" { store.user = nil; store.contracts = []; await store.loadAgents() }
+            error = nil
+        }
         catch { self.error = error.localizedDescription }
     }
 }

@@ -114,6 +114,14 @@
       "destination": "/api/public-page?path=/terms"
     },
     {
+      "source": "/ios-privacy",
+      "destination": "/api/public-page?path=/ios-privacy"
+    },
+    {
+      "source": "/ios-terms",
+      "destination": "/api/public-page?path=/ios-terms"
+    },
+    {
       "source": "/privacy",
       "destination": "/api/public-page?path=/privacy"
     },

@@ -125,4 +125,43 @@ final class ExchangeTests: XCTestCase {
         XCTAssertEqual(calls, 1)
     }
 
+    func testExpiredSessionRefreshesBeforePrivateReadAndPersistsRotation() async throws {
+        var saved: AuthSession?
+        let expired = AuthSession(access_token: "expired", refresh_token: "refresh-one", expires_at: 1, user: AuthUser(id: "user", email: nil))
+        let storage = SessionStorage(read: { expired }, save: { saved = $0 }, clear: {})
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [StubProtocol.self]
+        var refreshCount = 0
+        StubProtocol.handler = { request in
+            if request.url!.path == "/api/auth-config" { return (200, Data(#"{"enabled":true,"supabaseUrl":"https://ynkxhrptkvefcizxuvhk.supabase.co","anonKey":"public-only"}"#.utf8)) }
+            if request.url!.path == "/auth/v1/token" {
+                XCTAssertTrue(request.url!.query!.contains("grant_type=refresh_token")); refreshCount += 1
+                return (200, try JSONEncoder().encode(AuthSession(access_token: "fresh", refresh_token: "refresh-two", expires_at: Date().timeIntervalSince1970 + 3600, user: AuthUser(id: "user", email: nil))))
+            }
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fresh")
+            return (200, Data("[]".utf8))
+        }
+        let client = ExchangeClient(network: URLSession(configuration: config), storage: storage)
+        _ = try await client.contracts(); _ = try await client.contracts()
+        XCTAssertEqual(refreshCount, 1); XCTAssertEqual(saved?.refresh_token, "refresh-two")
+    }
+    func testDeletionRequestKeepsSessionAndCompletedDeletionClearsIt() async throws {
+        let session = AuthSession(access_token: "current", refresh_token: "refresh", expires_at: Date().timeIntervalSince1970 + 3600, user: AuthUser(id: "user", email: nil))
+        var cleared = false; var completed = false
+        let storage = SessionStorage(read: { session }, save: { _ in }, clear: { cleared = true })
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [StubProtocol.self]
+        StubProtocol.handler = { request in
+            XCTAssertEqual(request.url!.path, "/api/delete-account")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer current")
+            return (completed ? 200 : 202, Data((completed ? #"{"status":"deleted","appleDisconnectRequired":true}"# : #"{"status":"requested","message":"Request saved"}"#).utf8))
+        }
+        let client = ExchangeClient(network: URLSession(configuration: config), storage: storage)
+        let pending = try await client.deleteAccount()
+        XCTAssertEqual(pending.status, "requested"); XCTAssertFalse(cleared)
+        let user = await client.currentUser(); XCTAssertEqual(user?.id, "user")
+        completed = true
+        let deleted = try await client.deleteAccount()
+        XCTAssertEqual(deleted.appleDisconnectRequired, true); XCTAssertTrue(cleared)
+        let absent = await client.currentUser(); XCTAssertNil(absent)
+    }
+
 }

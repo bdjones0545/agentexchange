@@ -10,6 +10,7 @@ struct ExchangeAgent: Codable, Identifiable, Hashable {
     let verification_status: String
 }
 struct ExchangeContract: Codable, Identifiable, Hashable {
+    let agent_id: String?
     let id: String
     let title: String
     let agent_name: String
@@ -70,4 +71,19 @@ enum ExchangeSearch {
             (text.isEmpty || ([agent.name, agent.specialty] + agent.skills).joined(separator: " ").localizedCaseInsensitiveContains(text))
         }
     }
+}
+
+struct DeletionResult: Decodable {
+    let status: String
+    let message: String?
+    let appleDisconnectRequired: Bool?
+}
+struct SafetyRequest: Decodable, Identifiable {
+    let id: String
+    let status: String
+    let response: String
+}
+struct OperatorBlock: Decodable, Identifiable {
+    let target_user_id: String
+    var id: String { target_user_id }
 }

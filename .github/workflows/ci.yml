@@ -26,3 +26,5 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib libpq-dev
       - name: Verify spending concurrency and three-party authorization
         run: python3 scripts/verify-money-db.py
+      - name: Verify moderation, blocks and deletion queues
+        run: python3 scripts/verify-safety-db.py

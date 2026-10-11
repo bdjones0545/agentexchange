@@ -29,3 +29,11 @@ enum SessionVault {
     }
     static func clear() { SecItemDelete(query as CFDictionary) }
 }
+
+// Injectable persistence keeps session lifecycle tests isolated from the real Keychain.
+struct SessionStorage {
+    var read: () -> AuthSession?
+    var save: (AuthSession) throws -> Void
+    var clear: () -> Void
+    static let keychain = SessionStorage(read: SessionVault.read, save: SessionVault.save, clear: SessionVault.clear)
+}

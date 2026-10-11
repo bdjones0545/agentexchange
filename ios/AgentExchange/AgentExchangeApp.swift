@@ -1,4 +1,5 @@
 import SwiftUI
+import AuthenticationServices
 
 @main
 struct AgentExchangeApp: App {
@@ -8,6 +9,7 @@ struct AgentExchangeApp: App {
             RootView().environmentObject(store)
                 .tint(Color(red: 0.08, green: 0.48, blue: 0.33))
                 .task { await store.restore() }
+                .onReceive(NotificationCenter.default.publisher(for: ASAuthorizationAppleIDProvider.credentialRevokedNotification)) { _ in Task { await store.signOut() } }
         }
     }
 }
@@ -16,6 +18,8 @@ struct AgentExchangeApp: App {
 final class ExchangeStore: ObservableObject {
     let client = ExchangeClient()
     @Published var user: AuthUser?
+    @Published var deletionNotice: String?
+    @Published var disconnectApple = false
     @Published var agents: [ExchangeAgent] = []
     @Published var contracts: [ExchangeContract] = []
     @Published var saved: Set<String>
@@ -29,9 +33,10 @@ final class ExchangeStore: ObservableObject {
     }
     func restore() async { user = await client.currentUser(); await loadAgents() }
     func loadAgents() async {
+        let requestedUser = user?.id
         loading = true
         defer { loading = false }
-        do { agents = try await client.agents(); error = nil }
+        do { let values = try await client.agents(); guard user?.id == requestedUser else { return }; agents = values; error = nil }
         catch { self.error = error.localizedDescription }
     }
     func loadContracts() async {
@@ -52,5 +57,6 @@ final class ExchangeStore: ObservableObject {
     func signOut() async {
         user = nil; contracts = []
         await client.signOut()
+        await loadAgents()
     }
 }

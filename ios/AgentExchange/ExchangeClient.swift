@@ -13,14 +13,16 @@ final class ExchangeRedirectGuard: NSObject, URLSessionTaskDelegate {
 actor ExchangeClient {
     static let website = URL(string: "https://www.agentsexchange.ai")!
     private let network: URLSession
+    private let storage: SessionStorage
     private var config: AuthConfiguration?
     private var session: AuthSession?
     private var refreshTask: Task<AuthSession, Error>?
     private var sessionGeneration = 0
     private var pendingOAuth: OAuthFlow?
-    init(network: URLSession = URLSession(configuration: .ephemeral, delegate: ExchangeRedirectGuard(), delegateQueue: nil), restoreSession: Bool = true) {
+    init(network: URLSession = URLSession(configuration: .ephemeral, delegate: ExchangeRedirectGuard(), delegateQueue: nil), restoreSession: Bool = true, storage: SessionStorage = .keychain) {
         self.network = network
-        self.session = restoreSession ? SessionVault.read() : nil
+        self.storage = storage
+        self.session = restoreSession ? storage.read() : nil
     }
     func currentUser() -> AuthUser? { session?.user }
     private func configuration() async throws -> AuthConfiguration {
@@ -49,7 +51,7 @@ actor ExchangeClient {
                 }
             case 401: message = "Your session has expired or your sign-in details are incorrect. Please sign in again."
             case 403: message = "This action requires a recent sign-in or additional account authorization."
-            case 409: message = "This account has marketplace or billing records. Contact support to request a deletion review."
+            case 409: message = "This action could not complete. Please update the app and try again."
             case 429: message = "Too many requests. Please wait a moment and try again."
             default: message = "The service is unavailable right now. Please try again."
             }
@@ -73,7 +75,7 @@ actor ExchangeClient {
         let generation = sessionGeneration
         let value = try await authenticate(grant: "password", body: ["email": email.trimmingCharacters(in: .whitespacesAndNewlines), "password": password])
         guard generation == sessionGeneration else { throw ExchangeError.signedOut }
-        try SessionVault.save(value)
+        try storage.save(value)
         sessionGeneration += 1
         pendingOAuth = nil
         refreshTask?.cancel(); refreshTask = nil
@@ -84,7 +86,7 @@ actor ExchangeClient {
         let generation = sessionGeneration
         let value = try await authenticate(grant: "id_token", body: ["provider": "apple", "id_token": idToken, "nonce": nonce])
         guard generation == sessionGeneration else { throw ExchangeError.signedOut }
-        try SessionVault.save(value)
+        try storage.save(value)
         sessionGeneration += 1; pendingOAuth = nil
         refreshTask?.cancel(); refreshTask = nil
         session = value
@@ -112,7 +114,7 @@ actor ExchangeClient {
         let generation = sessionGeneration
         let value = try await authenticate(grant: "pkce", body: ["auth_code": code, "code_verifier": flow.verifier])
         guard generation == sessionGeneration else { throw ExchangeError.signedOut }
-        try SessionVault.save(value)
+        try storage.save(value)
         sessionGeneration += 1
         pendingOAuth = nil
         refreshTask?.cancel(); refreshTask = nil
@@ -135,12 +137,12 @@ actor ExchangeClient {
             let value = try await task.value
             // A sign-out while the request is running must not restore the old session.
             guard generation == sessionGeneration, session?.refresh_token == current.refresh_token else { throw ExchangeError.signedOut }
-            try SessionVault.save(value)
+            try storage.save(value)
             session = value
             return value.access_token
         } catch {
             if generation == sessionGeneration, case ExchangeError.response(let code, _) = error, code == 400 || code == 401 {
-                session = nil; SessionVault.clear()
+                session = nil; storage.clear()
             }
             throw error
         }
@@ -151,7 +153,7 @@ actor ExchangeClient {
         pendingOAuth = nil
         session = nil
         refreshTask?.cancel(); refreshTask = nil
-        SessionVault.clear()
+        storage.clear()
         guard let token, let config = try? await configuration(), let base = try? config.validatedURL() else { return }
         var components = URLComponents(url: base.appendingPathComponent("auth/v1/logout"), resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "scope", value: "local")]
@@ -161,13 +163,13 @@ actor ExchangeClient {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         _ = try? await send(request)
     }
-    private func rows<T: Decodable>(table: String, columns: String, privateData: Bool = false, filter: URLQueryItem? = nil) async throws -> [T] {
+    private func rows<T: Decodable>(table: String, columns: String, privateData: Bool = false, filter: URLQueryItem? = nil, order: String = "id.asc") async throws -> [T] {
         let config = try await configuration()
         let token = privateData ? try await accessToken() : config.anonKey!
         var results: [T] = []
         for offset in stride(from: 0, to: 10000, by: 500) {
             var components = URLComponents(url: try config.validatedURL().appendingPathComponent("rest/v1/\(table)"), resolvingAgainstBaseURL: false)!
-            components.queryItems = [URLQueryItem(name: "select", value: columns), URLQueryItem(name: "order", value: "id.asc"), URLQueryItem(name: "limit", value: "500"), URLQueryItem(name: "offset", value: String(offset))]
+            components.queryItems = [URLQueryItem(name: "select", value: columns), URLQueryItem(name: "order", value: order), URLQueryItem(name: "limit", value: "500"), URLQueryItem(name: "offset", value: String(offset))]
             if let filter { components.queryItems!.append(filter) }
             var request = URLRequest(url: components.url!)
             request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
@@ -179,10 +181,10 @@ actor ExchangeClient {
         throw ExchangeError.response(0, "There are too many records to load. Please contact support.")
     }
     func agents() async throws -> [ExchangeAgent] {
-        try await rows(table: "agents", columns: "id,name,specialty,description,skills,availability,verification_status")
+        try await rows(table: "agents", columns: "id,name,specialty,description,skills,availability,verification_status", privateData: session != nil)
     }
     func contracts() async throws -> [ExchangeContract] {
-        try await rows(table: "contracts", columns: "id,title,agent_name,organization_name,status,progress,due_date", privateData: true)
+        try await rows(table: "contracts", columns: "id,title,agent_id,agent_name,organization_name,status,progress,due_date", privateData: true)
     }
     func messages(contractID: String) async throws -> [ContractMessage] {
         let values: [ContractMessage] = try await rows(table: "contract_messages", columns: "id,author,body,created_at", privateData: true, filter: URLQueryItem(name: "contract_id", value: "eq.\(contractID)"))
@@ -191,13 +193,53 @@ actor ExchangeClient {
     func deliverables(contractID: String) async throws -> [Deliverable] {
         try await rows(table: "contract_deliverables", columns: "id,title,notes,status", privateData: true, filter: URLQueryItem(name: "contract_id", value: "eq.\(contractID)"))
     }
-    func deleteAccount() async throws {
+    func deleteAccount() async throws -> DeletionResult {
+        let generation = sessionGeneration
         var request = URLRequest(url: Self.website.appendingPathComponent("api/delete-account"))
         request.httpMethod = "POST"
         request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(["confirmation": "DELETE"])
-        _ = try await send(request)
-        sessionGeneration += 1; session = nil; SessionVault.clear()
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["confirmation": "DELETE", "requestVersion": 2])
+        let value = try JSONDecoder().decode(DeletionResult.self, from: await send(request))
+        guard generation == sessionGeneration else { throw ExchangeError.signedOut }
+        if value.status == "deleted" { sessionGeneration += 1; session = nil; storage.clear() }
+        return value
     }
+    private func safetyRPC(_ name: String, body: [String: String]) async throws {
+        let config = try await configuration()
+        var request = URLRequest(url: try config.validatedURL().appendingPathComponent("rest/v1/rpc/" + name))
+        request.httpMethod = "POST"
+        request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(body)
+        _ = try await send(request)
+    }
+    func report(kind: String, id: String, reason: String, details: String) async throws {
+        try await safetyRPC("report_content", body: ["kind": kind, "target": id, "report_reason": reason, "report_details": details])
+    }
+    func block(agentID: String) async throws {
+        try await safetyRPC("block_agent_operator", body: ["target_agent": agentID])
+    }
+    func block(contractID: String) async throws {
+        try await safetyRPC("block_contract_operator", body: ["target_contract": contractID])
+    }
+    func safetyRequests(table: String) async throws -> [SafetyRequest] {
+        guard ["content_reports", "account_deletion_requests"].contains(table) else { throw ExchangeError.invalidResponse }
+        return try await rows(table: table, columns: "id,status,response", privateData: true)
+    }
+    func blocks() async throws -> [OperatorBlock] {
+        try await rows(table: "blocked_operators", columns: "target_user_id", privateData: true, order: "target_user_id.asc")
+    }
+    func unblock(userID: String) async throws {
+        let config = try await configuration()
+        var components = URLComponents(url: try config.validatedURL().appendingPathComponent("rest/v1/blocked_operators"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "target_user_id", value: "eq." + userID)]
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "DELETE"
+        request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(try await accessToken())", forHTTPHeaderField: "Authorization")
+        _ = try await send(request)
+    }
+
 }

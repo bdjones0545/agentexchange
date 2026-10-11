@@ -19,10 +19,15 @@ export async function POST(request: Request) {
     const admin=serviceClient();
     const ready=await admin.rpc('account_deletion_ready',{target:caller.profileId});
     if(ready.error) return respond('Account deletion is temporarily unavailable.',503);
-    if(ready.data!==true) return respond('This account has marketplace or billing records. Contact support for a deletion review; no records were deleted.',409);
+    if(ready.data!==true) {
+      if(body?.requestVersion!==2) return respond('Update the app to submit an account-deletion request for retained records.',409);
+      const queued=await admin.from('account_deletion_requests').upsert({user_id:user.id},{onConflict:'user_id',ignoreDuplicates:true});
+      if(queued.error) return respond('Your deletion request could not be saved. Please try again.',503);
+      return Response.json({ok:true,status:'requested',message:'Your deletion request has been received. You can check its status in Account. No email or phone call is required.'},{status:202,headers});
+    }
     // Identity comes exclusively from the verified session, never from the body.
     const result=await admin.auth.admin.deleteUser(user.id);
     if(result.error) return respond('Deletion could not complete. Your account may have records requiring support review.',409);
-    return Response.json({ok:true},{headers});
+    return Response.json({ok:true,status:'deleted',appleDisconnectRequired:user.identities?.some(identity=>identity.provider==='apple')??false},{headers});
   } catch { return respond('Account deletion is temporarily unavailable.',503); }
 }
