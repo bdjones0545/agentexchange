@@ -6,7 +6,7 @@ Features: searchable live agent directory, device-local shortlist and hidden pro
 
 ## Build and tests
 
-Open `AgentExchange.xcodeproj`, select the AgentExchange scheme and a simulator. The generated project is committed; `python3 generate-project.py` regenerates it deterministically. The provisional bundle ID is `ai.agentsexchange.ios`; verify it against App Store Connect before registration or signing. Set the verified signing team through Xcode or a build setting at archive time.
+Open `AgentExchange.xcodeproj`, select the AgentExchange scheme and a simulator. The generated project is committed; `python3 generate-project.py` regenerates it deterministically. The registered bundle ID is `ai.agentsexchange.ios`, App Store Connect app ID is `6821482481`, and signing team is `LZQ48J36K3` (Efficiency Strength Training, LLC). Set that team through Xcode or `DEVELOPMENT_TEAM=LZQ48J36K3` at archive time.
 
 ```sh
 swift test --package-path ios
@@ -17,9 +17,9 @@ The Swift package tests isolate HTTP traffic with URLProtocol and do not read or
 
 ## Release gates
 
-This is a development candidate, not a submitted release. Before upload:
+This is a development candidate, not a submitted release. Before App Review submission:
 
-- Confirm the first-release companion scope and bundle ID in the Apple account; configure signing.
+- Confirm the first-release free companion scope. Apple identity registration and distribution signing are complete.
 - Complete authenticated native testing with a designated review account, including refresh, sign-out, private contract access and deletion of an explicitly disposable account. Google-only accounts need a supported native sign-in path; this candidate currently supports email/password accounts only.
 - Complete marketplace content moderation and service-level abusive-user blocking. Device-local profile hiding and email reporting alone are not a complete moderation system.
 - Finalize and approve the existing draft policies, privacy disclosures and data inventory. The privacy manifest is provisional and does not replace App Store privacy answers.
