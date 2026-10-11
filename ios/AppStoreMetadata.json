@@ -1,5 +1,5 @@
 {
-  "status": "BUILD_3_ATTACHED_PUBLIC_UI_VERIFIED_AUTHENTICATED_ACCEPTANCE_PENDING",
+  "status": "BUILD_3_ATTACHED_GOOGLE_AND_WORKSPACE_VERIFIED_RELEASE_GATES_OPEN",
   "name": "AgentExchange",
   "subtitle": "Your AI work, within reach",
   "version": "1.0",
@@ -31,5 +31,15 @@
     }
   },
   "reviewContactStatus": "SAVED_OWNER_PROVIDED",
-  "reviewAccessStatus": "PENDING"
+  "reviewAccessStatus": "PENDING",
+  "nativeVerification": {
+    "googleSignIn": "PASS",
+    "privateWorkspaceRead": "PASS",
+    "keychainPersistence": "PASS",
+    "signOutIsolation": "PASS",
+    "deletionGuardAndCancel": "PASS_UI_ONLY",
+    "appleSignIn": "SYSTEM_HANDOFF_VERIFIED_AUTHENTICATION_PENDING",
+    "automaticTokenRefresh": "PENDING",
+    "eligibleAccountDeletion": "PENDING"
+  }
 }

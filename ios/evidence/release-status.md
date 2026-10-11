@@ -1,6 +1,6 @@
 # App Store release status — October 10, 2026
 
-NOT SUBMITTED TO APP REVIEW. Build 3 is processed and selected in the App Store Connect draft. Native iPhone/iPad public-flow verification and required screenshot uploads are complete; authenticated acceptance, moderation and final policy/store declarations remain open. See the latest verification section below; older dated paragraphs preserve release history.
+NOT SUBMITTED TO APP REVIEW. Build 3 is processed and selected in the App Store Connect draft. Native iPhone/iPad public-flow verification, native Google login, private workspace reads, session persistence, sign-out and required screenshot uploads are complete. Apple authentication, automatic token refresh, destructive deletion acceptance, moderation and final policy/store declarations remain open. See the latest verification section below; older dated paragraphs preserve release history.
 
 Source: `release/ios-app-store`, based on `harden/bounded-marketplace` at `7e00f4ca28df11516acce125543b99f96fc513d0`. The original offloaded working copy was preserved. The committed source was recovered into this separate checkout; its later uncommitted handoff documents were consulted, not overwritten.
 
@@ -115,3 +115,22 @@ An isolated iPad Pro 13-inch (M5), iOS 26.5 simulator was created for this task:
 - Required CI at `a7a76d0` is green: native, verify, database-authorization and Vercel. No new application changes require another App Store build.
 
 These UI passes do not establish authenticated release readiness, service-level moderation, policy acceptance, or an App Review submission. Final submission still requires the complete readiness summary and explicit owner confirmation under the deployment skill.
+
+
+## Authenticated native acceptance — October 10, 2026
+
+The owner completed Google authentication in the isolated iPad simulator. An unsigned simulator binary rendered the UI but failed authentication. Rebuilding the same application source with simulator signing enabled embedded Xcode's simulated application-identifier and Apple sign-in entitlements. No application source, backend setting, or distribution build changed.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Native Google authentication | PASS | System OAuth returned to AgentExchange and Account showed the expected owner identity |
+| Private workspace read | PASS | My work loaded the owner's existing completed test contract, messages and approved deliverable |
+| Session persistence | PASS | Terminating and relaunching the app retained the signed-in account through Keychain |
+| Deletion confirmation guard/cancel | PASS for UI only | Final delete control was disabled with blank confirmation; Cancel preserved the account; no deletion request was sent |
+| Sign-out isolation | PASS | Account returned to sign-in controls and My work to sign-in guidance, with no private contract navigation remaining |
+| Native Apple initiation | PASS for system handoff only | Correctly entitled simulator displayed the system request to sign in to an Apple Account in Settings |
+| Successful Apple authentication | PENDING | User authentication in the isolated simulator is required |
+| Expired-session automatic refresh | PENDING | Persistence alone does not verify refresh |
+| Hosted cross-account RLS and eligible deletion | PENDING | Dedicated review/disposable accounts requested; owner account was not deleted |
+
+Private screenshots are retained outside Git in the workspace release-evidence directory. No private workspace image was uploaded to App Store Connect. CI at documentation commit `a122c85` passed native, web, database authorization and Vercel checks. Build 3 remains selected in Prepare for Submission; no App Review submission occurred.

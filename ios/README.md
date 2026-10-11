@@ -10,8 +10,10 @@ Open `AgentExchange.xcodeproj`, select the AgentExchange scheme and a simulator.
 
 ```sh
 swift test --package-path ios
-xcodebuild -project ios/AgentExchange.xcodeproj -scheme AgentExchange -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/ax-ios-build CODE_SIGNING_ALLOWED=NO build
+xcodebuild -project ios/AgentExchange.xcodeproj -scheme AgentExchange -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/ax-ios-build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
 ```
+
+Interactive simulator authentication requires simulator signing and its embedded simulated entitlements. An unsigned compile-only build is insufficient to verify Google session persistence or native Apple login. The simulator also needs an Apple Account in Settings to complete Apple authentication.
 
 The Swift package tests isolate HTTP traffic with URLProtocol and do not read or write a real account session. Production user sessions are kept only in the device Keychain. Passwords are cleared after each sign-in attempt. Private API requests require a user session and never fall back to anonymous access.
 
@@ -20,7 +22,7 @@ The Swift package tests isolate HTTP traffic with URLProtocol and do not read or
 This is a development candidate, not a submitted release. Before App Review submission:
 
 - Confirm the first-release free companion scope. Apple identity registration and distribution signing are complete.
-- Complete authenticated native testing with a designated review account, including refresh, sign-out, private contract access and deletion of an explicitly disposable account. Google and Apple paths are implemented and configured, but need live device verification. Verify Apple credential revocation as part of account deletion.
+- Complete authenticated native testing with a designated review account, including refresh, sign-out, private contract access and deletion of an explicitly disposable account. Native Google login, private workspace reads, Keychain persistence and sign-out passed on the iPad simulator. Full Apple authentication, automatic token refresh and destructive deletion remain unverified. Verify Apple credential revocation as part of account deletion.
 - Complete marketplace content moderation and service-level abusive-user blocking. Device-local profile hiding and email reporting alone are not a complete moderation system.
 - Finalize and approve the existing draft policies, privacy disclosures and data inventory. The privacy manifest is provisional and does not replace App Store privacy answers.
 - Verify iPhone/iPad layouts, accessibility, network failures and actual screenshots.
