@@ -1,6 +1,6 @@
 # App Store release status — October 10, 2026
 
-NOT SUBMITTED TO APP REVIEW. Native social-login build 3 is processed and selected in the App Store Connect draft. Native companion candidate still has open release gates.
+NOT SUBMITTED TO APP REVIEW. Build 3 is processed and selected in the App Store Connect draft. Native iPhone/iPad public-flow verification and required screenshot uploads are complete; authenticated acceptance, moderation and final policy/store declarations remain open. See the latest verification section below; older dated paragraphs preserve release history.
 
 Source: `release/ios-app-store`, based on `harden/bounded-marketplace` at `7e00f4ca28df11516acce125543b99f96fc513d0`. The original offloaded working copy was preserved. The committed source was recovered into this separate checkout; its later uncommitted handoff documents were consulted, not overwritten.
 
@@ -31,7 +31,7 @@ GitHub draft PR: https://github.com/bdjones0545/agentexchange/pull/50. At app-so
 4. Moderation: reporting by email and local hiding do not replace service-level abusive-user blocking, content filtering and an operational response queue. Apple guideline 1.2 remains open.
 5. Policies: the website still publishes draft terms/privacy/refund/acceptable-use wording. Final policy and retention decisions and coordinated policy activation remain open; see existing `LEGAL_LAUNCH_REVIEW.md` and the original upgrade checkout's `POLICY_ACTIVATION_PLAN.md`.
 6. Marketplace live money: existing handoff still leaves live Stripe activation, provider failure/refund/reversal evidence and operational review pending. Local/database passes do not close those gates.
-7. Store preparation: verified screenshots, listing/privacy/age-rating answers, review access and final release validation remain outstanding. The first distribution-signed candidate is preserved as `release-evidence/agentexchange-2026-10-10/AgentExchange-1.0-1.ipa`.
+7. Store preparation: two verified native screenshots for each required iPhone/iPad family and the owner-provided App Review contact are saved. Privacy/age-rating answers, review access and final release validation remain outstanding. The first distribution-signed candidate is preserved as `release-evidence/agentexchange-2026-10-10/AgentExchange-1.0-1.ipa`.
 
 The initial iPhone simulator stalled at “Waiting on System App”; a new isolated iPhone 17 simulator also failed to finish startup. Both were shut down without deleting data. Neither attempt verified app rendering. Do not treat compiler success as visual or authenticated acceptance.
 
@@ -81,3 +81,37 @@ Build 3 finished Apple processing and is Ready to Submit in TestFlight, build ID
 ## Wireless testing preparation
 
 After another cable attempt, CoreDevice still reports no physical devices and USB enumeration shows no device-name entries. The Mac has approximately 1.1 GiB free, which may also contribute to simulator startup problems; no user data or system settings were changed. Created an empty manual TestFlight internal group `Release Verification` (ID `95735967-e101-4bbd-9fdd-47f5e7777d9b`) and added build 3, which shows Ready to Test. Automatic build distribution is disabled. No tester invitation has been sent; owner approval is required for the specific invitation.
+
+
+## Native UI verification and listing assets — October 10, 2026, 21:27 EDT
+
+The temporary checkout was lost across the local session restart and restored from the pushed `a7a76d0` release branch. The original iCloud-backed checkout was preserved. The installed app remained available on the isolated iPhone simulator. No application source changed in this verification pass; build 3 application source remains `7227c55`.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| iPhone launch and production discovery | PASS | Real Research and Writing Analyst profile rendered |
+| Profile navigation | PASS | Name, specialty, availability, description and skills rendered |
+| Save and remove from saved | PASS | Bookmark label toggles; Saved contains the agent, then shows the empty-shortlist state after removal |
+| Search | PASS | Nonmatching query shows No matching agents; research query restores the profile |
+| Signed-out My Work | PASS | Sign-in guidance appears without private records on iPhone and iPad |
+| Account/support screens | PASS | Google/Apple/password controls and support contact are visible; empty email/password submission is disabled |
+| Profile report | PASS for local UI only | iPad report sheet includes the correct profile reference and support address; no email sent |
+| Hide and restore | PASS | iPad profile disappears from discovery, Account shows Restore 1 hidden agents, and restore returns it |
+| Google native handoff and cancellation | PASS for handoff/cancel only | System authorization prompt opens accounts.google.com; cancellation returns with sign-in controls enabled |
+| Successful native Google sign-in | PENDING | iPad system browser displays Google email/phone form; owner authentication requested |
+| Successful native Apple sign-in | PENDING | Initial unsigned simulator returned recoverable AuthorizationError 1000 / AKAuthenticationError -7026; simulator entitlement rebuild prepared for retest |
+| Authenticated refresh/logout/private RLS/deletion | PENDING | Requires successful authentication and a separately authorized disposable account for deletion |
+
+An isolated iPad Pro 13-inch (M5), iOS 26.5 simulator was created for this task: `3FB4179D-5193-49F5-B6D2-A49166B74B09`. The existing iPhone test device is `88AF99D6-3992-4D0E-A5B3-4A520BC05750`. Both rendered the production service. The iPad required several minutes for initial OS migration; no user simulator data was deleted.
+
+### App Store evidence
+
+- The owner-approved TestFlight invitation was sent to the existing owner account in the manual Release Verification group. The earlier pending-invitation paragraph is historical. No additional invitations were sent in this pass.
+- App Store Connect was reauthenticated by the owner and still shows version 1.0, build 3, Prepare for Submission.
+- Two iPhone captures at 1206 × 2622 were accepted: `iphone-profile.png` and `iphone-discovery-current.png`.
+- Two iPad captures at 2064 × 2752 were accepted: `ipad-discovery.png` and `ipad-profile.png`. Media Manager identifies 13-inch iPad as the required family and the smaller sizes as optional.
+- Images are unmodified Simulator Save Screen captures, inspected at their actual dimensions. They show public production UI with no browser frame, fabricated data or composites.
+- App Review contact name, owner-provided phone, email and accurate draft notes were saved; Save became disabled. Credentials remain blank rather than using a rejected password. Private contact screenshots are kept outside Git.
+- Required CI at `a7a76d0` is green: native, verify, database-authorization and Vercel. No new application changes require another App Store build.
+
+These UI passes do not establish authenticated release readiness, service-level moderation, policy acceptance, or an App Review submission. Final submission still requires the complete readiness summary and explicit owner confirmation under the deployment skill.

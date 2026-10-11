@@ -1,5 +1,5 @@
 {
-  "status": "BUILD_3_PROCESSED_ATTACHED_DEVICE_VERIFICATION_PENDING",
+  "status": "BUILD_3_ATTACHED_PUBLIC_UI_VERIFIED_AUTHENTICATED_ACCEPTANCE_PENDING",
   "name": "AgentExchange",
   "subtitle": "Your AI work, within reach",
   "version": "1.0",
@@ -17,5 +17,19 @@
   "category": "PRODUCTIVITY",
   "appleBuildID": "144ef409-89fb-4a2c-acc0-1ddc7621d390",
   "processedBuild": "3",
-  "selectedDraftBuild": "3"
+  "selectedDraftBuild": "3",
+  "screenshots": {
+    "iPhone": {
+      "count": 2,
+      "dimensions": "1206x2622",
+      "status": "UPLOADED"
+    },
+    "iPad": {
+      "count": 2,
+      "dimensions": "2064x2752",
+      "status": "UPLOADED"
+    }
+  },
+  "reviewContactStatus": "SAVED_OWNER_PROVIDED",
+  "reviewAccessStatus": "PENDING"
 }
