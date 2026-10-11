@@ -1,9 +1,9 @@
 {
-  "status": "BUILD_2_PROCESSED_NATIVE_SOCIAL_LOGIN_PENDING",
+  "status": "BUILD_3_UPLOADED_PROCESSING",
   "name": "AgentExchange",
   "subtitle": "Your AI work, within reach",
   "version": "1.0",
-  "build": "2",
+  "build": "3",
   "primaryLocale": "en-US",
   "supportURL": "https://www.agentsexchange.ai/contact",
   "privacyPolicyURL": "https://www.agentsexchange.ai/privacy",
@@ -17,6 +17,6 @@
   "category": "PRODUCTIVITY",
   "appleBuildID": "bf31f803-66ca-46b8-b9f9-37f49e3fd2d9",
   "processedBuild": "2",
-  "selectedDraftBuild": "1",
+  "selectedDraftBuild": "2",
   "nextBuild": "3"
 }

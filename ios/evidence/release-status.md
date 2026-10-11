@@ -65,3 +65,12 @@ Apple completed processing build 2 (`bf31f803-66ca-46b8-b9f9-37f49e3fd2d9`): Tes
 Supabase dashboard access was explicitly approved after automatic approval review blocked the initial separate backend sign-in. Read-only inspection confirmed Google enabled, Apple disabled, and no native callback allowlisted. Prepared build 3 adds Google through ASWebAuthenticationSession using SHA-256 PKCE and a single-use in-memory verifier, strict callback validation, generation guards, and native Apple ID-token authentication with a nonce. The generic unsigned iOS build and ten native tests pass. Production provider/callback changes and Apple signing capability are awaiting the separate explicit authentication-access approval. Build 3 has not been signed or uploaded.
 
 Required callback: `ai.agentsexchange.ios://auth/callback` (exact, no wildcard). Apple native client ID: `ai.agentsexchange.ios`. Do not replace existing website redirects or disable nonce verification. Native social login remains unverified on a device. Apple credential revocation during account deletion must also be verified before release.
+
+
+## Approved native login configuration applied
+
+The owner explicitly approved the exact native callback, Apple provider/client ID, Apple Developer capability, and signing-profile regeneration. Supabase now shows Apple enabled for native client ID `ai.agentsexchange.ios` and the exact callback `ai.agentsexchange.ios://auth/callback` alongside all four existing website URLs. Existing Google configuration remains enabled.
+
+Xcode's signed build 3 archive succeeded and contains `com.apple.developer.applesignin = [Default]` for team `LZQ48J36K3`. Tests and all required CI checks at `7227c55` pass (native, web, database authorization, Vercel preview). Export/upload is waiting at distribution codesign for the protected macOS Keychain prompt; no build 3 upload success is claimed yet. Build 2 is now selected and saved in the App Store version draft, verified through native Chrome accessibility after browser-input timeouts. No review submission or public release occurred.
+
+Build 3 upload succeeded October 10, 2026 at 20:37:53 EDT. `xcodebuild -exportArchive` exited 0 and reported EXPORT SUCCEEDED. Apple processing is pending. The Keychain wait has cleared.
