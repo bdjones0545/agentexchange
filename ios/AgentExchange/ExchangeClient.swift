@@ -97,6 +97,7 @@ actor ExchangeClient {
         let flow = try OAuthFlow()
         // Starting a newer flow also invalidates an earlier token exchange in flight.
         sessionGeneration += 1
+        refreshTask?.cancel(); refreshTask = nil
         pendingOAuth = flow
         return (flow.id, try flow.authorizationURL(configuration: configuration))
     }
