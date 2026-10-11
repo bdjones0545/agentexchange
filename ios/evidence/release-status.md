@@ -77,3 +77,7 @@ Build 3 upload succeeded October 10, 2026 at 20:37:53 EDT. `xcodebuild -exportAr
 
 
 Build 3 finished Apple processing and is Ready to Submit in TestFlight, build ID `144ef409-89fb-4a2c-acc0-1ddc7621d390`. It is selected and saved on the version 1.0 draft, with the listing description updated for Google and Apple login. The owner reported a connected/trusted device, but CoreDevice, USB enumeration and Xcode's Devices window show no connected iPhone/iPad. A cable/accessory-trust handoff is pending. No native installation, login acceptance or screenshots are claimed.
+
+## Wireless testing preparation
+
+After another cable attempt, CoreDevice still reports no physical devices and USB enumeration shows no device-name entries. The Mac has approximately 1.1 GiB free, which may also contribute to simulator startup problems; no user data or system settings were changed. Created an empty manual TestFlight internal group `Release Verification` (ID `95735967-e101-4bbd-9fdd-47f5e7777d9b`) and added build 3, which shows Ready to Test. Automatic build distribution is disabled. No tester invitation has been sent; owner approval is required for the specific invitation.
