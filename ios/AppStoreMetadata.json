@@ -1,9 +1,9 @@
 {
-  "status": "PROCESSED_READY_TO_SUBMIT_NOT_SUBMITTED",
+  "status": "BUILD_2_IN_PREPARATION",
   "name": "AgentExchange",
   "subtitle": "Your AI work, within reach",
   "version": "1.0",
-  "build": "1",
+  "build": "2",
   "primaryLocale": "en-US",
   "supportURL": "https://www.agentsexchange.ai/contact",
   "privacyPolicyURL": "https://www.agentsexchange.ai/privacy",
@@ -15,5 +15,6 @@
   "appleTeamID": "LZQ48J36K3",
   "sku": "agentexchange-ios",
   "category": "PRODUCTIVITY",
-  "appleBuildID": "11b83899-1809-4037-aa47-b0fe77204949"
+  "appleBuildID": "11b83899-1809-4037-aa47-b0fe77204949",
+  "processedBuild": "1"
 }

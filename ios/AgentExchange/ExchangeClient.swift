@@ -30,7 +30,7 @@ actor ExchangeClient {
         config = value
         return value
     }
-    private func send(_ request: URLRequest) async throws -> Data {
+    private func send(_ request: URLRequest, authentication: Bool = false) async throws -> Data {
         var request = request
         request.timeoutInterval = 25
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -39,6 +39,13 @@ actor ExchangeClient {
         guard (200..<300).contains(http.statusCode) else {
             let message: String
             switch http.statusCode {
+            case 400 where authentication:
+                let response = try? JSONDecoder().decode(AuthenticationFailure.self, from: data)
+                switch response?.error_code {
+                case "invalid_credentials": message = "Your email or password is incorrect. Please check your AgentExchange sign-in details."
+                case "email_not_confirmed": message = "Confirm your email address before signing in."
+                default: message = "Sign-in could not be completed. Please try again or contact support."
+                }
             case 401: message = "Your session has expired or your sign-in details are incorrect. Please sign in again."
             case 403: message = "This action requires a recent sign-in or additional account authorization."
             case 409: message = "This account has marketplace or billing records. Contact support to request a deletion review."
@@ -58,8 +65,9 @@ actor ExchangeClient {
         request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(body)
-        return try JSONDecoder().decode(AuthSession.self, from: await send(request))
+        return try JSONDecoder().decode(AuthSession.self, from: await send(request, authentication: true))
     }
+    private struct AuthenticationFailure: Decodable { let error_code: String? }
     func signIn(email: String, password: String) async throws -> AuthUser {
         let generation = sessionGeneration
         let value = try await authenticate(grant: "password", body: ["email": email.trimmingCharacters(in: .whitespacesAndNewlines), "password": password])

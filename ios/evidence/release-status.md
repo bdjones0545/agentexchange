@@ -48,3 +48,9 @@ TestFlight build ID: `11b83899-1809-4037-aa47-b0fe77204949`. Chrome confirmed ve
 A third isolated simulator attempt allowed 240 seconds for boot; it remained Waiting on System App. Installation completed, but launch timed out after 45 seconds. The simulator was shut down without deleting data. Real-device testing and screenshots remain open.
 
 The Desktop checkout began offloading source files and its branch ref to iCloud during release work, stalling Git reads. Only our stalled commands were stopped. The documentation update was prepared in `/tmp/agentexchange-apple-release-record`, a fresh checkout of the same release branch, to avoid overwriting offloaded files. The original checkout retains the same documentation edits.
+
+## Supplied-account verification and build 2
+
+The owner-supplied email/password was tested using the shipped Swift networking and model code on macOS, with a separate verification-only Keychain namespace. Sign-in returned HTTP 400. One diagnostic attempt with the same credentials confirmed the safe provider code `invalid_credentials`. No private records were retrieved, no account deletion was attempted, and no marketplace records or payments were changed. The password was provided through hidden terminal input and was not written to files or printed in test output. Apple review credentials remain blank.
+
+This exposed a user-facing defect: the native app described rejected credentials as service unavailability. Build 2 maps the recognized invalid-credentials and unconfirmed-email responses to safe, actionable messages, with a sanitized fallback for other authentication errors. All seven native tests pass, including the new regression coverage; the signed generic iOS archive succeeds. Build 2 upload is in progress. Account verification remains blocked pending working AgentExchange credentials or clarification of the account's normal sign-in method.

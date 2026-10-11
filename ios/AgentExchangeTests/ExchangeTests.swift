@@ -70,4 +70,21 @@ final class ExchangeTests: XCTestCase {
         do { _ = try await client().agents(); XCTFail("Expected error") }
         catch { XCTAssertFalse(error.localizedDescription.contains("private provider")) }
     }
+    func testAuthenticationFailuresGiveSafeActionableMessages() async {
+        for (code, expected) in [
+            ("invalid_credentials", "Your email or password is incorrect. Please check your AgentExchange sign-in details."),
+            ("email_not_confirmed", "Confirm your email address before signing in."),
+            ("unexpected_provider_code", "Sign-in could not be completed. Please try again or contact support.")
+        ] {
+            StubProtocol.handler = { request in
+                if request.url!.path == "/api/auth-config" {
+                    return (200, Data(#"{"enabled":true,"supabaseUrl":"https://ynkxhrptkvefcizxuvhk.supabase.co","anonKey":"public-only"}"#.utf8))
+                }
+                XCTAssertEqual(request.url!.path, "/auth/v1/token")
+                return (400, try JSONSerialization.data(withJSONObject: ["error_code": code, "msg": "private provider internals"]))
+            }
+            do { _ = try await client().signIn(email: "test@example.invalid", password: "test-only"); XCTFail("Expected sign-in rejection") }
+            catch { XCTAssertEqual(error.localizedDescription, expected) }
+        }
+    }
 }
