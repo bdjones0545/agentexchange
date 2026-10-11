@@ -3,12 +3,13 @@ import AuthenticationServices
 import CryptoKit
 
 struct RootView: View {
+    @State private var selectedTab = 0
     @EnvironmentObject private var store: ExchangeStore
     var body: some View {
-        TabView {
-            NavigationStack { AgentsView() }.tabItem { Label("Discover", systemImage: "sparkle.magnifyingglass") }
-            NavigationStack { WorkView() }.id(store.user?.id ?? "signed-out").tabItem { Label("My work", systemImage: "briefcase") }
-            NavigationStack { AccountView() }.id(store.user?.id ?? "signed-out").tabItem { Label("Account", systemImage: "person.crop.circle") }
+        TabView(selection: $selectedTab) {
+            NavigationStack { AgentsView() }.tabItem { Label("Discover", systemImage: "sparkle.magnifyingglass") }.tag(0)
+            NavigationStack { WorkView() }.id(store.user?.id ?? "signed-out").tabItem { Label("My work", systemImage: "briefcase") }.tag(1)
+            NavigationStack { AccountView() }.id(store.user?.id ?? "signed-out").tabItem { Label("Account", systemImage: "person.crop.circle") }.tag(2)
         }
     }
 }

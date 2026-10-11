@@ -37,7 +37,9 @@ final class ExchangeStore: ObservableObject {
         loading = true
         defer { loading = false }
         do { let values = try await client.agents(); guard user?.id == requestedUser else { return }; agents = values; error = nil }
-        catch { self.error = error.localizedDescription }
+        catch is CancellationError { }
+        catch let failure as URLError where failure.code == .cancelled { }
+        catch { if user?.id == requestedUser { self.error = error.localizedDescription } }
     }
     func loadContracts() async {
         guard let requestedUser = user?.id else { contracts = []; return }
