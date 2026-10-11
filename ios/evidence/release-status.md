@@ -1,6 +1,6 @@
 # App Store release status — October 10, 2026
 
-NOT SUBMITTED TO APP REVIEW. Build 3 is processed and selected in the App Store Connect draft. Native iPhone/iPad public-flow verification, native Google login, private workspace reads, session persistence, sign-out and required screenshot uploads are complete. Apple authentication, automatic token refresh, destructive deletion acceptance, moderation and final policy/store declarations remain open. See the latest verification section below; older dated paragraphs preserve release history.
+NOT SUBMITTED TO APP REVIEW. Build 3 is processed and selected in the App Store Connect draft. Native iPhone/iPad public-flow verification, native Google login, private workspace reads, session persistence, sign-out and required screenshot uploads are complete. Apple authentication, automatic token refresh, Apple-specific deletion/revocation, moderation and final policy/store declarations remain open. See the latest verification section below; older dated paragraphs preserve release history.
 
 Source: `release/ios-app-store`, based on `harden/bounded-marketplace` at `7e00f4ca28df11516acce125543b99f96fc513d0`. The original offloaded working copy was preserved. The committed source was recovered into this separate checkout; its later uncommitted handoff documents were consulted, not overwritten.
 
@@ -147,3 +147,12 @@ Authenticated production API checks verified exact isolation: the review identit
 The dedicated review credentials and clear email/password navigation instructions were saved in App Store Connect. Build 3 remains selected. The disposable account passes the backend deletion-eligibility preflight; the native final DELETE confirmation is staged awaiting the computer-use policy's required action-time approval. No deletion success is claimed.
 
 CI at `5a77611` passed native, web, database authorization and Vercel. Application source and uploaded build remain unchanged.
+
+
+## Disposable native account deletion — October 10, 2026
+
+After the owner's explicit action-time approval, the native app's final Delete account button successfully removed only the designated disposable email/password account. Read-only backend checks confirmed that its Auth user, public profile, Auth identities, sessions and refresh-token rows were gone. Native sign-in with the deleted credentials returned the expected incorrect-credentials error. After terminating and relaunching the app, My work showed sign-in guidance with no private records.
+
+An independent API check confirmed the dedicated reviewer still signs in and sees exactly its one synthetic sample contract. The review account and sample workspace were preserved. The obsolete disposable password was removed from the private local credential record; the review password remains private and saved in App Store Connect.
+
+This closes eligible email/password account deletion acceptance. It does not establish Apple token revocation, deletion for accounts with retained marketplace/billing records, or automatic native expired-session refresh. Apple login remains skipped at the owner's request. Build 3 is still a draft and no App Review submission occurred.

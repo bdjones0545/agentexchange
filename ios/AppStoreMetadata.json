@@ -40,9 +40,11 @@
     "deletionGuardAndCancel": "PASS_UI_ONLY",
     "appleSignIn": "SKIPPED_AT_OWNER_REQUEST_NOT_VERIFIED",
     "automaticTokenRefresh": "PENDING",
-    "eligibleAccountDeletion": "FINAL_CONFIRMATION_PENDING",
+    "eligibleAccountDeletion": "PASS_NATIVE_EMAIL_ACCOUNT",
     "emailPasswordSignIn": "PASS_REVIEW_AND_DISPOSABLE",
     "hostedAccountIsolation": "PASS_REVIEW_AND_DISPOSABLE",
-    "providerTokenRefresh": "PASS_API_ONLY"
+    "providerTokenRefresh": "PASS_API_ONLY",
+    "postDeletionLogin": "REJECTED",
+    "postDeletionRestart": "PASS_SIGNED_OUT"
   }
 }

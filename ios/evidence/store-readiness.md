@@ -37,7 +37,7 @@ Apple defines collection as off-device data accessible beyond real-time request 
 
 ## Verified functional behavior
 
-Native public discovery/search/save/hide/report UI, Google sign-in, private workspace reads, Keychain persistence after restart, deletion guard/cancel and sign-out isolation passed. Full Apple login and automatic native expired-session refresh remain pending; hosted isolation and provider refresh-token exchange passed with the new review/disposable accounts. Actual deletion is staged for action-time confirmation. The Apple path reaches its system account prompt.
+Native public discovery/search/save/hide/report UI, Google sign-in, private workspace reads, Keychain persistence after restart, deletion guard/cancel and sign-out isolation passed. Full Apple login and automatic native expired-session refresh remain pending; hosted isolation and provider refresh-token exchange passed with the new review/disposable accounts. Eligible email/password deletion passed through the native UI, including database removal, rejected re-login and signed-out persistence after restart. The Apple path reaches its system account prompt.
 
 ## Implementation blockers
 
@@ -52,3 +52,6 @@ No account deletion, content-rights attestation, trader declaration, paid agreem
 
 
 Dedicated review access was completed with owner approval: both account logins passed natively; only the review account sees the synthetic sample workspace. Credentials were saved in App Store Connect and remain outside Git. Apple login testing was explicitly skipped by the owner; it is not marked passed.
+
+
+The approved disposable account was deleted through the native app. Auth user/profile/identity/session/refresh-token rows are absent; old credentials fail. Reviewer login and its exact sample contract remain available. This does not resolve Apple revocation or retained-record deletion requirements.
