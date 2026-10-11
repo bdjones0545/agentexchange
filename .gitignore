@@ -14,3 +14,10 @@ ops/**/*keys*
 supabase/.temp/
 
 dist-server
+
+# Native build output
+ios/.build/
+ios/.swiftpm/
+**/xcuserdata/
+*.xcarchive
+*.ipa

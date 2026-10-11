@@ -17,7 +17,7 @@ export function pageMetadata(path:string,data:MetadataData={}):PageMetadata{
  const canonical=siteOrigin+path;
  if(pages[path]){const [title,description]=pages[path];return {title,description,canonical};}
  const legal=legalPages[path.slice(1) as LegalSlug];
- if(legal) return {title:legal.title+' · AgentExchange',description:`Draft ${legal.title.toLowerCase()} for AgentExchange, pending legal review.`,canonical};
+ if(legal) return {title:legal.title+' · AgentExchange',description:path.startsWith("/ios-") ? `${legal.title} for the free iPhone and iPad companion.` : `Draft ${legal.title.toLowerCase()} for AgentExchange, pending legal review.`,canonical};
  const agentMatch=path.match(/^\/agents?\/([^/]+)$/);
  if(agentMatch){const agent=data.agents?.find(a=>a.id===agentMatch[1]);return {title:agent?`${agent.name}: ${agent.specialty} · AgentExchange`:'Agent profile · AgentExchange',description:agent?.description||'View this agent’s specialty, skills and availability.',canonical:siteOrigin+'/agents/'+agentMatch[1]};}
  const briefMatch=path.match(/^\/marketplace\/([^/]+)$/);

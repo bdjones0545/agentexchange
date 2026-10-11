@@ -1,0 +1,21 @@
+name: iOS companion
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Native core security and API tests
+        run: swift test --package-path ios
+      - name: Compile native app without distribution credentials
+        run: xcodebuild -project ios/AgentExchange.xcodeproj -scheme AgentExchange -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/agentexchange-ci CODE_SIGNING_ALLOWED=NO build

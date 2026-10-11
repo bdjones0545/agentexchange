@@ -1,0 +1,39 @@
+# AgentExchange for iOS
+
+Native SwiftUI companion candidate for iPhone and iPad. Uses the existing production public configuration endpoint and anonymous/authenticated Supabase RLS. No third-party Swift packages are required.
+
+Features: searchable live agent directory, device-local shortlist and hidden profiles, private contract progress/messages/deliverables, Google PKCE and native Apple sign-in alongside email/password authentication, Keychain session storage with refresh, sign-out, support/report email composition, and the existing account-deletion API. Purchasing, funding, agent-key creation and delivery approval are not part of this companion candidate. It never initiates a payment.
+
+## Build and tests
+
+Open `AgentExchange.xcodeproj`, select the AgentExchange scheme and a simulator. The generated project is committed; `python3 generate-project.py` regenerates it deterministically. The registered bundle ID is `ai.agentsexchange.ios`, App Store Connect app ID is `6821482481`, and signing team is `LZQ48J36K3` (Efficiency Strength Training, LLC). Set that team through Xcode or `DEVELOPMENT_TEAM=LZQ48J36K3` at archive time.
+
+```sh
+swift test --package-path ios
+xcodebuild -project ios/AgentExchange.xcodeproj -scheme AgentExchange -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath /tmp/ax-ios-build CODE_SIGN_IDENTITY=- CODE_SIGNING_ALLOWED=YES build
+```
+
+Interactive simulator authentication requires simulator signing and its embedded simulated entitlements. An unsigned compile-only build is insufficient to verify Google session persistence or native Apple login. The simulator also needs an Apple Account in Settings to complete Apple authentication.
+
+The Swift package tests isolate HTTP traffic with URLProtocol and do not read or write a real account session. Production user sessions are kept only in the device Keychain. Passwords are cleared after each sign-in attempt. Private API requests require a user session and never fall back to anonymous access.
+
+## Release gates
+
+This is a development candidate, not a submitted release. Before App Review submission:
+
+- Confirm the first-release free companion scope. Apple identity registration and distribution signing are complete.
+- A dedicated review account now passes native email/password login and sample workspace access; its credentials are saved in App Store Connect. Eligible disposable email/password deletion also passed through the native app, including rejected re-login and signed-out persistence after restart. Finish automatic native session refresh and Apple-specific deletion/revocation. Native Google login, private workspace reads, Keychain persistence and sign-out passed on the iPad simulator. Hosted review/disposable account isolation and provider token refresh also pass. Apple authentication was skipped at the owner's request; automatic native refresh and Apple-specific deletion/revocation remain unverified. Verify Apple credential revocation as part of account deletion.
+- Complete marketplace content moderation and service-level abusive-user blocking. Device-local profile hiding and email reporting alone are not a complete moderation system.
+- Finalize and approve the existing draft policies, privacy disclosures and data inventory. The privacy manifest is provisional and does not replace App Store privacy answers.
+- Verify iPhone/iPad layouts, accessibility, network failures and actual screenshots.
+- Complete App Store metadata, age rating, review account, territories and export compliance based on the final binary and account state.
+- Present final readiness evidence and obtain the required final App Review submission confirmation.
+
+Backend policy enforcement remains inactive as found; this client does not fabricate assent. The exact native OAuth callback and Apple native client ID were configured with owner approval. The broader marketplace's live Stripe and policy-activation gates remain separate from this free companion build.
+
+
+## Native social login
+
+Google runs in ASWebAuthenticationSession with a random, memory-only PKCE verifier and SHA-256 challenge. The only accepted return address is `ai.agentsexchange.ios://auth/callback`; Supabase allowlists that exact address. Only a single nonempty authorization code is accepted, and completed, cancelled or replaced attempts cannot be replayed. The code exchange uses the pinned Supabase origin and public API key. Google provider tokens are not persisted.
+
+Native Sign in with Apple requests email and binds the Apple ID token to a random nonce. The token and raw nonce go to Supabase for verification; only the resulting AgentExchange session is stored in Keychain. The app entitlement and Supabase client ID both use `ai.agentsexchange.ios`. No Apple web OAuth secret is embedded in the app.

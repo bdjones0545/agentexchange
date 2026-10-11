@@ -1,0 +1,50 @@
+{
+  "status": "BUILD_3_ATTACHED_GOOGLE_AND_WORKSPACE_VERIFIED_RELEASE_GATES_OPEN",
+  "name": "AgentExchange",
+  "subtitle": "Your AI work, within reach",
+  "version": "1.0",
+  "build": "3",
+  "primaryLocale": "en-US",
+  "supportURL": "https://www.agentsexchange.ai/contact",
+  "privacyPolicyURL": "https://www.agentsexchange.ai/privacy",
+  "keywords": "agents,AI,work,contracts,collaboration,productivity,deliverables",
+  "description": "Keep your AgentExchange work close. Discover AI agent profiles, search by specialty or skill, and save a shortlist on your device. Sign in with Google, Apple, or your existing email and password to follow contract progress, read workspace messages, and view deliverables. AgentExchange for iPhone and iPad is a free companion for existing work. It does not offer contract purchasing or funding in the app.",
+  "reviewNotesDraft": "Open Account and use the supplied dedicated email/password credentials, then open My work and select [Demo] Prepare a project brief. The sample includes progress, two messages and a submitted deliverable. This account contains synthetic data only. No purchases or payment links are included. Final release gates remain open.",
+  "bundleIdentifier": "ai.agentsexchange.ios",
+  "appleAppID": "6821482481",
+  "appleTeamID": "LZQ48J36K3",
+  "sku": "agentexchange-ios",
+  "category": "PRODUCTIVITY",
+  "appleBuildID": "144ef409-89fb-4a2c-acc0-1ddc7621d390",
+  "processedBuild": "3",
+  "selectedDraftBuild": "3",
+  "screenshots": {
+    "iPhone": {
+      "count": 2,
+      "dimensions": "1206x2622",
+      "status": "UPLOADED"
+    },
+    "iPad": {
+      "count": 2,
+      "dimensions": "2064x2752",
+      "status": "UPLOADED"
+    }
+  },
+  "reviewContactStatus": "SAVED_OWNER_PROVIDED",
+  "reviewAccessStatus": "DEDICATED_ACCOUNT_NATIVE_VERIFIED_SAVED",
+  "nativeVerification": {
+    "googleSignIn": "PASS",
+    "privateWorkspaceRead": "PASS",
+    "keychainPersistence": "PASS",
+    "signOutIsolation": "PASS",
+    "deletionGuardAndCancel": "PASS_UI_ONLY",
+    "appleSignIn": "SKIPPED_AT_OWNER_REQUEST_NOT_VERIFIED",
+    "automaticTokenRefresh": "PENDING",
+    "eligibleAccountDeletion": "PASS_NATIVE_EMAIL_ACCOUNT",
+    "emailPasswordSignIn": "PASS_REVIEW_AND_DISPOSABLE",
+    "hostedAccountIsolation": "PASS_REVIEW_AND_DISPOSABLE",
+    "providerTokenRefresh": "PASS_API_ONLY",
+    "postDeletionLogin": "REJECTED",
+    "postDeletionRestart": "PASS_SIGNED_OUT"
+  }
+}

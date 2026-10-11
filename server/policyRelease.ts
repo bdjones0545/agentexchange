@@ -6,6 +6,6 @@ export const policyRelease = {
   version: `${legalUpdated}-draft-1`,
   active: false,
   minimumAge: 18,
-  documents: legalPages,
+  documents: { terms: legalPages.terms, privacy: legalPages.privacy, refunds: legalPages.refunds, 'acceptable-use': legalPages['acceptable-use'] },
 };
 export const policyDigest = createHash('sha256').update(JSON.stringify(policyRelease)).digest('hex');
