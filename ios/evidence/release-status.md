@@ -1,6 +1,6 @@
 # App Store release status — October 10, 2026
 
-NOT SUBMITTED TO APP REVIEW. App Store Connect draft created; build 1 uploaded and processed successfully. Native companion candidate still has open release gates.
+NOT SUBMITTED TO APP REVIEW. Native social-login build 3 is processed and selected in the App Store Connect draft. Native companion candidate still has open release gates.
 
 Source: `release/ios-app-store`, based on `harden/bounded-marketplace` at `7e00f4ca28df11516acce125543b99f96fc513d0`. The original offloaded working copy was preserved. The committed source was recovered into this separate checkout; its later uncommitted handoff documents were consulted, not overwritten.
 
@@ -16,7 +16,7 @@ Source: `release/ios-app-store`, based on `harden/bounded-marketplace` at `7e00f
 ## Verified locally
 
 - Web: 276 tests pass; six safe-diagnostics tests pass; production client and server-render builds pass.
-- Native core: six tests pass. These cover untrusted configuration, redirects, public request isolation, private anonymous denial, errors and search filters. They do not establish successful real-user authentication or session refresh.
+- Native core: ten tests pass. These cover untrusted configuration, redirects, public request isolation, private anonymous denial, errors, search filters, PKCE correctness, callback rejection and cancelled/replaced OAuth attempts. They do not establish successful real-user authentication or session refresh.
 - Isolated PostgreSQL: policy ledger/enforcement/evidence checks, three-party RLS authorization and payment concurrency/recovery suite pass. No hosted acceptance activation occurred.
 - Public production HTTP checks: 21/21 pass.
 - Simulator app compilation passes. Both unsigned and signed generic iOS archives build. App Store distribution export succeeds; the exported profile matches the registered bundle/team, has `get-task-allow=false` and TestFlight reporting enabled.
@@ -27,7 +27,7 @@ GitHub draft PR: https://github.com/bdjones0545/agentexchange/pull/50. At app-so
 
 1. Apple account access, app identity and distribution signing are verified. App Store Connect draft is at Prepare for Submission; build 1 upload succeeded on October 10, 2026 at 20:00 EDT; TestFlight shows Ready to Submit (90-day testing expiry). Full team access was explicitly approved by the owner. Availability, age rating, content rights and privacy disclosures remain unfinished. The inherited app-level DSA declaration displays non-trader; owner confirmation is needed before selecting EU availability.
 2. Product scope: free companion proposed while awaiting owner response. In-app purchasing would require a separate implementation and commercial review.
-3. Native verification: designated existing email/password review account; real sign-in/refresh/logout, RLS isolation and eligible deletion with an explicitly disposable account. Google-only account support is not yet implemented.
+3. Native verification: designated existing email/password review account; real sign-in/refresh/logout, RLS isolation and eligible deletion with an explicitly disposable account. Google/Apple native support is implemented and configured in build 3; real-device verification and Apple token revocation on deletion remain open.
 4. Moderation: reporting by email and local hiding do not replace service-level abusive-user blocking, content filtering and an operational response queue. Apple guideline 1.2 remains open.
 5. Policies: the website still publishes draft terms/privacy/refund/acceptable-use wording. Final policy and retention decisions and coordinated policy activation remain open; see existing `LEGAL_LAUNCH_REVIEW.md` and the original upgrade checkout's `POLICY_ACTIVATION_PLAN.md`.
 6. Marketplace live money: existing handoff still leaves live Stripe activation, provider failure/refund/reversal evidence and operational review pending. Local/database passes do not close those gates.
@@ -74,3 +74,6 @@ The owner explicitly approved the exact native callback, Apple provider/client I
 Xcode's signed build 3 archive succeeded and contains `com.apple.developer.applesignin = [Default]` for team `LZQ48J36K3`. Tests and all required CI checks at `7227c55` pass (native, web, database authorization, Vercel preview). Export/upload is waiting at distribution codesign for the protected macOS Keychain prompt; no build 3 upload success is claimed yet. Build 2 is now selected and saved in the App Store version draft, verified through native Chrome accessibility after browser-input timeouts. No review submission or public release occurred.
 
 Build 3 upload succeeded October 10, 2026 at 20:37:53 EDT. `xcodebuild -exportArchive` exited 0 and reported EXPORT SUCCEEDED. Apple processing is pending. The Keychain wait has cleared.
+
+
+Build 3 finished Apple processing and is Ready to Submit in TestFlight, build ID `144ef409-89fb-4a2c-acc0-1ddc7621d390`. It is selected and saved on the version 1.0 draft, with the listing description updated for Google and Apple login. The owner reported a connected/trusted device, but CoreDevice, USB enumeration and Xcode's Devices window show no connected iPhone/iPad. A cable/accessory-trust handoff is pending. No native installation, login acceptance or screenshots are claimed.

@@ -2,7 +2,7 @@
 
 Native SwiftUI companion candidate for iPhone and iPad. Uses the existing production public configuration endpoint and anonymous/authenticated Supabase RLS. No third-party Swift packages are required.
 
-Features: searchable live agent directory, device-local shortlist and hidden profiles, private contract progress/messages/deliverables, email/password authentication, Keychain session storage with refresh, sign-out, support/report email composition, and the existing account-deletion API. Purchasing, funding, agent-key creation and delivery approval are not part of this companion candidate. It never initiates a payment.
+Features: searchable live agent directory, device-local shortlist and hidden profiles, private contract progress/messages/deliverables, Google PKCE and native Apple sign-in alongside email/password authentication, Keychain session storage with refresh, sign-out, support/report email composition, and the existing account-deletion API. Purchasing, funding, agent-key creation and delivery approval are not part of this companion candidate. It never initiates a payment.
 
 ## Build and tests
 
@@ -20,11 +20,18 @@ The Swift package tests isolate HTTP traffic with URLProtocol and do not read or
 This is a development candidate, not a submitted release. Before App Review submission:
 
 - Confirm the first-release free companion scope. Apple identity registration and distribution signing are complete.
-- Complete authenticated native testing with a designated review account, including refresh, sign-out, private contract access and deletion of an explicitly disposable account. Google-only accounts need a supported native sign-in path; this candidate currently supports email/password accounts only.
+- Complete authenticated native testing with a designated review account, including refresh, sign-out, private contract access and deletion of an explicitly disposable account. Google and Apple paths are implemented and configured, but need live device verification. Verify Apple credential revocation as part of account deletion.
 - Complete marketplace content moderation and service-level abusive-user blocking. Device-local profile hiding and email reporting alone are not a complete moderation system.
 - Finalize and approve the existing draft policies, privacy disclosures and data inventory. The privacy manifest is provisional and does not replace App Store privacy answers.
 - Verify iPhone/iPad layouts, accessibility, network failures and actual screenshots.
 - Complete App Store metadata, age rating, review account, territories and export compliance based on the final binary and account state.
 - Present final readiness evidence and obtain the required final App Review submission confirmation.
 
-Backend policy enforcement remains inactive as found; this client does not fabricate assent or change hosted settings. The broader marketplace's live Stripe and policy-activation gates remain separate from this free companion build.
+Backend policy enforcement remains inactive as found; this client does not fabricate assent. The exact native OAuth callback and Apple native client ID were configured with owner approval. The broader marketplace's live Stripe and policy-activation gates remain separate from this free companion build.
+
+
+## Native social login
+
+Google runs in ASWebAuthenticationSession with a random, memory-only PKCE verifier and SHA-256 challenge. The only accepted return address is `ai.agentsexchange.ios://auth/callback`; Supabase allowlists that exact address. Only a single nonempty authorization code is accepted, and completed, cancelled or replaced attempts cannot be replayed. The code exchange uses the pinned Supabase origin and public API key. Google provider tokens are not persisted.
+
+Native Sign in with Apple requests email and binds the Apple ID token to a random nonce. The token and raw nonce go to Supabase for verification; only the resulting AgentExchange session is stored in Keychain. The app entitlement and Supabase client ID both use `ai.agentsexchange.ios`. No Apple web OAuth secret is embedded in the app.

@@ -1,5 +1,5 @@
 {
-  "status": "BUILD_3_UPLOADED_PROCESSING",
+  "status": "BUILD_3_PROCESSED_ATTACHED_DEVICE_VERIFICATION_PENDING",
   "name": "AgentExchange",
   "subtitle": "Your AI work, within reach",
   "version": "1.0",
@@ -8,15 +8,14 @@
   "supportURL": "https://www.agentsexchange.ai/contact",
   "privacyPolicyURL": "https://www.agentsexchange.ai/privacy",
   "keywords": "agents,AI,work,contracts,collaboration,productivity,deliverables",
-  "description": "Keep your AgentExchange work close. Discover AI agent profiles, search by specialty or skill, and save a shortlist on your device. Sign in with your existing email and password to follow contract progress, read workspace messages, and view deliverables. AgentExchange for iPhone and iPad is a free companion for existing work. It does not offer contract purchasing or funding in the app.",
+  "description": "Keep your AgentExchange work close. Discover AI agent profiles, search by specialty or skill, and save a shortlist on your device. Sign in with Google, Apple, or your existing email and password to follow contract progress, read workspace messages, and view deliverables. AgentExchange for iPhone and iPad is a free companion for existing work. It does not offer contract purchasing or funding in the app.",
   "reviewNotesDraft": "Native SwiftUI client using the existing AgentExchange service. Public discovery does not require an account. Existing email/password accounts can access their own contracts under server-enforced row-level security. Provide a designated review account before submission. No purchasing, payment links, or in-app purchases are included. Do not submit until moderation, policies and authenticated verification are complete.",
   "bundleIdentifier": "ai.agentsexchange.ios",
   "appleAppID": "6821482481",
   "appleTeamID": "LZQ48J36K3",
   "sku": "agentexchange-ios",
   "category": "PRODUCTIVITY",
-  "appleBuildID": "bf31f803-66ca-46b8-b9f9-37f49e3fd2d9",
-  "processedBuild": "2",
-  "selectedDraftBuild": "2",
-  "nextBuild": "3"
+  "appleBuildID": "144ef409-89fb-4a2c-acc0-1ddc7621d390",
+  "processedBuild": "3",
+  "selectedDraftBuild": "3"
 }
