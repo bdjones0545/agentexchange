@@ -17,6 +17,7 @@ actor ExchangeClient {
     private var session: AuthSession?
     private var refreshTask: Task<AuthSession, Error>?
     private var sessionGeneration = 0
+    private var pendingOAuth: OAuthFlow?
     init(network: URLSession = URLSession(configuration: .ephemeral, delegate: ExchangeRedirectGuard(), delegateQueue: nil), restoreSession: Bool = true) {
         self.network = network
         self.session = restoreSession ? SessionVault.read() : nil
@@ -74,6 +75,45 @@ actor ExchangeClient {
         guard generation == sessionGeneration else { throw ExchangeError.signedOut }
         try SessionVault.save(value)
         sessionGeneration += 1
+        pendingOAuth = nil
+        refreshTask?.cancel(); refreshTask = nil
+        session = value
+        return value.user
+    }
+    func signInWithApple(idToken: String, nonce: String) async throws -> AuthUser {
+        let generation = sessionGeneration
+        let value = try await authenticate(grant: "id_token", body: ["provider": "apple", "id_token": idToken, "nonce": nonce])
+        guard generation == sessionGeneration else { throw ExchangeError.signedOut }
+        try SessionVault.save(value)
+        sessionGeneration += 1; pendingOAuth = nil
+        refreshTask?.cancel(); refreshTask = nil
+        session = value
+        return value.user
+    }
+    func beginGoogleSignIn() async throws -> (id: UUID, url: URL) {
+        let generation = sessionGeneration
+        let configuration = try await configuration()
+        guard generation == sessionGeneration else { throw ExchangeError.signedOut }
+        let flow = try OAuthFlow()
+        // Starting a newer flow also invalidates an earlier token exchange in flight.
+        sessionGeneration += 1
+        pendingOAuth = flow
+        return (flow.id, try flow.authorizationURL(configuration: configuration))
+    }
+    func cancelGoogleSignIn(id: UUID) {
+        if pendingOAuth?.id == id { pendingOAuth = nil }
+    }
+    func completeGoogleSignIn(id: UUID, callback: URL) async throws -> AuthUser {
+        guard let flow = pendingOAuth, flow.id == id else { throw ExchangeError.signedOut }
+        pendingOAuth = nil
+        guard Date().timeIntervalSince(flow.createdAt) < 600 else { throw ExchangeError.signedOut }
+        let code = try OAuthFlow.code(from: callback)
+        let generation = sessionGeneration
+        let value = try await authenticate(grant: "pkce", body: ["auth_code": code, "code_verifier": flow.verifier])
+        guard generation == sessionGeneration else { throw ExchangeError.signedOut }
+        try SessionVault.save(value)
+        sessionGeneration += 1
+        pendingOAuth = nil
         refreshTask?.cancel(); refreshTask = nil
         session = value
         return value.user
@@ -107,6 +147,7 @@ actor ExchangeClient {
     func signOut() async {
         let token = session?.access_token
         sessionGeneration += 1
+        pendingOAuth = nil
         session = nil
         refreshTask?.cancel(); refreshTask = nil
         SessionVault.clear()

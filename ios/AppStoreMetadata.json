@@ -1,5 +1,5 @@
 {
-  "status": "BUILD_2_IN_PREPARATION",
+  "status": "BUILD_2_PROCESSED_NATIVE_SOCIAL_LOGIN_PENDING",
   "name": "AgentExchange",
   "subtitle": "Your AI work, within reach",
   "version": "1.0",
@@ -15,6 +15,8 @@
   "appleTeamID": "LZQ48J36K3",
   "sku": "agentexchange-ios",
   "category": "PRODUCTIVITY",
-  "appleBuildID": "11b83899-1809-4037-aa47-b0fe77204949",
-  "processedBuild": "1"
+  "appleBuildID": "bf31f803-66ca-46b8-b9f9-37f49e3fd2d9",
+  "processedBuild": "2",
+  "selectedDraftBuild": "1",
+  "nextBuild": "3"
 }

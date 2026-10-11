@@ -1,4 +1,6 @@
 import SwiftUI
+import AuthenticationServices
+import CryptoKit
 
 struct RootView: View {
     @EnvironmentObject private var store: ExchangeStore
@@ -174,6 +176,8 @@ struct ContractView: View {
 }
 struct AccountView: View {
     @EnvironmentObject private var store: ExchangeStore
+    @StateObject private var googleSignIn = GoogleSignIn()
+    @State private var appleNonce: String?
     @State private var email = ""
     @State private var password = ""
     @State private var busy = false
@@ -188,7 +192,22 @@ struct AccountView: View {
             } else {
                 Section {
                     Text("Welcome back").font(.title2.bold())
-                    Text("Use your AgentExchange email and password to view your existing work.").foregroundStyle(.secondary)
+                    Text("Sign in to your AgentExchange account to view your existing work.").foregroundStyle(.secondary)
+                    Button("Continue with Google") { Task { await signInWithGoogle() } }
+                        .disabled(busy)
+                    SignInWithAppleButton(.continue) { request in
+                        do {
+                            let nonce = try OAuthFlow().verifier
+                            appleNonce = nonce
+                            request.requestedScopes = [.email]
+                            request.nonce = SHA256.hash(data: Data(nonce.utf8)).map { String(format: "%02x", $0) }.joined()
+                            busy = true; error = nil
+                        } catch { self.error = error.localizedDescription }
+                    } onCompletion: { result in
+                        Task { await completeAppleSignIn(result) }
+                    }
+                    .frame(height: 44).disabled(busy)
+                    Text("Or use your email and password").font(.caption).foregroundStyle(.secondary)
                     TextField("Email", text: $email).textContentType(.username).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
                     SecureField("Password", text: $password).textContentType(.password)
                     Button { Task { await signIn() } } label: { HStack { Text("Sign in"); if busy { Spacer(); ProgressView() } } }
@@ -219,6 +238,25 @@ struct AccountView: View {
                 Button("Cancel", role: .cancel) { confirmation = "" }
                 Button("Delete account", role: .destructive) { Task { await deleteAccount() } }.disabled(confirmation != "DELETE" || busy)
             } message: { Text("Eligible accounts will be permanently deleted. This cannot be undone. Type DELETE to confirm.") }
+    }
+    private func signInWithGoogle() async {
+        busy = true; error = nil
+        defer { busy = false }
+        do { store.user = try await googleSignIn.signIn(client: store.client) }
+        catch let failure as ASWebAuthenticationSessionError where failure.code == .canceledLogin { }
+        catch { self.error = "Google sign-in could not be completed. Please try again or contact support." }
+    }
+    private func completeAppleSignIn(_ result: Result<ASAuthorization, Error>) async {
+        defer { busy = false; appleNonce = nil }
+        do {
+            let authorization = try result.get()
+            guard let nonce = appleNonce,
+                  let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let token = credential.identityToken,
+                  let idToken = String(data: token, encoding: .utf8) else { throw ExchangeError.invalidResponse }
+            store.user = try await store.client.signInWithApple(idToken: idToken, nonce: nonce)
+        } catch let failure as ASAuthorizationError where failure.code == .canceled { }
+        catch { self.error = "Apple sign-in could not be completed. Please try again or contact support." }
     }
     private func signIn() async {
         busy = true; error = nil

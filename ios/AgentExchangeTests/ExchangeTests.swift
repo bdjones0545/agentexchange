@@ -87,4 +87,42 @@ final class ExchangeTests: XCTestCase {
             catch { XCTAssertEqual(error.localizedDescription, expected) }
         }
     }
+    func testPKCEUsesRFC7636SHA256VectorAndUniqueVerifiers() throws {
+        XCTAssertEqual(OAuthFlow.challenge(for: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
+        let first = try OAuthFlow(), second = try OAuthFlow()
+        XCTAssertNotEqual(first.verifier, second.verifier)
+        XCTAssertEqual(first.verifier.count, 43)
+        let url = try first.authorizationURL(configuration: AuthConfiguration(enabled: true, supabaseUrl: "https://ynkxhrptkvefcizxuvhk.supabase.co", anonKey: "public"))
+        XCTAssertFalse(url.absoluteString.contains(first.verifier))
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
+        XCTAssertEqual(items.first(where: { $0.name == "redirect_to" })?.value, OAuthFlow.callback.absoluteString)
+        XCTAssertEqual(items.first(where: { $0.name == "code_challenge_method" })?.value, "s256")
+    }
+    func testOAuthRejectsForeignAmbiguousAndTokenCallbacks() throws {
+        XCTAssertEqual(try OAuthFlow.code(from: URL(string: "ai.agentsexchange.ios://auth/callback?code=test")!), "test")
+        for input in [
+            "https://auth/callback?code=test", "ai.agentsexchange.ios://attacker/callback?code=test",
+            "ai.agentsexchange.ios://auth/other?code=test", "ai.agentsexchange.ios://user@auth/callback?code=test",
+            "ai.agentsexchange.ios://auth:443/callback?code=test", "ai.agentsexchange.ios://auth/callback?code=one&code=two",
+            "ai.agentsexchange.ios://auth/callback?code=", "ai.agentsexchange.ios://auth/callback?error=denied&code=test",
+            "ai.agentsexchange.ios://auth/callback#access_token=secret"
+        ] { XCTAssertThrowsError(try OAuthFlow.code(from: URL(string: input)!)) }
+    }
+    func testCancelledAndReplacedOAuthAttemptsCannotExchangeCodes() async throws {
+        var calls = 0
+        StubProtocol.handler = { request in
+            calls += 1
+            XCTAssertEqual(request.url!.path, "/api/auth-config")
+            return (200, Data(#"{"enabled":true,"supabaseUrl":"https://ynkxhrptkvefcizxuvhk.supabase.co","anonKey":"public-only"}"#.utf8))
+        }
+        let client = client()
+        let first = try await client.beginGoogleSignIn()
+        let second = try await client.beginGoogleSignIn()
+        let callback = URL(string: "ai.agentsexchange.ios://auth/callback?code=test")!
+        do { _ = try await client.completeGoogleSignIn(id: first.id, callback: callback); XCTFail("Old attempt accepted") } catch { }
+        await client.cancelGoogleSignIn(id: second.id)
+        do { _ = try await client.completeGoogleSignIn(id: second.id, callback: callback); XCTFail("Cancelled attempt accepted") } catch { }
+        XCTAssertEqual(calls, 1)
+    }
+
 }
