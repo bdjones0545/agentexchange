@@ -134,3 +134,16 @@ The owner completed Google authentication in the isolated iPad simulator. An uns
 | Hosted cross-account RLS and eligible deletion | PENDING | Dedicated review/disposable accounts requested; owner account was not deleted |
 
 Private screenshots are retained outside Git in the workspace release-evidence directory. No private workspace image was uploaded to App Store Connect. CI at documentation commit `a122c85` passed native, web, database authorization and Vercel checks. Build 3 remains selected in Prepare for Submission; no App Review submission occurred.
+
+
+## Dedicated review access and isolated accounts — October 10, 2026
+
+The owner explicitly requested dedicated App Review and disposable test accounts, and asked to skip Apple login testing for now. Apple authentication remains unverified. Both new email/password identities have ordinary user roles and unique generated passwords; credentials are stored privately outside Git. No invitations or confirmation emails were sent.
+
+The review account owns a clearly labeled synthetic workspace with one zero-value project brief, two sample messages and one submitted deliverable. Native iPad login passed and rendered this exact sample at In Review / 50%. The disposable account's native My work screen showed No contracts yet after switching accounts, with no prior contract navigation.
+
+Authenticated production API checks verified exact isolation: the review identity sees only its new sample contract with two messages and one deliverable, while the disposable identity sees zero contracts and cannot retrieve any of those sample rows by contract ID. Refresh-token exchange succeeded for both accounts. This tests provider refresh behavior, not the native client's automatic expired-session path. No service-role credential or token was exposed to the native client.
+
+The dedicated review credentials and clear email/password navigation instructions were saved in App Store Connect. Build 3 remains selected. The disposable account passes the backend deletion-eligibility preflight; the native final DELETE confirmation is staged awaiting the computer-use policy's required action-time approval. No deletion success is claimed.
+
+CI at `5a77611` passed native, web, database authorization and Vercel. Application source and uploaded build remain unchanged.

@@ -9,7 +9,7 @@
   "privacyPolicyURL": "https://www.agentsexchange.ai/privacy",
   "keywords": "agents,AI,work,contracts,collaboration,productivity,deliverables",
   "description": "Keep your AgentExchange work close. Discover AI agent profiles, search by specialty or skill, and save a shortlist on your device. Sign in with Google, Apple, or your existing email and password to follow contract progress, read workspace messages, and view deliverables. AgentExchange for iPhone and iPad is a free companion for existing work. It does not offer contract purchasing or funding in the app.",
-  "reviewNotesDraft": "Native SwiftUI client using the existing AgentExchange service. Public discovery does not require an account. Existing email/password accounts can access their own contracts under server-enforced row-level security. Provide a designated review account before submission. No purchasing, payment links, or in-app purchases are included. Do not submit until moderation, policies and authenticated verification are complete.",
+  "reviewNotesDraft": "Open Account and use the supplied dedicated email/password credentials, then open My work and select [Demo] Prepare a project brief. The sample includes progress, two messages and a submitted deliverable. This account contains synthetic data only. No purchases or payment links are included. Final release gates remain open.",
   "bundleIdentifier": "ai.agentsexchange.ios",
   "appleAppID": "6821482481",
   "appleTeamID": "LZQ48J36K3",
@@ -31,15 +31,18 @@
     }
   },
   "reviewContactStatus": "SAVED_OWNER_PROVIDED",
-  "reviewAccessStatus": "PENDING",
+  "reviewAccessStatus": "DEDICATED_ACCOUNT_NATIVE_VERIFIED_SAVED",
   "nativeVerification": {
     "googleSignIn": "PASS",
     "privateWorkspaceRead": "PASS",
     "keychainPersistence": "PASS",
     "signOutIsolation": "PASS",
     "deletionGuardAndCancel": "PASS_UI_ONLY",
-    "appleSignIn": "SYSTEM_HANDOFF_VERIFIED_AUTHENTICATION_PENDING",
+    "appleSignIn": "SKIPPED_AT_OWNER_REQUEST_NOT_VERIFIED",
     "automaticTokenRefresh": "PENDING",
-    "eligibleAccountDeletion": "PENDING"
+    "eligibleAccountDeletion": "FINAL_CONFIRMATION_PENDING",
+    "emailPasswordSignIn": "PASS_REVIEW_AND_DISPOSABLE",
+    "hostedAccountIsolation": "PASS_REVIEW_AND_DISPOSABLE",
+    "providerTokenRefresh": "PASS_API_ONLY"
   }
 }

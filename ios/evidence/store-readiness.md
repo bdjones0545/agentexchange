@@ -12,7 +12,7 @@ App: AgentExchange, Apple ID 6821482481, bundle ai.agentsexchange.ios, version 1
 
 ## Still missing in the live listing
 
-- App Review username/password for an isolated review account with sample work.
+- Dedicated App Review email/password account and sample work are now verified and saved; this earlier missing item is resolved.
 - Privacy collection questionnaire and published labels.
 - Content rights declaration.
 - Age rating questionnaire.
@@ -37,7 +37,7 @@ Apple defines collection as off-device data accessible beyond real-time request 
 
 ## Verified functional behavior
 
-Native public discovery/search/save/hide/report UI, Google sign-in, private workspace reads, Keychain persistence after restart, deletion guard/cancel and sign-out isolation passed. Full Apple login, expired-session refresh, hosted cross-account isolation and actual deletion remain pending. The Apple path reaches its system account prompt.
+Native public discovery/search/save/hide/report UI, Google sign-in, private workspace reads, Keychain persistence after restart, deletion guard/cancel and sign-out isolation passed. Full Apple login and automatic native expired-session refresh remain pending; hosted isolation and provider refresh-token exchange passed with the new review/disposable accounts. Actual deletion is staged for action-time confirmation. The Apple path reaches its system account prompt.
 
 ## Implementation blockers
 
@@ -49,3 +49,6 @@ Native public discovery/search/save/hide/report UI, Google sign-in, private work
 Apple account-deletion source: https://developer.apple.com/help/app-review/guideline-reference/5-1-1-account-deletion
 
 No account deletion, content-rights attestation, trader declaration, paid agreement, or App Review submission was performed by this audit. The deployment skill requires a complete readiness summary and explicit final submission confirmation before submitting.
+
+
+Dedicated review access was completed with owner approval: both account logins passed natively; only the review account sees the synthetic sample workspace. Credentials were saved in App Store Connect and remain outside Git. Apple login testing was explicitly skipped by the owner; it is not marked passed.
