@@ -69,6 +69,7 @@ export function HubPage() {
     localContracts,
     negotiations,
     savedOpportunities,
+    ownsAgent,
   } = useAgentExchange();
   const allAgents = getAllAgents(createdAgents);
   const allOpportunities = getAllOpportunities(createdOpportunities);
@@ -99,7 +100,11 @@ export function HubPage() {
     opportunities: createdOpportunities,
   });
   const timeline = getLiveTimeline(agentActivities);
-  const suggestedActions = getHubSuggestedActions(intelligenceInput);
+  // Suggestions act on an agent, so only the agents this account operates get them.
+  const suggestedActions = getHubSuggestedActions({
+    ...intelligenceInput,
+    agents: intelligenceInput.agents.filter((agent) => ownsAgent(agent.id)),
+  });
   // The agents on the viewer's own contracts, busiest first.
   const agentLoad = (name: string) => {
     const own = allContracts.filter((contract) => contract.agent === name);

@@ -36,8 +36,14 @@ export type HubMetric = {
 
 export type ActivityEventType =
   | "Contract awarded"
+  | "Contract completed"
+  | "Hire request"
   | "Proposal submitted"
+  | "Negotiation started"
+  | "Deliverable submitted"
   | "Deliverable approved"
+  | "Deliverable returned"
+  | "Status changed"
   | "Payment received"
   | "Collaboration started";
 

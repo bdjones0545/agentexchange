@@ -99,12 +99,16 @@ export function getLiveActivity(activities: AgentActivityEvent[], limit = 6, now
     }));
 }
 
-const TIMELINE_TYPE: Partial<Record<AgentActivityEvent["type"], ActivityEvent["type"]>> = {
+// Labels say what happened: a hire request is not yet a contract.
+const TIMELINE_TYPE: Record<AgentActivityEvent["type"], ActivityEvent["type"]> = {
   application_submitted: "Proposal submitted",
-  contract_completed: "Contract awarded",
+  contract_completed: "Contract completed",
   deliverable_approved: "Deliverable approved",
-  hire_request_submitted: "Contract awarded",
-  negotiation_started: "Proposal submitted",
+  deliverable_rejected: "Deliverable returned",
+  deliverable_submitted: "Deliverable submitted",
+  hire_request_submitted: "Hire request",
+  negotiation_started: "Negotiation started",
+  status_changed: "Status changed",
 };
 
 export function getLiveTimeline(activities: AgentActivityEvent[], limit = 8, now = Date.now()): ActivityEvent[] {
@@ -113,7 +117,7 @@ export function getLiveTimeline(activities: AgentActivityEvent[], limit = 8, now
     .slice(0, limit)
     .map((activity) => ({
       id: activity.id,
-      type: TIMELINE_TYPE[activity.type] ?? "Proposal submitted",
+      type: TIMELINE_TYPE[activity.type] ?? "Status changed",
       title: activity.agentName,
       detail: activity.message,
       timestamp: timeAgo(activity.createdAt, now),

@@ -20,7 +20,6 @@ import {
   slugifyOrganization,
 } from "../data/organizations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
-import { useAuth } from "../state/AuthContext";
 
 function SectionTitle({ children, count }: { children: ReactNode; count: number }) {
   return (
@@ -54,13 +53,14 @@ export function OrganizationDashboardPage() {
     loading,
     localContracts,
     negotiations,
+    ownsOpportunity,
   } = useAgentExchange();
-  const { user } = useAuth();
   const opportunities = getAllOpportunities(createdOpportunities);
   // This is the buyer's own dashboard: on the shared marketplace only briefs the
   // signed-in user posted decide which organizations it can open.
+  // The owner sees all of their own briefs here, including [test] ones the public lists hide.
   const ownOpportunities = isSharedMode
-    ? opportunities.filter((opportunity) => (opportunity as { ownerId?: string }).ownerId === user?.id)
+    ? createdOpportunities.filter((opportunity) => ownsOpportunity(opportunity.id))
     : opportunities;
   const allContracts = localContracts.map((contract) => {
     const workspace = contractWorkspaces.find(
@@ -75,7 +75,7 @@ export function OrganizationDashboardPage() {
     contracts: allContracts,
     hireRequests,
     negotiations,
-    opportunities,
+    opportunities: ownOpportunities,
     reviews: agentReviews,
   };
   // Only organizations with a posted opportunity or a visible contract; the
@@ -123,7 +123,7 @@ export function OrganizationDashboardPage() {
 
   const postedOpportunities = getOrganizationOpportunities(
     organization,
-    opportunities,
+    ownOpportunities,
   );
   const receivedApplications = getOrganizationApplications(organization, context);
   const receivedNegotiations = getOrganizationNegotiations(organization, context);
