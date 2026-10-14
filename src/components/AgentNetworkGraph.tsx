@@ -1,4 +1,5 @@
 import type { NetworkNode } from "../data/operations";
+import { initialsFor } from "../lib/initials";
 import { accentStyles } from "./accentStyles";
 import { GlassCard } from "./GlassCard";
 
@@ -6,14 +7,7 @@ type AgentNetworkGraphProps = {
   nodes: NetworkNode[];
 };
 
-function initials(name: string) {
-  return name
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
+const initials = (name: string) => initialsFor(name);
 
 /** The agents the viewer works with, one row each, with what they are working on. */
 export function AgentNetworkGraph({ nodes }: AgentNetworkGraphProps) {

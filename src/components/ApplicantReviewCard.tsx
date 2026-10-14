@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { initialsFor } from "../lib/initials";
 
 import { centsToDollarsInput, dollarsInputToCents, parseMoneyToCents } from "../lib/money";
 import { getAllOpportunities } from "../data/localSelectors";
@@ -22,14 +23,7 @@ type ApplicantReviewCardProps =
       type: "negotiation";
     };
 
-function initials(name: string) {
-  return name
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
+const initials = (name: string) => initialsFor(name);
 
 function CardHeader({ kind, name, subtitle, status }: { kind: string; name: string; subtitle: string; status: ReactNode }) {
   return (

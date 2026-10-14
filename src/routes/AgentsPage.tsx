@@ -7,13 +7,13 @@ import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SearchBar } from "../components/SearchBar";
 import { getAgentSkills } from "../data/agents";
-import { getAllAgents } from "../data/localSelectors";
+import { getListedAgents } from "../data/localSelectors";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
 export function AgentsPage() {
   const navigate = useNavigate();
   const { createdAgents, isSharedMode, loading, error } = useAgentExchange();
-  const allAgents = useMemo(() => getAllAgents(createdAgents), [createdAgents]);
+  const allAgents = useMemo(() => getListedAgents(createdAgents), [createdAgents]);
   const [searchQuery, setSearchQuery] = useState("");
 
   const visibleAgents = useMemo(() => {

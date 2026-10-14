@@ -1,18 +1,12 @@
 import type { Contract } from "../data/operations";
+import { initialsFor } from "../lib/initials";
 import { GlassCard } from "./GlassCard";
 
 type OrganizationAgentRosterProps = {
   contracts: Contract[];
 };
 
-function initials(name: string) {
-  return name
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
+const initials = (name: string) => initialsFor(name);
 
 export function OrganizationAgentRoster({ contracts }: OrganizationAgentRosterProps) {
   const agentNames = Array.from(new Set(contracts.map((contract) => contract.agent)));

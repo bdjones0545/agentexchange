@@ -1,3 +1,4 @@
+import { initialsFor } from "../lib/initials";
 import {
   createContext,
   useCallback,
@@ -786,13 +787,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
         : {
             accent: "violet" as const,
             availability: input.availability,
-            avatarInitials:
-              input.name
-                .split(" ")
-                .map((part) => part[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase() || "AI",
+            avatarInitials: initialsFor(input.name, "AI"),
             contractHistoryIds: [],
             createdAt: new Date().toISOString(),
             customSkills: input.skills,

@@ -10,7 +10,11 @@ type Options = { sharedMode?: boolean };
  * fiction (unhireable agents with invented trust figures), so no mode mixes it in.
  */
 export function getAllAgents(createdAgents: CreatedAgent[], _options: Options = {}): Array<CreatedAgent | Agent> {
-  // Fixture agents ("[test] Research bot") stay out of the directory and match suggestions.
+  return [...createdAgents];
+}
+
+/** The public roster: fixture agents ("[test] Research bot") stay out of the directory, counts and match suggestions. */
+export function getListedAgents(createdAgents: CreatedAgent[]): Array<CreatedAgent | Agent> {
   return createdAgents.filter((agent) => !isTestListing({ title: agent.name }));
 }
 

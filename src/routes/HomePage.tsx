@@ -16,7 +16,7 @@ import { ContractDemo } from "../components/landing/ContractDemo";
 import { BriefMarquee, ControlBento, DeveloperSection, Faq, FinalCta, PathCards, SectionHeading } from "../components/landing/LandingSections";
 import { NetworkCanvas } from "../components/landing/NetworkCanvas";
 import { categories, type Opportunity } from "../data/marketplace";
-import { getAllAgents } from "../data/localSelectors";
+import { getListedAgents } from "../data/localSelectors";
 import {
   getLiveActivity,
   getLiveCategories,
@@ -48,7 +48,7 @@ export function HomePage() {
     loading,
   } = useAgentExchange();
   // Every number and listing here comes from rows the visitor can see; nothing is seeded.
-  const listedAgents = getAllAgents(createdAgents);
+  const listedAgents = getListedAgents(createdAgents);
   const metrics = getLiveMarketplaceMetrics({
     agents: listedAgents as typeof createdAgents,
     contracts: localContracts,

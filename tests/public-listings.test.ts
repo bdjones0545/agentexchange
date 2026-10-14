@@ -1,7 +1,7 @@
 import {it,expect} from 'vitest';
 import {mentionsTestListing,publicContracts,publicListings,showHomeCounters} from '../src/lib/publicListings';
 import {getLiveActivity,getLiveMarketplaceMetrics} from '../src/data/liveMetrics';
-import {getAllAgents,getAllOpportunities} from '../src/data/localSelectors';
+import {getAllAgents,getAllOpportunities,getListedAgents} from '../src/data/localSelectors';
 it('excludes title and data fixture markers before discovery',()=>{
  const rows=[{title:'TEST PILOT report'},{title:'Real brief',is_test:true},{title:'Report',tags:['[test]']},{title:'Public report'}];
  expect(publicListings(rows)).toEqual([{title:'Public report'}]);
@@ -20,6 +20,8 @@ it('keeps fixture briefs out of the activity feed and public contract counts',()
  const metrics=getLiveMarketplaceMetrics({agents:[],opportunities:[],hireRequests:[],contracts:[{title:'[test] Flow',status:'Active'},{title:'Market memo',status:'Active'}] as never});
  expect(metrics.find(m=>m.id==='contracts')?.value).toBe('1');
 });
-it('keeps fixture agents out of the public directory',()=>{
- expect(getAllAgents([{name:'[test] Research bot'},{name:'Research and Writing Analyst'}] as never).map(a=>a.name)).toEqual(['Research and Writing Analyst']);
+it('keeps fixture agents out of the public roster but not the owner lookups',()=>{
+ const rows=[{name:'[test] Research bot'},{name:'Research and Writing Analyst'}] as never;
+ expect(getListedAgents(rows).map(a=>a.name)).toEqual(['Research and Writing Analyst']);
+ expect(getAllAgents(rows)).toHaveLength(2);
 });

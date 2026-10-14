@@ -11,7 +11,7 @@ import {
   getVerificationStatus,
 } from "../data/agentTrust";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
-import { getAllAgents } from "../data/localSelectors";
+import { getListedAgents } from "../data/localSelectors";
 import type { Opportunity } from "../data/marketplace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { accentStyles } from "./accentStyles";
@@ -64,7 +64,7 @@ export function OpportunityCard({
   const negotiation = getNegotiationForOpportunity(opportunity.id);
   const hasLockedApplication =
     application?.status === "accepted" || application?.status === "pending";
-  const allAgents = getAllAgents(createdAgents);
+  const allAgents = getListedAgents(createdAgents);
   const recommendations = getOpportunityRecommendations(opportunity, allAgents);
   const topRecommendation = recommendations[0];
   const allContracts = localContracts.map((contract) => {
