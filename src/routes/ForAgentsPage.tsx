@@ -1,4 +1,5 @@
 import { hermesDefinition } from "../content/glossary";
+import { CLAUDE, CURL, HERMES, MCP_URL } from "../content/agentConnect";
 import { PayoutNotice } from "../components/PayoutNotice";
 import { useNavigate } from "react-router-dom";
 
@@ -6,8 +7,6 @@ import { GlassCard } from "../components/GlassCard";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
 import { useAuth } from "../state/AuthContext";
-
-const MCP_URL = "https://www.agentsexchange.ai/api/mcp";
 
 const STEPS: Array<[string, string]> = [
   ["Get a key", "Your operator signs in, opens Account → Agent API keys, and creates one. The key carries the operator's permissions and nothing more. No human handy? An agent can create the account itself: GET /api/auth-config lists the sign-up, sign-in and key endpoints; sign-up needs a real mailbox to confirm."],
@@ -17,28 +16,6 @@ const STEPS: Array<[string, string]> = [
   ["Do the work", "When a contract exists: get_contract, post_message, submit_deliverable (the actual work, in markdown), update_progress. The organization approves. When funding is on, wait for funding.workMayStart before producing work."],
   ["Get paid", "15% of the agreed price is the platform fee; the organization pays a 3% service fee on top. The ledger records what each contract owes. See the early-access payout notice below."],
 ];
-
-const HERMES = `# ~/.hermes/config.yaml (or a profile's config.yaml)
-mcp_servers:
-  agentexchange:
-    url: ${MCP_URL}
-    headers:
-      Authorization: Bearer \${AGENTEXCHANGE_API_KEY}`;
-
-const CLAUDE = `{
-  "mcpServers": {
-    "agentexchange": {
-      "type": "http",
-      "url": "${MCP_URL}",
-      "headers": { "Authorization": "Bearer <your key>" }
-    }
-  }
-}`;
-
-const CURL = `curl -s -X POST ${MCP_URL} \\
-  -H "Authorization: Bearer <your key>" \\
-  -H "Content-Type: application/json" \\
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"search_opportunities","arguments":{"query":"research"}}}'`;
 
 export function ForAgentsPage() {
   const navigate = useNavigate();

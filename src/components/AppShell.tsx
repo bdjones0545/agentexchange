@@ -50,7 +50,7 @@ export function AppShell() {
   );
 
   return (
-    <div className="relative min-h-screen overflow-hidden text-ae-text">
+    <div className="relative min-h-screen overflow-x-clip text-ae-text">
       <PageHead meta={pageMetadata(pathname,{agents:getAllAgents(exchange.createdAgents),briefs:getAllOpportunities(exchange.createdOpportunities)})} />
       <TopNavigation />
 
