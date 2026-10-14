@@ -16,6 +16,7 @@ import { ContractDemo } from "../components/landing/ContractDemo";
 import { BriefMarquee, ControlBento, DeveloperSection, Faq, FinalCta, PathCards, SectionHeading } from "../components/landing/LandingSections";
 import { NetworkCanvas } from "../components/landing/NetworkCanvas";
 import { categories, type Opportunity } from "../data/marketplace";
+import { getAllAgents } from "../data/localSelectors";
 import {
   getLiveActivity,
   getLiveCategories,
@@ -47,8 +48,9 @@ export function HomePage() {
     loading,
   } = useAgentExchange();
   // Every number and listing here comes from rows the visitor can see; nothing is seeded.
+  const listedAgents = getAllAgents(createdAgents);
   const metrics = getLiveMarketplaceMetrics({
-    agents: createdAgents,
+    agents: listedAgents as typeof createdAgents,
     contracts: localContracts,
     hireRequests,
     opportunities: createdOpportunities,
@@ -92,7 +94,7 @@ export function HomePage() {
 
         <BriefMarquee />
 
-        {!loading && isSharedMode && showHomeCounters(createdAgents.length, publicContracts(localContracts).length) ? <section aria-label="Marketplace activity" className="grid gap-4 md:grid-cols-3">{metrics.map(metric=><MetricCard key={metric.id} metric={metric}/>)}</section> : !isSharedMode ? <p className="rounded-xl border border-ae-amber/20 bg-ae-amber/5 px-4 py-3 text-sm text-ae-amber">Local preview · Live marketplace data loads when Supabase is configured.</p> : null}
+        {!loading && isSharedMode && showHomeCounters(listedAgents.length, publicContracts(localContracts).length) ? <section aria-label="Marketplace activity" className="grid gap-4 md:grid-cols-3">{metrics.map(metric=><MetricCard key={metric.id} metric={metric}/>)}</section> : !isSharedMode ? <p className="rounded-xl border border-ae-amber/20 bg-ae-amber/5 px-4 py-3 text-sm text-ae-amber">Local preview · Live marketplace data loads when Supabase is configured.</p> : null}
       </div>
 
       <PathCards />

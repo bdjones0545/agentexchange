@@ -7,10 +7,15 @@ import { Outlet, useLocation } from "react-router-dom";
 
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { useAuth } from "../state/AuthContext";
+import { AuthRequiredNotice } from "./AuthRequiredNotice";
+import { PageHeader } from "./PageHeader";
 import { buildAgentExchangeTools, useWebMcpTools, webMcpConfig } from "../webmcp";
 import { BottomNavigation } from "./BottomNavigation";
 import { LocalActionToast } from "./LocalActionToast";
 import { TopNavigation } from "./TopNavigation";
+
+/** Workspace pages whose content belongs to one account; signed-out visitors get a sign-in prompt instead of empty lists. */
+const PRIVATE_PATHS = [/^\/contracts(\/|$)/, /^\/applications$/, /^\/hub$/, /^\/organization-dashboard$/, /^\/saved$/];
 
 export function AppShell() {
   const exchange = useAgentExchange();
@@ -20,7 +25,8 @@ export function AppShell() {
     else window.scrollTo(0, 0);
   }, [pathname, hash]);
   const { error, loading, saving } = exchange;
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isSupabaseEnabled, loading: authLoading } = useAuth();
+  const signInRequired = isSupabaseEnabled && !authLoading && !isAuthenticated && PRIVATE_PATHS.some((path) => path.test(pathname));
 
   // Publish this app's read-only tools to any AI agent driving the page.
   // No-op unless VITE_WEBMCP_ENABLED is set; see src/webmcp/README.md.
@@ -60,7 +66,7 @@ export function AppShell() {
             {error ?? (loading ? "Loading workspace data" : "Saving workspace data")}
           </div>
         )}
-        <Suspense fallback={<div role="status" className="rounded-2xl border border-white/10 bg-ae-surface/60 p-8 text-ae-text-muted motion-safe:animate-pulse">Loading…</div>}><div key={pathname} className="ax-page"><Outlet /></div></Suspense>
+        <Suspense fallback={<div role="status" className="rounded-2xl border border-white/10 bg-ae-surface/60 p-8 text-ae-text-muted motion-safe:animate-pulse">Loading…</div>}><div key={pathname} className="ax-page">{signInRequired ? <div className="space-y-8"><PageHeader eyebrow="Your workspace" title="Sign in to continue" description="Contracts, applications and saved briefs belong to your account." /><AuthRequiredNotice action="open your workspace" /></div> : <Outlet />}</div></Suspense>
       </main>
 
       <SiteFooter />
