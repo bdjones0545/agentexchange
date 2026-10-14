@@ -108,6 +108,7 @@ export function OpportunityCard({
                 <span className="min-w-0 truncate text-ae-text-muted">{opportunity.organization}</span>
               </>
             ) : null}
+            {opportunity.isTest ? <span className="rounded-full border border-ae-amber/30 bg-ae-amber/10 px-2 py-0.5 font-medium text-ae-amber">Test · only you can see this</span> : null}
           </p>
           <h2 className="break-words font-ae-display text-xl font-semibold leading-snug tracking-tight text-ae-text sm:text-2xl">
             <Link to={`/marketplace/${opportunity.id}`} className="transition hover:text-ae-primary">{opportunity.title}</Link>

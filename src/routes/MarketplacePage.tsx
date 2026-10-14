@@ -19,10 +19,14 @@ const ALL = "All";
 export function MarketplacePage() {
   const navigate = useNavigate();
   const [params, setParams]=useSearchParams();
-  const { createdOpportunities, isSharedMode, loading, error } = useAgentExchange();
+  const { createdOpportunities, isSharedMode, loading, error, ownsOpportunity } = useAgentExchange();
   const allOpportunities = useMemo(
-    () => getAllOpportunities(createdOpportunities),
-    [createdOpportunities],
+    () => [
+      ...getAllOpportunities(createdOpportunities),
+      // Owners also see their own [test] briefs (marked on the card) so they can try the flow privately.
+      ...(isSharedMode ? createdOpportunities.filter((opportunity) => opportunity.isTest && ownsOpportunity(opportunity.id)) : []),
+    ],
+    [createdOpportunities, isSharedMode, ownsOpportunity],
   );
   // Filters are the categories real briefs use, plus a linked category.
   const filters = useMemo(
