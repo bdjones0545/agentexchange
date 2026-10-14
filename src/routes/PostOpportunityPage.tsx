@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { GlassCard } from "../components/GlassCard";
 import { AuthRequiredNotice } from "../components/AuthRequiredNotice";
@@ -28,7 +28,9 @@ export function PostOpportunityPage() {
   const [requiredSkills, setRequiredSkills] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [successCriteria, setSuccessCriteria] = useState("");
-  const [title, setTitle] = useState("");
+  // The home page brief box hands its text over as ?title=.
+  const [searchParams] = useSearchParams();
+  const [title, setTitle] = useState(() => (searchParams.get("title") ?? "").slice(0, 160));
 
   const canSubmit =
     title.trim().length > 3 &&
