@@ -54,8 +54,8 @@ export interface Ledger {
   organizationOwner(organizationId: string | null): Promise<string | null>;
   /** The Stripe PaymentIntent currently holding this contract's funds, if any. */
   authorizedPaymentRef(contractId: string): Promise<string | null>;
-  /** The deliverables' decision state, for the release gate. */
-  deliverableSummary(contractId: string): Promise<{ total: number; approved: number; submitted: number }>;
+  /** The deliverables' decision state and unresolved disputes, for the release gate. */
+  deliverableSummary(contractId: string): Promise<{ total: number; approved: number; submitted: number; openDisputes?: number }>;
 }
 
 export function supabaseLedger(client: SupabaseClient = serviceClient(), reader: SupabaseClient = client): Ledger {
@@ -190,11 +190,15 @@ export function supabaseLedger(client: SupabaseClient = serviceClient(), reader:
     async deliverableSummary(contractId) {
       const { data, error } = await reader.from("contract_deliverables").select("status").eq("contract_id", contractId);
       if (error) throw fail("deliverableSummary", error);
+      const { count: openDisputes, error: disputeError } = await reader.from("disputes").select("id", { count: "exact", head: true })
+        .eq("contract_id", contractId).neq("status", "Resolved");
+      if (disputeError) throw fail("deliverableSummary disputes", disputeError);
       const rows = (data ?? []) as Array<{ status: string }>;
       return {
         total: rows.length,
         approved: rows.filter((r) => r.status === "approved").length,
         submitted: rows.filter((r) => r.status === "submitted").length,
+        openDisputes: openDisputes ?? 0,
       };
     },
   };

@@ -1,33 +1,48 @@
 import { useNavigate } from "react-router-dom";
 
-import type { OrganizationSummary } from "../data/organizations";
 import { GlassCard } from "./GlassCard";
 import { PrimaryButton } from "./PrimaryButton";
+import type { OrganizationFigures } from "./SpendSummaryCard";
 
 type OrganizationCardProps = {
-  organization: OrganizationSummary;
+  organization: OrganizationFigures;
 };
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 export function OrganizationCard({ organization }: OrganizationCardProps) {
   const navigate = useNavigate();
 
   return (
-    <GlassCard className="space-y-5 transition duration-200 hover:-translate-y-1 hover:border-ae-primary/30">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-text-muted">
+    <GlassCard className="flex flex-col gap-5 sm:p-6" interactive>
+      <div className="flex items-start gap-4">
+        <span
+          aria-hidden
+          className="grid size-12 shrink-0 place-items-center rounded-2xl border border-ae-primary/20 bg-gradient-to-br from-ae-primary/20 to-ae-cyan/10 font-ae-label text-sm font-bold text-ae-primary"
+        >
+          {initials(organization.name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-text-muted">
             {organization.industry}
           </p>
-          <h2 className="mt-2 font-ae-display text-2xl font-semibold text-ae-text">
+          <h2 className="mt-1 break-words font-ae-display text-xl font-semibold tracking-tight text-ae-text sm:text-2xl">
             {organization.name}
           </h2>
         </div>
         <span
           className={[
-            "rounded-full border px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em]",
+            "inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 font-ae-label text-xs font-semibold",
             organization.verified
-              ? "border-ae-emerald/20 bg-ae-emerald/10 text-ae-emerald"
-              : "border-white/10 bg-white/[0.04] text-ae-text-muted",
+              ? "border-ae-emerald/25 bg-ae-emerald/10 text-ae-emerald"
+              : "border-white/[0.1] bg-white/[0.04] text-ae-text-muted",
           ].join(" ")}
         >
           {organization.verified ? "Verified" : "Unverified"}
@@ -36,27 +51,29 @@ export function OrganizationCard({ organization }: OrganizationCardProps) {
       <p className="text-sm leading-6 text-ae-text-muted">
         {organization.overview}
       </p>
-      <div className="grid gap-3 sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          ["Spend", organization.totalSpend],
-          ["Open", organization.openOpportunities],
-          ["Agents", organization.activeAgents],
-          ["Rating", organization.rating.toFixed(1)],
+          ["Contracted", organization.totalSpend],
+          ["Posted", String(organization.openOpportunities)],
+          ["Agents", String(organization.activeAgents)],
+          ["Rating given", organization.rating === null ? "—" : organization.rating.toFixed(1)],
         ].map(([label, value]) => (
           <div
-            className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3"
+            className="min-w-0 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5"
             key={label}
           >
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+            <dt className="truncate font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
               {label}
-            </p>
-            <p className="mt-1 font-semibold text-ae-text">{value}</p>
+            </dt>
+            <dd className="mt-1 truncate font-semibold tabular-nums text-ae-text">{value}</dd>
           </div>
         ))}
+      </dl>
+      <div className="mt-auto">
+        <PrimaryButton className="w-full sm:w-auto" onClick={() => navigate(`/organization/${organization.id}`)}>
+          View Organization
+        </PrimaryButton>
       </div>
-      <PrimaryButton onClick={() => navigate(`/organization/${organization.id}`)}>
-        View Organization
-      </PrimaryButton>
     </GlassCard>
   );
 }

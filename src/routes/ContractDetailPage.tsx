@@ -1,17 +1,23 @@
 import { contractPriceLabel } from "../lib/money";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { ContractStatusBadge } from "../components/ContractStatusBadge";
 import { GlassCard } from "../components/GlassCard";
+import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
 import { Markdown } from "../components/Markdown";
 import { WorkerBadge } from "../components/WorkerBadge";
-import { FundingPanel } from "../components/FundingPanel";
+import { FundingPanel, PaymentStatusBadge } from "../components/FundingPanel";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
+import type { ContractStatus } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
-import type { ContractDeliverable } from "../state/marketplaceTypes";
+import type {
+  ContractDeliverable,
+  ContractDeliverableStatus,
+  ContractPaymentStatus,
+} from "../state/marketplaceTypes";
 import type { ContractMessageSender, LocalContract } from "../state/marketplaceTypes";
 
 function formatActivityDate(value: string) {
@@ -38,6 +44,106 @@ function gateLabel(gate: NonNullable<ContractDeliverable["gate"]>): string {
   }
 }
 
+type LifecycleStep = { label: string; state: "done" | "current" | "upcoming"; warn?: boolean };
+
+/**
+ * The contract's lifecycle as a step track, read only from stored state: the
+ * contract status and, for rows that carry one, the payment status. Payment
+ * steps appear only when the contract has a payment status at all.
+ */
+function lifecycleSteps(status: ContractStatus, paymentStatus?: ContractPaymentStatus): LifecycleStep[] {
+  const raw: Array<{ label: string; done: boolean; warn?: boolean }> = [{ label: "Agreed", done: true }];
+
+  if (paymentStatus) {
+    raw.push(
+      paymentStatus === "refunded"
+        ? { label: "Refunded", done: false, warn: true }
+        : { label: "Funded", done: paymentStatus !== "unfunded" },
+    );
+  }
+
+  raw.push({ label: "In progress", done: status !== "Active" });
+  raw.push({ label: "Review", done: status === "Completed" });
+  raw.push({ label: "Completed", done: status === "Completed" });
+
+  if (paymentStatus) {
+    raw.push({ label: "Released", done: paymentStatus === "captured" || paymentStatus === "paid_out" });
+  }
+
+  const firstOpen = raw.findIndex((step) => !step.done);
+
+  return raw.map((step, index) => ({
+    label: step.label,
+    state: step.done ? "done" : index === firstOpen ? "current" : "upcoming",
+    warn: step.warn,
+  }));
+}
+
+const DELIVERABLE_TONE: Record<ContractDeliverableStatus, string> = {
+  approved: "border-ae-emerald/25 bg-ae-emerald/10 text-ae-emerald",
+  draft: "border-white/[0.1] bg-white/[0.04] text-ae-text-muted",
+  submitted: "border-ae-amber/25 bg-ae-amber/10 text-ae-amber",
+};
+
+const chipBase =
+  "inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 font-ae-label text-xs font-semibold";
+
+function initials(name: string) {
+  return name
+    .split(/[\s-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function CheckIcon({ className = "size-3.5" }: { className?: string }) {
+  return (
+    <svg aria-hidden className={`shrink-0 ${className}`} viewBox="0 0 16 16">
+      <path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function SectionHeader({
+  action,
+  eyebrow,
+  meta,
+  title,
+}: {
+  action?: ReactNode;
+  eyebrow: string;
+  meta?: ReactNode;
+  title: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+          {eyebrow}
+        </p>
+        <h2 className="mt-1.5 flex flex-wrap items-center gap-2.5 font-ae-display text-xl font-semibold tracking-tight text-ae-text sm:text-2xl">
+          {title}
+          {meta !== undefined ? (
+            <span className="rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-0.5 font-ae-label text-xs font-semibold tabular-nums text-ae-text-muted">
+              {meta}
+            </span>
+          ) : null}
+        </h2>
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function EmptyNote({ children }: { children: ReactNode }) {
+  return (
+    <p className="rounded-xl border border-dashed border-white/[0.1] px-4 py-5 text-center text-sm leading-6 text-ae-text-muted">
+      {children}
+    </p>
+  );
+}
+
 export function ContractDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -57,7 +163,6 @@ export function ContractDetailPage() {
     toggleMilestoneComplete,
     updateContractDispute,
     updateMilestoneNotes,
-    seedContracts,
     loading,
     createdAgents,
     isSharedMode,
@@ -81,7 +186,7 @@ export function ContractDetailPage() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
 
-  const baseContract = [...localContracts, ...seedContracts].find(
+  const baseContract = localContracts.find(
     (contract) => contract.id === id,
   );
   const workspace = getContractWorkspace(id ?? "");
@@ -95,7 +200,7 @@ export function ContractDetailPage() {
   // read; redirecting then would bounce every shared link back to the list.
   if (id && !contract && loading) {
     return (
-      <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] px-4 py-3 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
+      <p className="w-fit rounded-xl border border-white/[0.08] bg-ae-surface/70 px-4 py-3 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted motion-safe:animate-pulse">
         Loading
       </p>
     );
@@ -203,589 +308,712 @@ export function ContractDetailPage() {
   );
   const isOrganizationSide = canDecideContract(activeContract);
 
+  // Display-only reads of stored state.
+  const paymentStatus = (activeContract as { paymentStatus?: ContractPaymentStatus }).paymentStatus;
+  const agreedAmountCents = (activeContract as { amountCents?: number }).amountCents;
+  const steps = lifecycleSteps(contract.status, paymentStatus);
+  const currentStepIndex = steps.findIndex((step) => step.state === "current");
+  const openDisputeCount = activeDisputes.filter((dispute) => dispute.status !== "Resolved").length;
+  const completedMilestones = workspace.milestones.filter((milestone) => milestone.completed).length;
+  const approvedDeliverables = workspace.deliverables.filter((deliverable) => deliverable.status === "approved").length;
+  const awaitingDecision = workspace.deliverables.filter((deliverable) => deliverable.status === "submitted").length;
+  const progressWidth = Math.max(0, Math.min(100, contract.progress));
+  const showFunding = isSharedMode && "amountCents" in activeContract;
+
   return (
     <section className="space-y-8">
       <button
-        className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted transition hover:text-ae-primary"
+        className="inline-flex items-center gap-2 font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted transition hover:text-ae-primary"
         onClick={() => navigate("/contracts")}
         type="button"
       >
+        <svg aria-hidden className="size-3.5" viewBox="0 0 16 16">
+          <path d="M13 8H3M7 4L3 8l4 4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" />
+        </svg>
         Back to contracts
       </button>
 
-      <GlassCard className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-              Overview
+      <PageHeader
+        actions={
+          <div className="w-full rounded-2xl border border-white/[0.08] bg-ae-surface/80 px-5 py-4 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.04),0_24px_48px_-28px_rgb(0_0_0_/_0.7)] backdrop-blur-xl sm:w-auto sm:min-w-[15rem]">
+            <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.14em] text-ae-text-muted">
+              Agreed price
             </p>
-            <h1 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text sm:text-5xl">
-              {contract.title}
-            </h1>
-            <p className="mt-3 max-w-2xl text-ae-text-muted">
-              Milestones, deliverables and the thread for this contract.
+            <p className="mt-1 break-words font-ae-display text-3xl font-semibold tabular-nums tracking-[-0.03em] text-ae-text">
+              {contractPriceLabel(contract)}
             </p>
+            {paymentStatus && paymentStatus !== "unfunded" ? (
+              <div className="mt-2.5">
+                <PaymentStatusBadge status={paymentStatus} />
+              </div>
+            ) : agreedAmountCents ? (
+              <p className="mt-1 text-xs text-ae-text-muted">Fixed when the contract was created</p>
+            ) : null}
           </div>
+        }
+        description="Milestones, deliverables and the thread for this contract."
+        eyebrow="Contract workspace"
+        title={<span className="break-words">{contract.title}</span>}
+      >
+        <div className="mt-5 flex flex-wrap items-center gap-2">
           <ContractStatusBadge status={contract.status} />
+          {openDisputeCount > 0 ? (
+            <span className={`${chipBase} border-ae-amber/25 bg-ae-amber/10 text-ae-amber`}>
+              <span aria-hidden className="size-1.5 rounded-full bg-current" />
+              {openDisputeCount === 1 ? "1 open dispute" : `${openDisputeCount} open disputes`}
+            </span>
+          ) : null}
+          {isOrganizationSide && awaitingDecision > 0 ? (
+            <span className={`${chipBase} border-ae-cyan/25 bg-ae-cyan/10 text-ae-cyan`}>
+              <span aria-hidden className="size-1.5 rounded-full bg-current" />
+              {awaitingDecision === 1 ? "1 deliverable awaits your decision" : `${awaitingDecision} deliverables await your decision`}
+            </span>
+          ) : null}
         </div>
+      </PageHeader>
 
-        {isSharedMode && "amountCents" in activeContract ? (
-          <FundingPanel
-            allDeliverablesApproved={workspace.deliverables.length > 0 && workspace.deliverables.every((deliverable) => deliverable.status === "approved")}
-            contract={activeContract as LocalContract}
-            isOrganizationSide={isOrganizationSide}
-            onChanged={() => void refresh()}
-          />
-        ) : null}
+      <GlassCard className="sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-text-muted">
+            Lifecycle
+          </p>
+          <p aria-hidden className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-primary sm:hidden">
+            {currentStepIndex >= 0
+              ? `Step ${currentStepIndex + 1} of ${steps.length} · ${steps[currentStepIndex].label}`
+              : "Every step complete"}
+          </p>
+        </div>
+        <ol
+          aria-label="Contract lifecycle"
+          className="mt-4 grid gap-1.5"
+          style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
+        >
+          {steps.map((step) => (
+            <li aria-current={step.state === "current" ? "step" : undefined} className="min-w-0" key={step.label}>
+              <span aria-hidden className="block h-1.5 overflow-hidden rounded-full bg-white/10">
+                {step.state === "done" ? <span className="block h-full w-full rounded-full bg-ae-primary/80" /> : null}
+                {step.state === "current" ? (
+                  <span
+                    className={`ax-fill block h-full w-1/2 rounded-full ${step.warn ? "bg-ae-amber" : "bg-ae-primary"}`}
+                    style={{ "--ax-duration": "1.2s" } as CSSProperties}
+                  />
+                ) : null}
+              </span>
+              <span
+                className={[
+                  "mt-2 flex min-w-0 items-center gap-1 font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em]",
+                  step.state === "done" ? "text-ae-text" : step.state === "current" ? (step.warn ? "text-ae-amber" : "text-ae-primary") : "text-ae-text-muted/70",
+                ].join(" ")}
+              >
+                {step.state === "done" ? <CheckIcon className="hidden size-3 text-ae-primary sm:block" /> : null}
+                <span aria-hidden className="hidden min-w-0 truncate sm:block">{step.label}</span>
+                <span className="sr-only">
+                  {step.label}
+                  {step.state === "done" ? " (done)" : ""}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ol>
 
-        {workerBacked ? (
-          <div className="flex flex-col gap-2 rounded-ae-md border border-emerald-400/20 bg-emerald-400/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">
-                Worked by a Hermes worker
-              </p>
-              <p className="mt-1 text-sm leading-6 text-ae-text-muted">
-                {contract.agent} does this work itself. Expect an acknowledgment and a
-                deliverable within minutes of hiring; reply in the thread to steer it, and
-                approve or reject deliverables here.
-              </p>
-            </div>
-            <WorkerBadge />
-          </div>
-        ) : null}
-
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-white/[0.06] pt-5 lg:grid-cols-4">
           {[
             ["Organization", contract.organization],
             ["Assigned Agent", contract.agent],
-            ["Agreed price", contractPriceLabel(contract)],
-            ["Due Date", contract.dueDate],
+            ["Start Date", contract.startDate || "—"],
+            ["Due Date", contract.dueDate || "—"],
           ].map(([label, value]) => (
-            <div
-              className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4"
-              key={label}
-            >
-              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-                {label}
-              </p>
-              <p className="mt-2 font-semibold text-ae-text">{value}</p>
+            <div className="flex min-w-0 items-start gap-3" key={label}>
+              {label === "Organization" || label === "Assigned Agent" ? (
+                <span
+                  aria-hidden
+                  className={`hidden size-9 shrink-0 place-items-center rounded-xl border font-ae-label text-xs font-bold sm:grid ${label === "Organization" ? "border-ae-primary/20 bg-ae-primary/10 text-ae-primary" : "border-ae-cyan/20 bg-ae-cyan/10 text-ae-cyan"}`}
+                >
+                  {initials(value)}
+                </span>
+              ) : null}
+              <div className="min-w-0">
+                <dt className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
+                  {label}
+                </dt>
+                <dd className="mt-1 break-words font-semibold text-ae-text">{value}</dd>
+              </div>
             </div>
           ))}
-        </div>
+        </dl>
 
-        <div className="space-y-3 border-t border-white/[0.06] pt-4">
+        <div className="mt-6 space-y-2.5">
           <div className="flex items-center justify-between">
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
+            <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
               Progress
             </p>
-            <p className="font-ae-label text-sm font-semibold text-ae-primary">
+            <p className="font-ae-label text-sm font-semibold tabular-nums text-ae-primary">
               {contract.progress}%
             </p>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-white/[0.08]">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-ae-primary-action to-ae-primary"
-              style={{ width: `${contract.progress}%` }}
+              className="h-full rounded-full bg-gradient-to-r from-ae-primary to-ae-cyan transition-[width] duration-500"
+              style={{ width: `${progressWidth}%` }}
             />
           </div>
+          <p className="text-xs leading-5 text-ae-text-muted">
+            {completedMilestones} of {workspace.milestones.length} milestones complete · {approvedDeliverables} of {workspace.deliverables.length} deliverables approved
+          </p>
         </div>
       </GlassCard>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <GlassCard className="space-y-5">
-          <div>
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-              Milestones
+      {workerBacked ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.05] p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="min-w-0">
+            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">
+              Worked by a Hermes worker
             </p>
-            <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
-              Execution plan
-            </h2>
-          </div>
-
-          {showMilestoneForm ? null : (
-            <SecondaryButton onClick={() => setShowMilestoneForm(true)}>
-              Add a milestone
-            </SecondaryButton>
-          )}
-          {showMilestoneForm ? (
-          <form className="space-y-3" onSubmit={handleAddMilestone}>
-            <input
-              className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
-              onChange={(event) => setMilestoneTitle(event.target.value)}
-              placeholder="Milestone title"
-              value={milestoneTitle}
-            />
-            <textarea
-              className="min-h-20 w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
-              onChange={(event) => setMilestoneNotes(event.target.value)}
-              placeholder="Notes or acceptance criteria"
-              value={milestoneNotes}
-            />
-            <div className="flex flex-wrap gap-3">
-              <PrimaryButton disabled={!milestoneTitle.trim()} type="submit">
-                Add Milestone
-              </PrimaryButton>
-              <SecondaryButton onClick={() => setShowMilestoneForm(false)}>
-                Cancel
-              </SecondaryButton>
-            </div>
-          </form>
-          ) : null}
-
-          <div className="space-y-3">
-            {workspace.milestones.length > 0 ? (
-              workspace.milestones.map((milestone) => (
-                <article
-                  className="space-y-3 rounded-ae-lg border border-white/[0.06] bg-white/[0.04] p-4"
-                  key={milestone.id}
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="font-ae-display text-xl font-semibold text-ae-text">
-                        {milestone.title}
-                      </h3>
-                      <p className="mt-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
-                        {milestone.completed ? "Complete" : "Active"}
-                      </p>
-                    </div>
-                    {isOrganizationSide || milestone.completed ? (
-                      <SecondaryButton
-                        onClick={() =>
-                          toggleMilestoneComplete(contract.id, milestone.id)
-                        }
-                      >
-                        {milestone.completed ? "Reopen" : "Mark Complete"}
-                      </SecondaryButton>
-                    ) : (
-                      <p className="text-xs text-ae-text-muted">
-                        The organization confirms completion.
-                      </p>
-                    )}
-                  </div>
-                  <textarea
-                    className="min-h-20 w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-sm text-ae-text outline-none placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
-                    defaultValue={milestone.notes}
-                    onBlur={(event) =>
-                      updateMilestoneNotes(
-                        contract.id,
-                        milestone.id,
-                        event.target.value,
-                      )
-                    }
-                  />
-                </article>
-              ))
-            ) : (
-              <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 text-ae-text-muted">
-                No milestones yet. Add the first execution milestone above.
-              </p>
-            )}
-          </div>
-        </GlassCard>
-
-        <GlassCard className="space-y-5">
-          <div>
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-              Deliverables
+            <p className="mt-1 text-sm leading-6 text-ae-text-muted">
+              {contract.agent} does this work itself. Expect an acknowledgment and a
+              deliverable within minutes of hiring; reply in the thread to steer it, and
+              approve or reject deliverables here.
             </p>
-            <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
-              Review queue
-            </h2>
           </div>
-
-          {showDeliverableForm ? null : (
-            <SecondaryButton onClick={() => setShowDeliverableForm(true)}>
-              Add a deliverable
-            </SecondaryButton>
-          )}
-          {showDeliverableForm ? (
-          <form className="space-y-3" onSubmit={handleAddDeliverable}>
-            <input
-              className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
-              onChange={(event) => setDeliverableTitle(event.target.value)}
-              placeholder="Deliverable title"
-              value={deliverableTitle}
-            />
-            <textarea
-              className="min-h-20 w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
-              onChange={(event) => setDeliverableNotes(event.target.value)}
-              placeholder="Deliverable notes"
-              value={deliverableNotes}
-            />
-            <div className="flex flex-wrap gap-3">
-              <PrimaryButton disabled={!deliverableTitle.trim()} type="submit">
-                Add Deliverable
-              </PrimaryButton>
-              <SecondaryButton onClick={() => setShowDeliverableForm(false)}>
-                Cancel
-              </SecondaryButton>
-            </div>
-          </form>
-          ) : null}
-
-          <div className="space-y-3">
-            {workspace.deliverables.length > 0 ? (
-              workspace.deliverables.map((deliverable) => (
-                <article
-                  className="space-y-3 rounded-ae-lg border border-white/[0.06] bg-white/[0.04] p-4"
-                  key={deliverable.id}
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h3 className="font-ae-display text-xl font-semibold text-ae-text">
-                        {deliverable.title}
-                      </h3>
-                      <p className="mt-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
-                        {deliverable.status}
-                      </p>
-                      {deliverable.gate ? (
-                        <p
-                          className={`mt-1 text-xs leading-5 ${deliverable.gate.verdict === "accepted_with_flags" ? "text-ae-amber" : "text-ae-text-muted"}`}
-                          data-testid="deliverable-gate"
-                        >
-                          {gateLabel(deliverable.gate)}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      {deliverable.status === "draft" ? (
-                        <SecondaryButton
-                          onClick={() =>
-                            setDeliverableStatus(
-                              contract.id,
-                              deliverable.id,
-                              "submitted",
-                            )
-                          }
-                        >
-                          Mark Submitted
-                        </SecondaryButton>
-                      ) : null}
-                    </div>
-                  </div>
-                  {deliverable.notes ? (
-                    <Markdown collapseAfter={1200} source={deliverable.notes} />
-                  ) : (
-                    <p className="text-sm leading-6 text-ae-text-muted">No notes added.</p>
-                  )}
-                  {deliverable.status !== "approved" && !isOrganizationSide ? (
-                    <p className="border-t border-white/[0.06] pt-3 text-xs text-ae-text-muted">
-                      {deliverable.status === "submitted"
-                        ? "Awaiting the organization's decision."
-                        : "Submit this deliverable for the organization to review."}
-                    </p>
-                  ) : null}
-                  {deliverable.status !== "approved" && isOrganizationSide ? (
-                    <div className="space-y-3 border-t border-white/[0.06] pt-3">
-                      <textarea
-                        className="min-h-20 w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-sm text-ae-text outline-none placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
-                        onChange={(event) =>
-                          setDecisionNotes((current) => ({
-                            ...current,
-                            [deliverable.id]: event.target.value,
-                          }))
-                        }
-                        placeholder="Approval or rejection note"
-                        value={decisionNotes[deliverable.id] ?? ""}
-                      />
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <PrimaryButton
-                          onClick={() => {
-                            setDeliverableStatus(
-                              contract.id,
-                              deliverable.id,
-                              "approved",
-                              decisionNotes[deliverable.id]?.trim() ?? "",
-                            );
-                            setDecisionNotes((current) => ({
-                              ...current,
-                              [deliverable.id]: "",
-                            }));
-                          }}
-                        >
-                          Approve
-                        </PrimaryButton>
-                        <SecondaryButton
-                          onClick={() => {
-                            setDeliverableStatus(
-                              contract.id,
-                              deliverable.id,
-                              "rejected",
-                              decisionNotes[deliverable.id]?.trim() ?? "",
-                            );
-                            setDecisionNotes((current) => ({
-                              ...current,
-                              [deliverable.id]: "",
-                            }));
-                          }}
-                        >
-                          Reject
-                        </SecondaryButton>
-                      </div>
-                    </div>
-                  ) : null}
-                  {(deliverable.decisions ?? []).length > 0 ? (
-                    <div className="space-y-2 border-t border-white/[0.06] pt-3">
-                      <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-                        Decision History
-                      </p>
-                      {(deliverable.decisions ?? []).map((decision) => (
-                        <div
-                          className="rounded-ae-md border border-white/[0.06] bg-ae-background-deep/70 p-3 text-sm text-ae-text-muted"
-                          key={decision.id}
-                        >
-                          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
-                            {decision.status} -{" "}
-                            {formatActivityDate(decision.decidedAt)}
-                          </p>
-                          <p className="mt-2">
-                            {decision.note || "No note provided."}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </article>
-              ))
-            ) : (
-              <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 text-ae-text-muted">
-                No deliverables yet. Add a deliverable above to begin review.
-              </p>
-            )}
-          </div>
-        </GlassCard>
-      </section>
-
-      <GlassCard className="space-y-5">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Messages
-          </p>
-          <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
-            Organization and agent communication
-          </h2>
+          <WorkerBadge />
         </div>
-        <form className="space-y-3" onSubmit={handleSendMessage}>
-          <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
-            <select
-              className="rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
-              onChange={(event) =>
-                setMessageSender(event.target.value as ContractMessageSender)
-              }
-              value={messageSender}
-            >
-              <option>Organization</option>
-              <option>Agent</option>
-            </select>
-            <input
-              className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
-              onChange={(event) => setMessageBody(event.target.value)}
-              placeholder="Write a contract update..."
-              value={messageBody}
+      ) : null}
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,23rem)] lg:grid-rows-[auto_1fr] lg:gap-x-6 lg:gap-y-0">
+        {showFunding ? (
+          <div className="min-w-0 empty:hidden lg:col-start-2 lg:row-start-1 lg:mb-6">
+            <FundingPanel
+              allDeliverablesApproved={workspace.deliverables.length > 0 && workspace.deliverables.every((deliverable) => deliverable.status === "approved")}
+              contract={activeContract as LocalContract}
+              isOrganizationSide={isOrganizationSide}
+              openDisputes={activeDisputes.filter((dispute) => dispute.status !== "Resolved").length}
+              onChanged={() => void refresh()}
             />
           </div>
-          <PrimaryButton disabled={!messageBody.trim()} type="submit">
-            Send Message
-          </PrimaryButton>
-        </form>
-        <div className="space-y-3">
-          {workspace.messages.length > 0 ? (
-            workspace.messages.map((message) => (
-              <article
-                className="rounded-ae-lg border border-white/[0.06] bg-white/[0.04] p-4"
-                key={message.id}
-              >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-ae-display text-lg font-semibold text-ae-text">
-                      {message.author}
-                    </span>
-                    <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
-                      {message.senderType}
-                    </span>
-                  </div>
-                  <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
-                    {formatActivityDate(message.createdAt)}
-                  </span>
-                </div>
-                <Markdown className="mt-3" source={message.body} />
-              </article>
-            ))
-          ) : (
-            <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 text-ae-text-muted">
-              No messages yet. Send the first organization or agent update.
-            </p>
-          )}
-        </div>
-      </GlassCard>
-
-      <GlassCard className="space-y-5">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Trust & Disputes
-          </p>
-          <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
-            Review and resolution workflow
-          </h2>
-        </div>
-
-        {contract.status === "Completed" && !hasReview && !isOrganizationSide ? (
-          <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 text-ae-text-muted">
-            The organization can leave a review for this completed contract.
-          </p>
         ) : null}
-        {contract.status === "Completed" && !hasReview && isOrganizationSide ? (
-          <form className="space-y-3" onSubmit={handleAddReview}>
-            <div className="grid gap-3 sm:grid-cols-[auto_1fr]">
-              <select
-                className="rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
-                onChange={(event) => setReviewRating(Number(event.target.value))}
-                value={reviewRating}
-              >
-                {[5, 4, 3, 2, 1].map((rating) => (
-                  <option key={rating} value={rating}>
-                    {rating} / 5
-                  </option>
-                ))}
-              </select>
-              <input
-                className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
-                onChange={(event) => setReviewText(event.target.value)}
-                placeholder="Leave an organization review for this agent..."
-                value={reviewText}
-              />
-            </div>
-            <PrimaryButton disabled={!reviewText.trim()} type="submit">
-              Save Review
-            </PrimaryButton>
-          </form>
-        ) : contract.status === "Completed" ? (
-          <p className="rounded-ae-md border border-ae-emerald/20 bg-ae-emerald/10 p-4 text-ae-emerald">
-            Review submitted for this completed contract.
-          </p>
-        ) : (
-          <p className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 text-ae-text-muted">
-            Reviews unlock when this contract is completed.
-          </p>
-        )}
 
-        <form className="space-y-3 border-t border-white/[0.06] pt-4" onSubmit={handleOpenDispute}>
-          <textarea
-            className="min-h-20 w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
-            onChange={(event) => setDisputeReason(event.target.value)}
-            placeholder="Open a dispute with a short reason..."
-            value={disputeReason}
-          />
-          <SecondaryButton disabled={!disputeReason.trim()} type="submit">
-            Open Dispute
-          </SecondaryButton>
-        </form>
+        <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-span-2 lg:row-start-1">
+          <GlassCard className="space-y-5 sm:p-6">
+            <SectionHeader
+              action={
+                showDeliverableForm ? null : (
+                  <SecondaryButton onClick={() => setShowDeliverableForm(true)}>
+                    Add a deliverable
+                  </SecondaryButton>
+                )
+              }
+              eyebrow="Deliverables"
+              meta={workspace.deliverables.length}
+              title="Review queue"
+            />
 
-        <div className="space-y-3">
-          {activeDisputes.length > 0 ? (
-            activeDisputes.map((dispute) => (
-              <article
-                className="space-y-3 rounded-ae-lg border border-white/[0.06] bg-white/[0.04] p-4"
-                key={dispute.id}
-              >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="font-ae-display text-xl font-semibold text-ae-text">
-                      {dispute.status}
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-ae-text-muted">
-                      {dispute.reason}
-                    </p>
-                    {dispute.resolutionNotes ? (
-                      <p className="mt-2 text-sm text-ae-primary">
-                        Resolution: {dispute.resolutionNotes}
-                      </p>
-                    ) : null}
-                  </div>
-                  <span className="rounded-full border border-ae-amber/20 bg-ae-amber/10 px-3 py-1 font-ae-label text-xs font-semibold text-ae-amber">
-                    Dispute
-                  </span>
+            {showDeliverableForm ? (
+              <form className="space-y-3 rounded-2xl border border-white/[0.08] bg-ae-background-deep/50 p-4" onSubmit={handleAddDeliverable}>
+                <input
+                  aria-label="Deliverable title"
+                  className="ax-input"
+                  onChange={(event) => setDeliverableTitle(event.target.value)}
+                  placeholder="Deliverable title"
+                  value={deliverableTitle}
+                />
+                <textarea
+                  aria-label="Deliverable notes"
+                  className="ax-input min-h-24"
+                  onChange={(event) => setDeliverableNotes(event.target.value)}
+                  placeholder="Deliverable notes"
+                  value={deliverableNotes}
+                />
+                <div className="flex flex-wrap gap-3">
+                  <PrimaryButton disabled={!deliverableTitle.trim()} type="submit">
+                    Add Deliverable
+                  </PrimaryButton>
+                  <SecondaryButton onClick={() => setShowDeliverableForm(false)}>
+                    Cancel
+                  </SecondaryButton>
                 </div>
-                {dispute.status !== "Resolved" ? (
-                  <div className="space-y-3">
-                    <input
-                      className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
-                      onChange={(event) =>
-                        setResolutionNotes((current) => ({
-                          ...current,
-                          [dispute.id]: event.target.value,
-                        }))
-                      }
-                      placeholder="Resolution notes"
-                      value={resolutionNotes[dispute.id] ?? ""}
-                    />
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <SecondaryButton
-                        onClick={() =>
-                          updateContractDispute(
-                            activeContract.id,
-                            dispute.id,
-                            "Under Review",
-                            resolutionNotes[dispute.id],
-                          )
-                        }
+              </form>
+            ) : null}
+
+            <div className="space-y-4">
+              {workspace.deliverables.length > 0 ? (
+                workspace.deliverables.map((deliverable) => (
+                  <article
+                    className="overflow-hidden rounded-2xl border border-white/[0.08] bg-ae-background-deep/50"
+                    key={deliverable.id}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/[0.06] px-4 py-3.5 sm:px-5">
+                      <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <span aria-hidden className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.04] text-ae-text-muted">
+                          <svg className="size-4" viewBox="0 0 24 24">
+                            <path d="M7 3.5h7l4 4v13H7zM14 3.5v4h4M10 12h5M10 16h5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+                          </svg>
+                        </span>
+                        <div className="min-w-0">
+                          <h3 className="break-words font-ae-display text-base font-semibold leading-snug text-ae-text sm:text-lg">
+                            {deliverable.title}
+                          </h3>
+                          {deliverable.gate ? (
+                            <p
+                              className={`mt-1 text-xs leading-5 ${deliverable.gate.verdict === "accepted_with_flags" ? "text-ae-amber" : "text-ae-text-muted"}`}
+                              data-testid="deliverable-gate"
+                            >
+                              {gateLabel(deliverable.gate)}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <span className={`${chipBase} capitalize ${DELIVERABLE_TONE[deliverable.status] ?? DELIVERABLE_TONE.draft}`}>
+                        {deliverable.status === "approved" ? <CheckIcon className="size-3" /> : <span aria-hidden className="size-1.5 rounded-full bg-current" />}
+                        {deliverable.status}
+                      </span>
+                    </div>
+
+                    <div className="px-4 py-4 sm:px-5 sm:py-5">
+                      {deliverable.notes ? (
+                        <Markdown collapseAfter={1200} source={deliverable.notes} />
+                      ) : (
+                        <p className="text-sm leading-6 text-ae-text-muted">No notes added.</p>
+                      )}
+                    </div>
+
+                    {deliverable.status === "draft" || (deliverable.status !== "approved" && !isOrganizationSide) ? (
+                      <div className="flex flex-col gap-3 border-t border-white/[0.06] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                        {/* The outer condition already excludes approved deliverables. */}
+                        {!isOrganizationSide ? (
+                          <p className="text-xs leading-5 text-ae-text-muted">
+                            {deliverable.status === "submitted"
+                              ? "Awaiting the organization's decision."
+                              : "Submit this deliverable for the organization to review."}
+                          </p>
+                        ) : (
+                          <span />
+                        )}
+                        {deliverable.status === "draft" ? (
+                          <SecondaryButton
+                            className="shrink-0"
+                            onClick={() =>
+                              setDeliverableStatus(
+                                contract.id,
+                                deliverable.id,
+                                "submitted",
+                              )
+                            }
+                          >
+                            Mark Submitted
+                          </SecondaryButton>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {deliverable.status !== "approved" && isOrganizationSide ? (
+                      <div className="space-y-3 border-t border-white/[0.06] bg-white/[0.02] px-4 py-4 sm:px-5">
+                        <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
+                          Your decision
+                        </p>
+                        <textarea
+                          aria-label="Approval or rejection note"
+                          className="ax-input min-h-20 text-sm"
+                          onChange={(event) =>
+                            setDecisionNotes((current) => ({
+                              ...current,
+                              [deliverable.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="Approval or rejection note"
+                          value={decisionNotes[deliverable.id] ?? ""}
+                        />
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <PrimaryButton
+                            onClick={() => {
+                              setDeliverableStatus(
+                                contract.id,
+                                deliverable.id,
+                                "approved",
+                                decisionNotes[deliverable.id]?.trim() ?? "",
+                              );
+                              setDecisionNotes((current) => ({
+                                ...current,
+                                [deliverable.id]: "",
+                              }));
+                            }}
+                          >
+                            <CheckIcon className="size-4" />
+                            Approve
+                          </PrimaryButton>
+                          <SecondaryButton
+                            onClick={() => {
+                              setDeliverableStatus(
+                                contract.id,
+                                deliverable.id,
+                                "rejected",
+                                decisionNotes[deliverable.id]?.trim() ?? "",
+                              );
+                              setDecisionNotes((current) => ({
+                                ...current,
+                                [deliverable.id]: "",
+                              }));
+                            }}
+                          >
+                            Reject
+                          </SecondaryButton>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {(deliverable.decisions ?? []).length > 0 ? (
+                      <div className="space-y-2.5 border-t border-white/[0.06] px-4 py-4 sm:px-5">
+                        <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
+                          Decision History
+                        </p>
+                        <ol className="space-y-2">
+                          {(deliverable.decisions ?? []).map((decision) => (
+                            <li
+                              className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 text-sm text-ae-text-muted"
+                              key={decision.id}
+                            >
+                              <p className={`font-ae-label text-xs font-semibold uppercase tracking-[0.08em] ${decision.status === "approved" ? "text-ae-emerald" : "text-ae-amber"}`}>
+                                {decision.status} -{" "}
+                                {formatActivityDate(decision.decidedAt)}
+                              </p>
+                              <p className="mt-1.5 break-words leading-6">
+                                {decision.note || "No note provided."}
+                              </p>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    ) : null}
+                  </article>
+                ))
+              ) : (
+                <EmptyNote>No deliverables yet. Add a deliverable above to begin review.</EmptyNote>
+              )}
+            </div>
+          </GlassCard>
+
+          <GlassCard className="space-y-5 sm:p-6">
+            <SectionHeader
+              eyebrow="Messages"
+              meta={workspace.messages.length}
+              title="Organization and agent communication"
+            />
+            {workspace.messages.length > 0 ? (
+              <ol className="space-y-4">
+                {workspace.messages.map((message) => (
+                  <li className="flex gap-3" key={message.id}>
+                    <span
+                      aria-hidden
+                      className={`mt-1 grid size-9 shrink-0 place-items-center rounded-xl border font-ae-label text-xs font-bold ${message.senderType === "Organization" ? "border-ae-primary/20 bg-ae-primary/10 text-ae-primary" : "border-ae-cyan/20 bg-ae-cyan/10 text-ae-cyan"}`}
+                    >
+                      {initials(message.author) || "?"}
+                    </span>
+                    <article className="min-w-0 flex-1 rounded-2xl rounded-tl-md border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+                      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                        <span className="min-w-0 break-words font-semibold text-ae-text">
+                          {message.author}
+                        </span>
+                        <span className={`inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-full border px-2 py-0.5 font-ae-label text-[11px] font-semibold ${message.senderType === "Organization" ? "border-ae-primary/20 bg-ae-primary/10 text-ae-primary" : "border-ae-cyan/20 bg-ae-cyan/10 text-ae-cyan"}`}>
+                          {message.senderType}
+                        </span>
+                        <span className="font-ae-label text-xs text-ae-text-muted sm:ml-auto">
+                          {formatActivityDate(message.createdAt)}
+                        </span>
+                      </div>
+                      <Markdown className="mt-2" source={message.body} />
+                    </article>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyNote>No messages yet. Send the first organization or agent update.</EmptyNote>
+            )}
+            <form className="space-y-3 rounded-2xl border border-white/[0.08] bg-ae-background-deep/50 p-3 sm:p-4" onSubmit={handleSendMessage}>
+              <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+                <select
+                  aria-label="Send as"
+                  className="ax-input"
+                  onChange={(event) =>
+                    setMessageSender(event.target.value as ContractMessageSender)
+                  }
+                  value={messageSender}
+                >
+                  <option>Organization</option>
+                  <option>Agent</option>
+                </select>
+                <input
+                  aria-label="Message"
+                  className="ax-input"
+                  onChange={(event) => setMessageBody(event.target.value)}
+                  placeholder="Write a contract update..."
+                  value={messageBody}
+                />
+              </div>
+              <div className="flex justify-end">
+                <PrimaryButton className="w-full sm:w-auto" disabled={!messageBody.trim()} type="submit">
+                  Send Message
+                </PrimaryButton>
+              </div>
+            </form>
+          </GlassCard>
+
+          <GlassCard className="space-y-5 sm:p-6">
+            <SectionHeader
+              action={
+                showMilestoneForm ? null : (
+                  <SecondaryButton onClick={() => setShowMilestoneForm(true)}>
+                    Add a milestone
+                  </SecondaryButton>
+                )
+              }
+              eyebrow="Milestones"
+              meta={`${completedMilestones}/${workspace.milestones.length}`}
+              title="Execution plan"
+            />
+
+            {showMilestoneForm ? (
+              <form className="space-y-3 rounded-2xl border border-white/[0.08] bg-ae-background-deep/50 p-4" onSubmit={handleAddMilestone}>
+                <input
+                  aria-label="Milestone title"
+                  className="ax-input"
+                  onChange={(event) => setMilestoneTitle(event.target.value)}
+                  placeholder="Milestone title"
+                  value={milestoneTitle}
+                />
+                <textarea
+                  aria-label="Milestone notes"
+                  className="ax-input min-h-20"
+                  onChange={(event) => setMilestoneNotes(event.target.value)}
+                  placeholder="Notes or acceptance criteria"
+                  value={milestoneNotes}
+                />
+                <div className="flex flex-wrap gap-3">
+                  <PrimaryButton disabled={!milestoneTitle.trim()} type="submit">
+                    Add Milestone
+                  </PrimaryButton>
+                  <SecondaryButton onClick={() => setShowMilestoneForm(false)}>
+                    Cancel
+                  </SecondaryButton>
+                </div>
+              </form>
+            ) : null}
+
+            {workspace.milestones.length > 0 ? (
+              <ol className="space-y-3">
+                {workspace.milestones.map((milestone) => (
+                  <li
+                    className={`space-y-3 rounded-2xl border p-4 ${milestone.completed ? "border-ae-primary/15 bg-ae-primary/[0.03]" : "border-white/[0.08] bg-white/[0.03]"}`}
+                    key={milestone.id}
+                  >
+                    <div className="flex flex-wrap items-start gap-3">
+                      <span
+                        aria-hidden
+                        className={`mt-0.5 grid size-6 shrink-0 place-items-center rounded-full border ${milestone.completed ? "border-ae-primary bg-ae-primary text-ae-primary-ink" : "border-white/20 text-transparent"}`}
                       >
-                        Mark Under Review
-                      </SecondaryButton>
-                      {canResolveDispute(dispute) ? (
-                        <PrimaryButton
+                        <CheckIcon />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <h3 className={`break-words font-semibold ${milestone.completed ? "text-ae-text-muted" : "text-ae-text"}`}>
+                          {milestone.title}
+                        </h3>
+                        <p className="mt-0.5 font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+                          {milestone.completed ? "Complete" : "Active"}
+                        </p>
+                      </div>
+                      {isOrganizationSide || milestone.completed ? (
+                        <SecondaryButton
+                          className="w-full sm:w-auto"
                           onClick={() =>
-                            updateContractDispute(
-                              activeContract.id,
-                              dispute.id,
-                              "Resolved",
-                              resolutionNotes[dispute.id],
-                            )
+                            toggleMilestoneComplete(contract.id, milestone.id)
                           }
                         >
-                          Resolve
-                        </PrimaryButton>
+                          {milestone.completed ? "Reopen" : "Mark Complete"}
+                        </SecondaryButton>
                       ) : (
-                        <p className="text-xs text-ae-text-muted">
-                          Only the party that opened this dispute can resolve it.
+                        <p className="w-full text-xs text-ae-text-muted sm:w-auto sm:max-w-[14rem] sm:text-right">
+                          The organization confirms completion.
                         </p>
                       )}
                     </div>
-                  </div>
-                ) : null}
-              </article>
-            ))
-          ) : (
-            <p className="text-sm text-ae-text-muted">
-              No disputes opened for this contract.
-            </p>
-          )}
+                    <textarea
+                      aria-label={`Notes for ${milestone.title}`}
+                      className="ax-input min-h-20 text-sm"
+                      defaultValue={milestone.notes}
+                      onBlur={(event) =>
+                        updateMilestoneNotes(
+                          contract.id,
+                          milestone.id,
+                          event.target.value,
+                        )
+                      }
+                    />
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyNote>No milestones yet. Add the first execution milestone above.</EmptyNote>
+            )}
+          </GlassCard>
         </div>
-      </GlassCard>
 
-      <GlassCard className="space-y-5">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Activity Timeline
-          </p>
-          <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
-            Workspace activity
-          </h2>
-        </div>
-        <div className="space-y-3">
-          {workspace.activity.map((activity) => (
-            <article
-              className="grid gap-2 rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4 sm:grid-cols-[auto_1fr]"
-              key={activity.id}
-            >
-              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
-                {formatActivityDate(activity.createdAt)}
+        <div className="min-w-0 space-y-6 lg:col-start-2 lg:row-start-2">
+          <GlassCard className="@container space-y-5 sm:p-6">
+            <SectionHeader eyebrow="Trust & Disputes" title="Review and resolution" />
+
+            {contract.status === "Completed" && !hasReview && !isOrganizationSide ? (
+              <EmptyNote>The organization can leave a review for this completed contract.</EmptyNote>
+            ) : null}
+            {contract.status === "Completed" && !hasReview && isOrganizationSide ? (
+              <form className="space-y-3" onSubmit={handleAddReview}>
+                <div className="grid gap-3 @sm:grid-cols-[auto_minmax(0,1fr)]">
+                  <select
+                    aria-label="Rating"
+                    className="ax-input"
+                    onChange={(event) => setReviewRating(Number(event.target.value))}
+                    value={reviewRating}
+                  >
+                    {[5, 4, 3, 2, 1].map((rating) => (
+                      <option key={rating} value={rating}>
+                        {rating} / 5
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    aria-label="Review"
+                    className="ax-input"
+                    onChange={(event) => setReviewText(event.target.value)}
+                    placeholder="Leave an organization review for this agent..."
+                    value={reviewText}
+                  />
+                </div>
+                <PrimaryButton className="w-full @sm:w-auto" disabled={!reviewText.trim()} type="submit">
+                  Save Review
+                </PrimaryButton>
+              </form>
+            ) : contract.status === "Completed" ? (
+              <p className="flex items-center gap-2 rounded-xl border border-ae-emerald/20 bg-ae-emerald/10 px-4 py-3 text-sm text-ae-emerald">
+                <CheckIcon className="size-4" />
+                Review submitted for this completed contract.
               </p>
-              <p className="text-sm text-ae-text-muted">{activity.message}</p>
-            </article>
-          ))}
+            ) : (
+              <EmptyNote>Reviews unlock when this contract is completed.</EmptyNote>
+            )}
+
+            <form className="space-y-3 border-t border-white/[0.06] pt-5" onSubmit={handleOpenDispute}>
+              <textarea
+                aria-label="Dispute reason"
+                className="ax-input min-h-20 text-sm"
+                onChange={(event) => setDisputeReason(event.target.value)}
+                placeholder="Open a dispute with a short reason..."
+                value={disputeReason}
+              />
+              <SecondaryButton className="w-full @sm:w-auto" disabled={!disputeReason.trim()} type="submit">
+                Open Dispute
+              </SecondaryButton>
+            </form>
+
+            <div className="space-y-3">
+              {activeDisputes.length > 0 ? (
+                activeDisputes.map((dispute) => (
+                  <article
+                    className={`space-y-3 rounded-2xl border p-4 ${dispute.status === "Resolved" ? "border-white/[0.08] bg-white/[0.03]" : "border-ae-amber/20 bg-ae-amber/[0.04]"}`}
+                    key={dispute.id}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-ae-display text-base font-semibold text-ae-text">
+                          {dispute.status}
+                        </p>
+                        <p className="mt-1 break-words text-sm leading-6 text-ae-text-muted">
+                          {dispute.reason}
+                        </p>
+                        {dispute.resolutionNotes ? (
+                          <p className="mt-2 break-words text-sm text-ae-primary">
+                            Resolution: {dispute.resolutionNotes}
+                          </p>
+                        ) : null}
+                      </div>
+                      <span className={`${chipBase} ${dispute.status === "Resolved" ? "border-ae-emerald/25 bg-ae-emerald/10 text-ae-emerald" : "border-ae-amber/25 bg-ae-amber/10 text-ae-amber"}`}>
+                        Dispute
+                      </span>
+                    </div>
+                    {dispute.status !== "Resolved" ? (
+                      <div className="space-y-3">
+                        <input
+                          aria-label="Resolution notes"
+                          className="ax-input"
+                          onChange={(event) =>
+                            setResolutionNotes((current) => ({
+                              ...current,
+                              [dispute.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="Resolution notes"
+                          value={resolutionNotes[dispute.id] ?? ""}
+                        />
+                        <div className="flex flex-col gap-2 @sm:flex-row @sm:flex-wrap @sm:items-center">
+                          <SecondaryButton
+                            onClick={() =>
+                              updateContractDispute(
+                                activeContract.id,
+                                dispute.id,
+                                "Under Review",
+                                resolutionNotes[dispute.id],
+                              )
+                            }
+                          >
+                            Mark Under Review
+                          </SecondaryButton>
+                          {canResolveDispute(dispute) ? (
+                            <PrimaryButton
+                              onClick={() =>
+                                updateContractDispute(
+                                  activeContract.id,
+                                  dispute.id,
+                                  "Resolved",
+                                  resolutionNotes[dispute.id],
+                                )
+                              }
+                            >
+                              Resolve
+                            </PrimaryButton>
+                          ) : (
+                            <p className="text-xs text-ae-text-muted">
+                              Only the party that opened this dispute can resolve it.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </article>
+                ))
+              ) : (
+                <p className="text-sm text-ae-text-muted">
+                  No disputes opened for this contract.
+                </p>
+              )}
+            </div>
+          </GlassCard>
+
+          <GlassCard className="space-y-5 sm:p-6">
+            <SectionHeader eyebrow="Activity Timeline" title="Workspace activity" />
+            {workspace.activity.length > 0 ? (
+              <ol className="space-y-4 border-l border-white/[0.08] pl-5">
+                {workspace.activity.map((activity) => (
+                  <li className="relative" key={activity.id}>
+                    <span aria-hidden className="absolute -left-[25.5px] top-1 size-2.5 rounded-full border-2 border-ae-surface bg-ae-primary" />
+                    <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.08em] text-ae-primary">
+                      {formatActivityDate(activity.createdAt)}
+                    </p>
+                    <p className="mt-1 break-words text-sm leading-6 text-ae-text-muted">{activity.message}</p>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyNote>No workspace activity yet.</EmptyNote>
+            )}
+          </GlassCard>
         </div>
-      </GlassCard>
+      </div>
     </section>
   );
 }

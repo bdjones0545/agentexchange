@@ -6,6 +6,7 @@ import { ApplicationModal } from "../components/ApplicationModal";
 import { FilterChip } from "../components/FilterChip";
 import { NegotiationModal } from "../components/NegotiationModal";
 import { OpportunityCard } from "../components/OpportunityCard";
+import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SearchBar } from "../components/SearchBar";
 import { SecondaryButton } from "../components/SecondaryButton";
@@ -13,12 +14,7 @@ import { getAllOpportunities } from "../data/localSelectors";
 import type { Opportunity } from "../data/marketplace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
-const baseFilters = [
-  "All",
-  "Enterprise automation",
-  "Financial ops",
-  "Creative tech",
-];
+const ALL = "All";
 
 export function MarketplacePage() {
   const navigate = useNavigate();
@@ -28,11 +24,12 @@ export function MarketplacePage() {
     () => getAllOpportunities(createdOpportunities),
     [createdOpportunities],
   );
+  // Filters are the categories real briefs use, plus a linked category.
   const filters = useMemo(
     () =>
       Array.from(
         new Set([
-          "All",
+          ALL,
           ...(params.get("category") ? [params.get("category")!] : []),
           ...allOpportunities.map((opportunity) => opportunity.category),
         ]),
@@ -40,7 +37,7 @@ export function MarketplacePage() {
     [allOpportunities, params],
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState(params.get("category") ?? baseFilters[0]);
+  const [activeFilter, setActiveFilter] = useState(params.get("category") ?? ALL);
   const [applicationOpportunity, setApplicationOpportunity] =
     useState<Opportunity | null>(null);
   const [negotiationOpportunity, setNegotiationOpportunity] =
@@ -52,7 +49,7 @@ export function MarketplacePage() {
     return allOpportunities.filter((opportunity) => {
       if(params.get("brief") && opportunity.id !== params.get("brief")) return false;
       const matchesFilter =
-        activeFilter === "All" || opportunity.category === activeFilter;
+        activeFilter === ALL || opportunity.category === activeFilter;
       const matchesSearch =
         query.length === 0 ||
         [
@@ -71,64 +68,62 @@ export function MarketplacePage() {
   }, [activeFilter, allOpportunities, searchQuery, params]);
 
   return (
-    <section className="space-y-8">
-      <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Opportunity marketplace
+    <section className="space-y-10">
+      <PageHeader
+        eyebrow="Opportunity marketplace"
+        title="Find your next assignment."
+        description={
+          isSharedMode
+            ? "Briefs posted by organizations on this marketplace. Apply with an agent you operate, or hire one against a brief you posted."
+            : "Briefs in this demo workspace are kept in this browser. Sign in to work with the shared marketplace."
+        }
+        actions={
+          <>
+            <PrimaryButton onClick={() => navigate("/post-opportunity")}>
+              Post brief
+            </PrimaryButton>
+            <SecondaryButton onClick={() => navigate("/saved")}>
+              Saved briefs
+            </SecondaryButton>
+          </>
+        }
+      />
+
+      <div className="space-y-4">
+        <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-ae-surface/60 p-3 backdrop-blur-xl sm:p-4">
+          <SearchBar
+            onChange={(event) => setSearchQuery(event.target.value)}
+            value={searchQuery}
+          />
+
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
+            {filters.map((filter) => (
+              <FilterChip
+                active={filter === activeFilter}
+                key={filter}
+                onClick={() => setActiveFilter(filter)}
+              >
+                {filter}
+              </FilterChip>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-text-muted">
+            {loading ? "Loading briefs…" : `${visibleOpportunities.length} opportunities`}
           </p>
-          <h1 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text sm:text-5xl lg:max-w-3xl">
-            Find your next assignment.
-          </h1>
-          <p className="mt-3 max-w-2xl text-ae-text-muted">
-            {isSharedMode
-              ? "Briefs posted by organizations on this marketplace. Apply with an agent you operate, or hire one against a brief you posted."
-              : "Explore sample briefs in this demo workspace. Sign in to work with the shared marketplace."}
-          </p>
+          <span className="inline-flex max-w-full items-center truncate rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 text-xs font-medium text-ae-primary">
+            {activeFilter === ALL ? "All categories" : activeFilter}
+          </span>
         </div>
-        <div className="flex gap-3">
-          <PrimaryButton onClick={() => navigate("/post-opportunity")}>
-            Post brief
-          </PrimaryButton>
-          <SecondaryButton onClick={() => navigate("/saved")}>
-            Saved briefs
-          </SecondaryButton>
-        </div>
-      </div>
-
-      <div className="space-y-4 rounded-ae-xl border border-white/[0.07] bg-white/[0.03] p-4 backdrop-blur-2xl">
-        <SearchBar
-          onChange={(event) => setSearchQuery(event.target.value)}
-          value={searchQuery}
-        />
-
-        <div className="flex gap-2 overflow-x-auto pb-1">
-          {filters.map((filter) => (
-            <FilterChip
-              active={filter === activeFilter}
-              key={filter}
-              onClick={() => setActiveFilter(filter)}
-            >
-              {filter}
-            </FilterChip>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-4">
-        <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-text-muted">
-          {loading ? "Loading briefs…" : `${visibleOpportunities.length} opportunities`}
-        </p>
-        <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold text-ae-primary">
-          {activeFilter === "All" ? "All categories" : activeFilter}
-        </span>
       </div>
 
       <ListingResults loading={loading} error={error} hasResults={visibleOpportunities.length > 0}
-        searchActive={Boolean(searchQuery.trim() || activeFilter !== "All" || params.get("brief"))}
-        noMatches={<><h2 className="text-xl font-semibold text-ae-text">No matching briefs yet</h2><p className="my-3 text-sm">Try a broader search or explore all categories.</p><SecondaryButton onClick={()=>{setSearchQuery("");setActiveFilter("All");setParams({});}}>Clear filters</SecondaryButton></>}
-        introduction={<><h2 className="text-xl font-semibold text-ae-text">Start with a clear brief</h2><p className="mt-2">Post the work you need done, with a scope, budget, and acceptance criteria.</p></>}>
-        <div className="grid gap-4">{visibleOpportunities.map(opportunity => <OpportunityCard key={opportunity.id} onApply={setApplicationOpportunity} onNegotiate={setNegotiationOpportunity} opportunity={opportunity}/>)}</div>
+        searchActive={Boolean(searchQuery.trim() || activeFilter !== ALL || params.get("brief"))}
+        noMatches={<><h2 className="font-ae-display text-xl font-semibold tracking-tight text-ae-text">No matching briefs yet</h2><p className="my-3 text-sm">Try a broader search or explore all categories.</p><SecondaryButton onClick={()=>{setSearchQuery("");setActiveFilter(ALL);setParams({});}}>Clear filters</SecondaryButton></>}
+        introduction={<><h2 className="font-ae-display text-xl font-semibold tracking-tight text-ae-text">Start with a clear brief</h2><p className="mt-2">Post the work you need done, with a scope, budget, and acceptance criteria.</p></>}>
+        <div className="grid gap-5 lg:grid-cols-2">{visibleOpportunities.map(opportunity => <div className="ax-reveal min-w-0" key={opportunity.id}><OpportunityCard onApply={setApplicationOpportunity} onNegotiate={setNegotiationOpportunity} opportunity={opportunity}/></div>)}</div>
       </ListingResults>
       <ApplicationModal
         isOpen={Boolean(applicationOpportunity)}

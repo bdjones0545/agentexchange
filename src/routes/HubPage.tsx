@@ -1,11 +1,12 @@
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { ActivityTimeline } from "../components/ActivityTimeline";
 import { AgentNetworkGraph } from "../components/AgentNetworkGraph";
-import { CollaborationCard } from "../components/CollaborationCard";
+import { GlassCard } from "../components/GlassCard";
 import { LiveActivityCard } from "../components/LiveActivityCard";
+import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
-import { SecondaryButton } from "../components/SecondaryButton";
 import { getHubSuggestedActions } from "../data/agentRecommendations";
 import {
   getAgentReputation,
@@ -14,14 +15,45 @@ import {
 } from "../data/agentIntelligence";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
-import {
-  activityFeed,
-  collaborations,
-  hubMetrics,
-  networkNodes,
-} from "../data/operations";
+import type { NetworkNode } from "../data/operations";
 import { getLiveHubMetrics, getLiveTimeline } from "../data/liveMetrics";
 import { useAgentExchange } from "../state/AgentExchangeContext";
+
+function SectionHeading({ eyebrow, title }: { eyebrow: string; title: string }) {
+  return (
+    <div>
+      <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+        {eyebrow}
+      </p>
+      <h2 className="mt-2 font-ae-display text-2xl font-semibold tracking-tight text-ae-text sm:text-3xl">
+        {title}
+      </h2>
+    </div>
+  );
+}
+
+function InsightTile({ children, count, dot, title }: { children: ReactNode; count?: number; dot: string; title: string }) {
+  return (
+    <GlassCard className="flex min-w-0 flex-col">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="flex min-w-0 items-center gap-2 font-ae-display text-base font-semibold text-ae-text">
+          <span aria-hidden className={`size-2 shrink-0 rounded-full ${dot}`} />
+          <span className="truncate">{title}</span>
+        </h3>
+        {count !== undefined ? (
+          <span className="shrink-0 rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-0.5 font-ae-label text-[11px] font-semibold tabular-nums text-ae-text-muted">
+            {count}
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-4 space-y-2.5">{children}</div>
+    </GlassCard>
+  );
+}
+
+function EmptyLine({ children }: { children: ReactNode }) {
+  return <p className="rounded-xl border border-dashed border-white/[0.1] px-3 py-4 text-center text-sm text-ae-text-muted">{children}</p>;
+}
 
 export function HubPage() {
   const navigate = useNavigate();
@@ -37,11 +69,10 @@ export function HubPage() {
     localContracts,
     negotiations,
     savedOpportunities,
-    seedContracts,
   } = useAgentExchange();
   const allAgents = getAllAgents(createdAgents);
   const allOpportunities = getAllOpportunities(createdOpportunities);
-  const allContracts = [...localContracts, ...seedContracts].map((contract) => {
+  const allContracts = localContracts.map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
     );
@@ -60,206 +91,157 @@ export function HubPage() {
     workspaces: contractWorkspaces,
   };
   const hubInsights = getHubAgentInsights(intelligenceInput);
-  // Shared mode: every tile and timeline entry comes from the user's own rows.
-  const metrics = isSharedMode
-    ? getLiveHubMetrics({
-        agents: createdAgents,
-        contracts: localContracts,
-        hireRequests,
-        opportunities: createdOpportunities,
-      })
-    : hubMetrics;
-  const timeline = isSharedMode ? getLiveTimeline(agentActivities) : activityFeed;
+  // Every tile and timeline entry comes from the user's own rows.
+  const metrics = getLiveHubMetrics({
+    agents: createdAgents,
+    contracts: allContracts,
+    hireRequests,
+    opportunities: createdOpportunities,
+  });
+  const timeline = getLiveTimeline(agentActivities);
   const suggestedActions = getHubSuggestedActions(intelligenceInput);
+  // The agents on the viewer's own contracts, busiest first.
+  const agentLoad = (name: string) => {
+    const own = allContracts.filter((contract) => contract.agent === name);
+    const inProgress = own.filter((contract) => contract.status !== "Completed").length;
+    return { completed: own.length - inProgress, inProgress };
+  };
+  const agentNodes: NetworkNode[] = Array.from(new Set(allContracts.map((contract) => contract.agent)))
+    .map((name) => ({ name, ...agentLoad(name) }))
+    .sort((left, right) => right.inProgress - left.inProgress || right.completed - left.completed)
+    .slice(0, 6)
+    .map(({ completed, inProgress, name }): NetworkNode => ({
+      accent: inProgress > 0 ? "emerald" : "violet",
+      id: name,
+      name,
+      specialty: [
+        inProgress > 0 ? `${inProgress} in progress` : "",
+        completed > 0 ? `${completed} completed` : "",
+      ].filter(Boolean).join(" · "),
+    }));
 
   return (
-    <section className="space-y-10">
-      <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-end">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Agent Hub
-          </p>
-          <h1 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text sm:text-5xl lg:max-w-3xl">
-            Operational center for autonomous execution.
-          </h1>
-          <p className="mt-3 max-w-2xl text-ae-text-muted">
-            {isSharedMode
-              ? "Your contracts, hire requests and agent activity, as recorded."
-              : "Monitor revenue, contract activity, pending actions, trust, and simulated autonomous agent performance."}
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <PrimaryButton onClick={() => navigate("/contracts")}>
+    <section className="space-y-12">
+      <PageHeader
+        actions={
+          <PrimaryButton className="w-full sm:w-auto" onClick={() => navigate("/contracts")}>
             View Contracts
           </PrimaryButton>
-          {isSharedMode ? null : <SecondaryButton>Sync Network</SecondaryButton>}
-        </div>
-      </div>
+        }
+        description="Your contracts, hire requests and agent activity, as recorded."
+        eyebrow="Agent Hub"
+        title="Operational center for autonomous execution."
+      />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Workspace metrics" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {metrics.map((metric) => (
           <LiveActivityCard key={metric.id} metric={metric} />
         ))}
       </section>
 
-      <section className={isSharedMode ? "grid gap-4" : "grid gap-4 lg:grid-cols-[1fr_0.9fr]"}>
+      <section className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
         <ActivityTimeline events={timeline} />
-        {isSharedMode ? null : <AgentNetworkGraph nodes={networkNodes} />}
+        <AgentNetworkGraph nodes={agentNodes} />
       </section>
 
-      <section className="space-y-4">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Agent Intelligence
-          </p>
-          <h2 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text">
-            Autonomous marketplace signals
-          </h2>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-4">
-          <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-5 shadow-ae-glow backdrop-blur-2xl">
-            <h3 className="font-ae-display text-xl font-semibold text-ae-text">
-              Recently Active Agents
-            </h3>
-            <div className="mt-4 space-y-3">
-              {(hubInsights.recentlyActiveAgents.length > 0
-                ? hubInsights.recentlyActiveAgents
-                : allAgents.slice(0, 3)
-              ).map((agent) => (
-                <div key={agent.id}>
-                  <p className="font-semibold text-ae-text">{agent.name}</p>
-                  <p className="text-sm text-ae-text-muted">
+      <section className="space-y-6">
+        <SectionHeading eyebrow="Agent Intelligence" title="Autonomous marketplace signals" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <InsightTile count={hubInsights.recentlyActiveAgents.length} dot="bg-ae-cyan" title="Recently Active Agents">
+            {hubInsights.recentlyActiveAgents.length > 0 ? (
+              hubInsights.recentlyActiveAgents.map((agent) => (
+                <div className="min-w-0 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5" key={agent.id}>
+                  <p className="truncate font-semibold text-ae-text">{agent.name}</p>
+                  <p className="truncate text-sm text-ae-text-muted">
                     {getAgentStatus(agent, intelligenceInput)}
                   </p>
                 </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-5 shadow-ae-glow backdrop-blur-2xl">
-            <h3 className="font-ae-display text-xl font-semibold text-ae-text">
-              Top Performing Agents
-            </h3>
-            <div className="mt-4 space-y-3">
-              {hubInsights.topPerformingAgents.map((agent) => (
-                <div key={agent.id}>
-                  <p className="font-semibold text-ae-text">{agent.name}</p>
-                  <p className="text-sm text-ae-text-muted">
-                    Trust {getAgentReputation(agent, intelligenceInput).trustScore}
-                  </p>
+              ))
+            ) : (
+              <EmptyLine>No agent activity recorded yet.</EmptyLine>
+            )}
+          </InsightTile>
+          <InsightTile count={hubInsights.topPerformingAgents.length} dot="bg-ae-primary" title="Highest Trust">
+            {hubInsights.topPerformingAgents.length > 0 ? (
+              hubInsights.topPerformingAgents.map((agent) => (
+                <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5" key={agent.id}>
+                  <p className="truncate font-semibold text-ae-text">{agent.name}</p>
+                  <span className="shrink-0 font-ae-label text-xs font-semibold tabular-nums text-ae-primary">
+                    Trust {isSharedMode ? agent.trustScore : getAgentReputation(agent, intelligenceInput).trustScore}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-5 shadow-ae-glow backdrop-blur-2xl">
-            <h3 className="font-ae-display text-xl font-semibold text-ae-text">
-              Awaiting Approval
-            </h3>
-            <div className="mt-4 space-y-3">
-              {hubInsights.agentsAwaitingApproval.length > 0 ? (
-                hubInsights.agentsAwaitingApproval.map((agent) => (
-                  <p className="font-semibold text-ae-text" key={agent.id}>
-                    {agent.name}
-                  </p>
-                ))
-              ) : (
-                <p className="text-sm text-ae-text-muted">
-                  No agents awaiting approval.
+              ))
+            ) : (
+              <EmptyLine>No agents listed yet.</EmptyLine>
+            )}
+          </InsightTile>
+          <InsightTile count={hubInsights.agentsAwaitingApproval.length} dot="bg-ae-amber" title="Awaiting Approval">
+            {hubInsights.agentsAwaitingApproval.length > 0 ? (
+              hubInsights.agentsAwaitingApproval.map((agent) => (
+                <p className="truncate rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 font-semibold text-ae-text" key={agent.id}>
+                  {agent.name}
                 </p>
-              )}
-            </div>
-          </div>
-          <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-5 shadow-ae-glow backdrop-blur-2xl">
-            <h3 className="font-ae-display text-xl font-semibold text-ae-text">
-              Near Completion
-            </h3>
-            <div className="mt-4 space-y-3">
-              {hubInsights.contractsNearCompletion.length > 0 ? (
-                hubInsights.contractsNearCompletion.map((contract) => (
-                  <button
-                    className="block text-left text-sm text-ae-text-muted transition hover:text-ae-primary"
-                    key={contract.id}
-                    onClick={() => navigate(`/contracts/${contract.id}`)}
-                    type="button"
-                  >
-                    <span className="block font-semibold text-ae-text">
-                      {contract.title}
+              ))
+            ) : (
+              <EmptyLine>No agents awaiting approval.</EmptyLine>
+            )}
+          </InsightTile>
+          <InsightTile count={hubInsights.contractsNearCompletion.length} dot="bg-ae-emerald" title="Near Completion">
+            {hubInsights.contractsNearCompletion.length > 0 ? (
+              hubInsights.contractsNearCompletion.map((contract) => (
+                <button
+                  className="block w-full rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-left text-sm text-ae-text-muted transition hover:border-ae-primary/30 hover:text-ae-primary"
+                  key={contract.id}
+                  onClick={() => navigate(`/contracts/${contract.id}`)}
+                  type="button"
+                >
+                  <span className="block truncate font-semibold text-ae-text">
+                    {contract.title}
+                  </span>
+                  <span className="mt-1.5 flex items-center gap-2">
+                    <span className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
+                      <span className="block h-full rounded-full bg-ae-primary" style={{ width: `${Math.min(100, Math.max(0, contract.progress))}%` }} />
                     </span>
-                    {contract.progress}% complete
-                  </button>
-                ))
-              ) : (
-                <p className="text-sm text-ae-text-muted">
-                  No contracts near completion.
-                </p>
-              )}
-            </div>
-          </div>
+                    <span className="shrink-0 tabular-nums">{contract.progress}% complete</span>
+                  </span>
+                </button>
+              ))
+            ) : (
+              <EmptyLine>No contracts near completion.</EmptyLine>
+            )}
+          </InsightTile>
         </div>
       </section>
 
-      <section className="space-y-4">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Autonomous Suggestions
-          </p>
-          <h2 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text">
-            Recommended next moves
-          </h2>
-        </div>
+      <section className="space-y-6">
+        <SectionHeading eyebrow="Autonomous Suggestions" title="Recommended next moves" />
         <div className="grid gap-4 lg:grid-cols-2">
           {suggestedActions.length > 0 ? (
             suggestedActions.map((action) => (
-              <div
-                className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-5 shadow-ae-glow backdrop-blur-2xl"
-                key={action.id}
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
-                      {action.agentName}
-                    </p>
-                    <h3 className="mt-2 font-ae-display text-xl font-semibold text-ae-text">
-                      {action.title}
-                    </h3>
-                    <p className="mt-2 text-sm leading-6 text-ae-text-muted">
-                      {action.description}
-                    </p>
-                  </div>
-                  <PrimaryButton onClick={() => approveSuggestedAgentAction(action)}>
-                    Approve
-                  </PrimaryButton>
+              <GlassCard className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between" interactive key={action.id}>
+                <div className="min-w-0">
+                  <p className="truncate font-ae-label text-[11px] font-semibold uppercase tracking-[0.14em] text-ae-text-muted">
+                    {action.agentName}
+                  </p>
+                  <h3 className="mt-1.5 break-words font-ae-display text-lg font-semibold leading-snug tracking-tight text-ae-text">
+                    {action.title}
+                  </h3>
+                  <p className="mt-1.5 text-sm leading-6 text-ae-text-muted">
+                    {action.description}
+                  </p>
                 </div>
-              </div>
+                <PrimaryButton className="w-full shrink-0 sm:w-auto" onClick={() => approveSuggestedAgentAction(action)}>
+                  Approve
+                </PrimaryButton>
+              </GlassCard>
             ))
           ) : (
-            <div className="rounded-ae-lg border border-white/[0.07] bg-ae-surface-glass p-5 text-ae-text-muted shadow-ae-glow backdrop-blur-2xl">
+            <GlassCard className="text-sm text-ae-text-muted lg:col-span-2">
               No autonomous suggestions available yet.
-            </div>
+            </GlassCard>
           )}
         </div>
       </section>
-
-      {isSharedMode ? null : (
-        <section className="space-y-4">
-          <div>
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-              Collaboration Feed
-            </p>
-            <h2 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text">
-              Active, completed, and shared work
-            </h2>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-3">
-            {collaborations.map((collaboration) => (
-              <CollaborationCard
-                collaboration={collaboration}
-                key={collaboration.id}
-              />
-            ))}
-          </div>
-        </section>
-      )}
     </section>
   );
 }

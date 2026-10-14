@@ -10,9 +10,7 @@ import {
 } from "../data/agentTrust";
 import { getAllAgents } from "../data/localSelectors";
 import type { Contract } from "../data/operations";
-import { contracts } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
-import { accentStyles } from "./accentStyles";
 import { ContractStatusBadge } from "./ContractStatusBadge";
 import { GlassCard } from "./GlassCard";
 import { SecondaryButton } from "./SecondaryButton";
@@ -28,10 +26,10 @@ export function ContractCard({ contract }: ContractCardProps) {
   const navigate = useNavigate();
   const { agentReviews, contractDisputes, createdAgents, localContracts } =
     useAgentExchange();
-  const accent = accentStyles[contract.accent];
   const allAgents = getAllAgents(createdAgents);
   const agent = allAgents.find((candidate) => candidate.name === contract.agent);
-  const allContracts = [...localContracts, ...contracts];
+  // Trust signals count only the contracts this viewer can actually see.
+  const allContracts: Contract[] = localContracts;
   const verificationStatus = agent
     ? getVerificationStatus({
         agent,
@@ -40,89 +38,82 @@ export function ContractCard({ contract }: ContractCardProps) {
         reviews: agentReviews,
       })
     : undefined;
+  const progress = Math.max(0, Math.min(100, contract.progress));
 
   return (
-    <GlassCard
-      className={`space-y-5 transition duration-200 hover:-translate-y-1 hover:border-ae-primary/30 ${accent.border}`}
-    >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-text-muted">
-            {contract.organization}
-          </p>
-          <h3 className="mt-2 font-ae-display text-2xl font-semibold tracking-[-0.02em] text-ae-text">
+    <GlassCard className="@container sm:p-6" interactive>
+      <div className="flex flex-col gap-5 @3xl:flex-row @3xl:items-center @3xl:gap-8">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <ContractStatusBadge status={contract.status} />
+            {paymentStatus && paymentStatus !== "unfunded" ? (
+              <PaymentStatusBadge status={paymentStatus} />
+            ) : null}
+          </div>
+          <h3 className="mt-3 break-words font-ae-display text-lg font-semibold leading-snug tracking-tight text-ae-text sm:text-xl">
             {contract.title}
           </h3>
-        </div>
-        <ContractStatusBadge status={contract.status} />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-            Agent
+          <p className="mt-1 truncate text-sm text-ae-text-muted">
+            <span className="text-ae-text">{contract.organization}</span>
+            <span aria-hidden className="mx-2 text-ae-text-muted/50">/</span>
+            {contract.agent}
           </p>
-          <p className="mt-2 font-semibold text-ae-text">{contract.agent}</p>
           {agent && verificationStatus ? (
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               <VerificationBadge status={verificationStatus} />
-              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
+              <span className="inline-flex w-fit items-center whitespace-nowrap rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-ae-text-muted">
                 {getAgentRatingLabel(agent, agentReviews)}
               </span>
-              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
+              <span className="inline-flex w-fit items-center whitespace-nowrap rounded-full border border-white/[0.08] bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-ae-text-muted">
                 {getAgentCompletedContracts(agent, allContracts).length} done
               </span>
             </div>
           ) : null}
         </div>
-        <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-            Contract Value
-          </p>
-          <p className="mt-2 font-semibold text-ae-text">{contractPriceLabel(contract)}</p>
-          {paymentStatus && paymentStatus !== "unfunded" ? (
-            <div className="mt-2">
-              <PaymentStatusBadge status={paymentStatus} />
+
+        <dl className="grid grid-cols-3 gap-3 @3xl:w-80 @3xl:shrink-0">
+          {[
+            ["Value", contractPriceLabel(contract)],
+            ["Start", contract.startDate || "—"],
+            ["Due", contract.dueDate || "—"],
+          ].map(([label, value]) => (
+            <div className="min-w-0" key={label}>
+              <dt className="truncate font-ae-label text-[11px] font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+                {label}
+              </dt>
+              <dd className="mt-1 truncate text-sm font-semibold text-ae-text" title={value}>{value}</dd>
             </div>
-          ) : null}
-        </div>
-        <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-            Start Date
-          </p>
-          <p className="mt-2 font-semibold text-ae-text">{contract.startDate}</p>
-        </div>
-        <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
-            Due Date
-          </p>
-          <p className="mt-2 font-semibold text-ae-text">{contract.dueDate}</p>
-        </div>
+          ))}
+        </dl>
       </div>
 
-      <div className="space-y-3 border-t border-white/[0.06] pt-4">
-        <div className="flex items-center justify-between">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
-            Progress
-          </p>
-          <p className={`font-ae-label text-sm font-semibold ${accent.text}`}>
-            {contract.progress}%
-          </p>
+      <div className="mt-5 flex flex-col gap-4 border-t border-white/[0.06] pt-4 sm:flex-row sm:items-center">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
+              Progress
+            </p>
+            <p className="font-ae-label text-xs font-semibold tabular-nums text-ae-primary">
+              {contract.progress}%
+            </p>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-ae-primary to-ae-cyan"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-white/[0.08]">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-ae-primary-action to-ae-primary"
-            style={{ width: `${contract.progress}%` }}
-          />
-        </div>
+        <SecondaryButton
+          className="w-full sm:w-auto"
+          onClick={() => navigate(`/contracts/${contract.id}`)}
+        >
+          View Details
+          <svg aria-hidden className="size-4" viewBox="0 0 16 16">
+            <path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.6" />
+          </svg>
+        </SecondaryButton>
       </div>
-
-      <SecondaryButton
-        className="w-full sm:w-auto"
-        onClick={() => navigate(`/contracts/${contract.id}`)}
-      >
-        View Details
-      </SecondaryButton>
     </GlassCard>
   );
 }

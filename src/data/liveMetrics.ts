@@ -1,4 +1,4 @@
-import { publicListings } from "../lib/publicListings";
+import { mentionsTestListing, publicContracts, publicListings } from "../lib/publicListings";
 // Real numbers for the marketplace surfaces in shared mode.
 //
 // Demo mode ships illustrative seed metrics ("124k agents", "$12.4k today").
@@ -26,7 +26,8 @@ const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ?
 
 export function getLiveMarketplaceMetrics(input: LiveInput): MarketplaceMetric[] {
   const openOpportunities = publicListings(input.opportunities).length;
-  const active = input.contracts.filter((c) => c.status !== "Completed").length;
+  const contracts = publicContracts(input.contracts);
+  const active = contracts.filter((c) => c.status !== "Completed").length;
   return [
     {
       id: "agents",
@@ -46,7 +47,7 @@ export function getLiveMarketplaceMetrics(input: LiveInput): MarketplaceMetric[]
       id: "contracts",
       label: "Contracts in flight",
       value: String(active),
-      detail: input.contracts.length === 0 ? "None yet" : `${plural(input.contracts.length - active, "contract")} completed`,
+      detail: contracts.length === 0 ? "None yet" : `${plural(contracts.length - active, "contract")} completed`,
       accent: "emerald",
     },
   ];
@@ -84,7 +85,8 @@ const ACTIVITY_ACCENT: Record<AgentActivityEvent["type"], LiveActivityItem["acce
 };
 
 export function getLiveActivity(activities: AgentActivityEvent[], limit = 6, now = Date.now()): LiveActivityItem[] {
-  return [...activities]
+  return activities
+    .filter((activity) => !mentionsTestListing(activity.message))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit)
     .map((activity) => ({

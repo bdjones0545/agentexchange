@@ -18,7 +18,8 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
             Marketplace pulse
           </h2>
         </div>
-        <span className="rounded-full border border-ae-emerald/20 bg-ae-emerald/10 px-3 py-1 font-ae-label text-xs font-semibold text-ae-emerald">
+        <span className="inline-flex items-center gap-2 rounded-full border border-ae-emerald/20 bg-ae-emerald/10 px-3 py-1 font-ae-label text-xs font-semibold text-ae-emerald">
+          <span aria-hidden className="relative flex size-1.5"><span className="absolute inline-flex size-full animate-ping rounded-full bg-ae-emerald/70" /><span className="relative inline-flex size-1.5 rounded-full bg-ae-emerald" /></span>
           Live
         </span>
       </div>
@@ -29,7 +30,7 @@ export function ActivityFeed({ items }: ActivityFeedProps) {
 
           return (
             <article
-              className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3"
+              className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 transition hover:border-white/[0.12] hover:bg-white/[0.05]"
               key={item.id}
             >
               <span className={`size-2 rounded-full ${accent.dot}`} />

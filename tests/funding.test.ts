@@ -18,7 +18,7 @@ function fakeLedger(overrides: Partial<ContractMoneyRow> = {}) {
   const payments: Array<{ contract_id: string; provider_ref: string; kind: string; amount_cents: number; status: string; metadata: unknown }> = [];
   const payouts: Array<Record<string, unknown>> = [];
   const events = new Map<string, { type: string; outcome?: string }>();
-  let deliverables = { total: 1, approved: 1, submitted: 0 };
+  let deliverables: { total: number; approved: number; submitted: number; openDisputes?: number } = { total: 1, approved: 1, submitted: 0 };
   let billing: { profile_id: string; stripe_customer_id: string | null; default_payment_method_id: string | null; card_brand: string | null; card_last4: string | null; agent_daily_cap_cents: number; agent_per_contract_cap_cents?: number } | null = null;
   let agentSpent = 0;
   const ledger: Ledger = {
@@ -161,6 +161,16 @@ describe("releaseFunds", () => {
     expect(s.log).toEqual(["capture pi_1"]);
     expect(f.contract.payment_status).toBe("captured");
     expect(f.payouts).toEqual([expect.objectContaining({ contractId: CONTRACT, operatorProfileId: OPERATOR, grossCents: 18000, feeCents: 2700, netCents: 15300 })]);
+  });
+  it("an unresolved dispute blocks capture but still allows the hold to be canceled", async () => {
+    const f = fakeLedger({ payment_status: "authorized" });
+    f.payments.push({ contract_id: CONTRACT, provider_ref: "pi_1", kind: "charge", amount_cents: 18540, status: "authorized", metadata: {} });
+    const s = fakeStripe();
+    f.setDeliverables({ total: 1, approved: 1, submitted: 0, openDisputes: 1 });
+    await expect(releaseFunds(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER, action: "capture" })).rejects.toMatchObject({ status: 409 });
+    expect(s.log).toEqual([]);
+    expect(f.contract.payment_status).toBe("authorized");
+    expect((await releaseFunds(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER, action: "cancel" })).paymentStatus).toBe("unfunded");
   });
   it("the agent side cannot release, and nothing is captured on an unfunded contract", async () => {
     const f = fakeLedger({ payment_status: "authorized" });

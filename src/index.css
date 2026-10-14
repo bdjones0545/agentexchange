@@ -72,7 +72,6 @@ button:not(:disabled), summary { cursor: pointer; }
 
 /* ---------- Landing page motion ---------- */
 @property --ax-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
-
 @keyframes ax-rise { from { opacity: 0; transform: translateY(20px); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes ax-rise-text { from { transform: translateY(14px); filter: blur(10px); } to { transform: none; filter: none; } }
 @keyframes ax-pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
@@ -88,57 +87,53 @@ button:not(:disabled), summary { cursor: pointer; }
 @keyframes ax-node { from { background: var(--color-ae-surface-high); color: var(--color-ae-text-muted); box-shadow: none; } to { background: var(--color-ae-primary); color: var(--color-ae-primary-ink); box-shadow: 0 0 0 6px rgb(120 240 188 / .12), 0 0 28px rgb(120 240 188 / .45); } }
 @keyframes ax-burst { 0% { transform: scale(.4); opacity: .9; } 100% { transform: scale(2.6); opacity: 0; } }
 @keyframes ax-press { 0%, 60% { transform: none; box-shadow: 0 0 0 0 rgb(120 240 188 / .55); } 68% { transform: scale(.94); } 76%, 100% { transform: none; box-shadow: 0 0 0 12px rgb(120 240 188 / 0); } }
-
-.ax-rise { animation: ax-rise .9s cubic-bezier(.2, .7, .2, 1) both; animation-delay: var(--ax-delay, 0ms); }
-.ax-rise-text { animation: ax-rise-text .9s cubic-bezier(.2, .7, .2, 1) both; animation-delay: var(--ax-delay, 0ms); }
-.ax-pop { animation: ax-pop .45s cubic-bezier(.2, .7, .2, 1) both; animation-delay: var(--ax-delay, 0ms); }
-.ax-aurora { animation: ax-drift 20s ease-in-out infinite; will-change: transform; }
-.ax-float { animation: ax-float 6s ease-in-out infinite; animation-delay: var(--ax-delay, 0ms); }
-.ax-caret { animation: ax-blink 1s steps(1) infinite; }
-.ax-burst { animation: ax-burst 1.4s ease-out infinite; }
-.ax-press { animation: ax-press 4s ease-in-out infinite; }
-.ax-gradient-text { background: linear-gradient(100deg, #78f0bc 0%, #c4fbe3 22%, #67e8f9 48%, #78f0bc 74%, #c4fbe3 100%); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: ax-shimmer 7s linear infinite; }
-.ax-grid-bg { background-image: linear-gradient(#78f0bc0f 1px, transparent 1px), linear-gradient(90deg, #78f0bc0f 1px, transparent 1px); background-size: 56px 56px; mask-image: radial-gradient(ellipse 75% 65% at 50% 25%, #000 25%, transparent 75%); }
-.ax-fade-x { mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
-.ax-marquee { animation: ax-marquee 45s linear infinite; }
-.ax-marquee-wrap:hover .ax-marquee, .ax-marquee-wrap:focus-within .ax-marquee { animation-play-state: paused; }
-.ax-fill { transform-origin: left; animation: ax-fill var(--ax-duration, 2s) cubic-bezier(.4, 0, .2, 1) both; }
-
-/* Rotating light around a card edge. */
-.ax-conic { position: relative; isolation: isolate; }
-.ax-conic::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; padding: 1px; background: conic-gradient(from var(--ax-angle), transparent 0 62%, #78f0bc 80%, #67e8f9 90%, transparent 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: ax-spin 7s linear infinite; }
-
-/* Pointer-following light; --mx/--my are set by SpotlightCard. */
-.ax-spotlight { position: relative; }
-.ax-spotlight::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: radial-gradient(480px circle at var(--mx, 50%) var(--my, 0%), rgb(120 240 188 / .13), transparent 60%); opacity: 0; transition: opacity .3s; }
-.ax-spotlight:hover::after { opacity: 1; }
-
-.ax-tilt { transform: perspective(1200px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .5s cubic-bezier(.2, .7, .2, 1); transform-style: preserve-3d; }
-
-.ax-range { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; background: linear-gradient(90deg, #78f0bc var(--ax-pct, 50%), #ffffff1a var(--ax-pct, 50%)); }
-.ax-range::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 999px; background: #edf5f2; border: 4px solid #78f0bc; box-shadow: 0 0 0 6px rgb(120 240 188 / .15); cursor: grab; }
-.ax-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 999px; background: #edf5f2; border: 4px solid #78f0bc; box-shadow: 0 0 0 6px rgb(120 240 188 / .15); cursor: grab; }
-
-.ax-faq summary::-webkit-details-marker { display: none; }
-.ax-faq[open] .ax-faq-icon { transform: rotate(45deg); }
-
-/* Scroll-linked reveals: progressive enhancement, static where unsupported. */
-@supports (animation-timeline: view()) {
-  @media (prefers-reduced-motion: no-preference) {
-    .ax-reveal { animation: ax-reveal linear both; animation-timeline: view(); animation-range: entry 0% cover 25%; }
-    .ax-step-node { animation: ax-node linear both; animation-timeline: view(); animation-range: entry 60% cover 45%; }
-    .ax-step-line { transform-origin: top; animation: ax-grow-y linear both; animation-timeline: view(); animation-range: entry 30% cover 70%; }
-  }
-}
-.ax-step-node { background: var(--color-ae-primary); color: var(--color-ae-primary-ink); }
-
-/* ---------- App-wide primitives ---------- */
 @keyframes ax-page { from { opacity: .35; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.ax-page { animation: ax-page .5s cubic-bezier(.2, .7, .2, 1) both; }
-.ax-input { width: 100%; border-radius: .875rem; border: 1px solid rgb(255 255 255 / .1); background: rgb(8 15 17 / .75); padding: .75rem 1rem; color: var(--color-ae-text); outline: none; transition: border-color .2s, box-shadow .2s, background .2s; }
-.ax-input::placeholder { color: rgb(166 185 181 / .65); }
-.ax-input:hover { border-color: rgb(255 255 255 / .16); }
-.ax-input:focus { border-color: rgb(120 240 188 / .6); box-shadow: 0 0 0 4px rgb(120 240 188 / .12); background: rgb(8 15 17 / .95); }
-.ax-input:disabled { opacity: .55; cursor: not-allowed; }
-select.ax-input { appearance: none; background-image: linear-gradient(45deg, transparent 50%, #a6b9b5 50%), linear-gradient(135deg, #a6b9b5 50%, transparent 50%); background-position: calc(100% - 20px) 55%, calc(100% - 15px) 55%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 2.5rem; }
-.ax-label { display: block; font-family: var(--font-ae-label); font-size: .75rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--color-ae-text-muted); }
+
+/* Components layer: Tailwind utilities on the same element still win. */
+@layer components {
+  .ax-rise { animation: ax-rise .9s cubic-bezier(.2, .7, .2, 1) both; animation-delay: var(--ax-delay, 0ms); }
+  .ax-rise-text { animation: ax-rise-text .9s cubic-bezier(.2, .7, .2, 1) both; animation-delay: var(--ax-delay, 0ms); }
+  .ax-pop { animation: ax-pop .45s cubic-bezier(.2, .7, .2, 1) both; animation-delay: var(--ax-delay, 0ms); }
+  .ax-aurora { animation: ax-drift 20s ease-in-out infinite; will-change: transform; }
+  .ax-float { animation: ax-float 6s ease-in-out infinite; animation-delay: var(--ax-delay, 0ms); }
+  .ax-caret { animation: ax-blink 1s steps(1) infinite; }
+  .ax-burst { animation: ax-burst 1.4s ease-out infinite; }
+  .ax-press { animation: ax-press 4s ease-in-out infinite; }
+  .ax-gradient-text { background: linear-gradient(100deg, #78f0bc 0%, #c4fbe3 22%, #67e8f9 48%, #78f0bc 74%, #c4fbe3 100%); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; color: transparent; animation: ax-shimmer 7s linear infinite; }
+  .ax-grid-bg { background-image: linear-gradient(#78f0bc0f 1px, transparent 1px), linear-gradient(90deg, #78f0bc0f 1px, transparent 1px); background-size: 56px 56px; mask-image: radial-gradient(ellipse 75% 65% at 50% 25%, #000 25%, transparent 75%); }
+  .ax-fade-x { mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+  .ax-marquee { animation: ax-marquee 45s linear infinite; }
+  .ax-marquee-wrap:hover .ax-marquee, .ax-marquee-wrap:focus-within .ax-marquee { animation-play-state: paused; }
+  .ax-fill { transform-origin: left; animation: ax-fill var(--ax-duration, 2s) cubic-bezier(.4, 0, .2, 1) both; }
+  /* Rotating light around a card edge. */
+  .ax-conic { position: relative; isolation: isolate; }
+  .ax-conic::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; padding: 1px; background: conic-gradient(from var(--ax-angle), transparent 0 62%, #78f0bc 80%, #67e8f9 90%, transparent 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: ax-spin 7s linear infinite; }
+  /* Pointer-following light; --mx/--my are set by SpotlightCard. */
+  .ax-spotlight { position: relative; }
+  .ax-spotlight::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; background: radial-gradient(480px circle at var(--mx, 50%) var(--my, 0%), rgb(120 240 188 / .13), transparent 60%); opacity: 0; transition: opacity .3s; }
+  .ax-spotlight:hover::after { opacity: 1; }
+  .ax-tilt { transform: perspective(1200px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .5s cubic-bezier(.2, .7, .2, 1); transform-style: preserve-3d; }
+  .ax-range { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 999px; background: linear-gradient(90deg, #78f0bc var(--ax-pct, 50%), #ffffff1a var(--ax-pct, 50%)); }
+  .ax-range::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; border-radius: 999px; background: #edf5f2; border: 4px solid #78f0bc; box-shadow: 0 0 0 6px rgb(120 240 188 / .15); cursor: grab; }
+  .ax-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 999px; background: #edf5f2; border: 4px solid #78f0bc; box-shadow: 0 0 0 6px rgb(120 240 188 / .15); cursor: grab; }
+  .ax-faq summary::-webkit-details-marker { display: none; }
+  .ax-faq[open] .ax-faq-icon { transform: rotate(45deg); }
+  /* Scroll-linked reveals: progressive enhancement, static where unsupported. */
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+      .ax-reveal { animation: ax-reveal linear both; animation-timeline: view(); animation-range: entry 0% cover 25%; }
+      .ax-step-node { animation: ax-node linear both; animation-timeline: view(); animation-range: entry 60% cover 45%; }
+      .ax-step-line { transform-origin: top; animation: ax-grow-y linear both; animation-timeline: view(); animation-range: entry 30% cover 70%; }
+    }
+  }
+  .ax-step-node { background: var(--color-ae-primary); color: var(--color-ae-primary-ink); }
+  /* ---------- App-wide primitives ---------- */
+  .ax-page { animation: ax-page .5s cubic-bezier(.2, .7, .2, 1) both; }
+  .ax-input { width: 100%; border-radius: .875rem; border: 1px solid rgb(255 255 255 / .1); background: rgb(8 15 17 / .75); padding: .75rem 1rem; color: var(--color-ae-text); outline: none; transition: border-color .2s, box-shadow .2s, background .2s; }
+  .ax-input::placeholder { color: rgb(166 185 181 / .65); }
+  .ax-input:hover { border-color: rgb(255 255 255 / .16); }
+  .ax-input:focus { border-color: rgb(120 240 188 / .6); box-shadow: 0 0 0 4px rgb(120 240 188 / .12); background: rgb(8 15 17 / .95); }
+  .ax-input:disabled { opacity: .55; cursor: not-allowed; }
+  select.ax-input { appearance: none; background-image: linear-gradient(45deg, transparent 50%, #a6b9b5 50%), linear-gradient(135deg, #a6b9b5 50%, transparent 50%); background-position: calc(100% - 20px) 55%, calc(100% - 15px) 55%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 2.5rem; }
+  .ax-label { display: block; font-family: var(--font-ae-label); font-size: .75rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--color-ae-text-muted); }
+}

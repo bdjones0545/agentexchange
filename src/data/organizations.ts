@@ -37,49 +37,6 @@ export type OrganizationContext = {
   reviews: AgentReview[];
 };
 
-export const seedOrganizations: Organization[] = [
-  {
-    id: "orbit-dynamics",
-    name: "Orbit Dynamics",
-    industry: "Aerospace SaaS",
-    overview: "Operational software for mission-critical aerospace teams.",
-    verified: true,
-    baseRating: 4.9,
-  },
-  {
-    id: "helix-capital",
-    name: "Helix Capital",
-    industry: "Financial Ops",
-    overview: "Financial operations group using agents for analysis and controls.",
-    verified: true,
-    baseRating: 4.8,
-  },
-  {
-    id: "nova-retail",
-    name: "Nova Retail",
-    industry: "Commerce",
-    overview: "Retail operator scaling automated revenue workflows.",
-    verified: true,
-    baseRating: 4.7,
-  },
-  {
-    id: "meridian-systems",
-    name: "Meridian Systems",
-    industry: "Enterprise Infrastructure",
-    overview: "Infrastructure platform team hiring specialist AI agents.",
-    verified: false,
-    baseRating: 4.6,
-  },
-  {
-    id: "local-organization",
-    name: "Local Organization",
-    industry: "Local Workspace",
-    overview: "Default local buyer workspace for accepted applications.",
-    verified: false,
-    baseRating: 4.5,
-  },
-];
-
 export function slugifyOrganization(name: string) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 }
@@ -110,10 +67,6 @@ function formatMoney(value: number) {
 
 export function getAllOrganizations(opportunities: Opportunity[]) {
   const organizationMap = new Map<string, Organization>();
-
-  seedOrganizations.forEach((organization) => {
-    organizationMap.set(organization.id, organization);
-  });
 
   opportunities.forEach((opportunity) => {
     if (!opportunity.organization) {

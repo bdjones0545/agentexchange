@@ -99,7 +99,8 @@ export function mapOpportunityRow(row: Row): CreatedOpportunity {
     createdAt: text(row.created_at),
     duration: optionalText(row.estimated_duration),
     id: text(row.id),
-    matchScore: 90,
+    // No stored score exists; the card computes matches from real agents.
+    matchScore: 0,
     organization: optionalText(row.organization_name),
     organizationId: optionalText(row.organization_id),
     ownerId: optionalText(row.owner_id),

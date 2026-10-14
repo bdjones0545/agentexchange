@@ -15,9 +15,7 @@ import {
   withMilestoneToggled,
 } from "../data/contractWorkspace";
 import { agents } from "../data/agents";
-import { contracts as seedContractData } from "../data/operations";
 import type { SuggestedAgentAction } from "../data/agentRecommendations";
-import { opportunities } from "../data/marketplace";
 import {
   createActivityEvent,
   loadAgentExchangeState,
@@ -214,7 +212,6 @@ type AgentExchangeContextValue = PersistedState & {
    * Seed contracts for browsing. Empty in shared mode so a real user's
    * contracts, wallet and history never mix with demo fixtures.
    */
-  seedContracts: typeof seedContractData;
   /**
    * Hermes workers registered with the product (shared mode only). Agents
    * owned by one of these profiles execute their contracts autonomously.
@@ -301,7 +298,7 @@ function getOpportunityForState(
   current: PersistedState,
   opportunityId: string,
 ) {
-  return [...current.createdOpportunities, ...opportunities].find(
+  return current.createdOpportunities.find(
     (opportunity) => opportunity.id === opportunityId,
   );
 }
@@ -809,7 +806,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
             successRate: "New",
             tier: "Local Agent",
             toolAccess: input.toolAccess,
-            trustScore: 90,
+            trustScore: 0,
           };
 
       setState((current) => ({
@@ -2256,7 +2253,6 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       ownsAgent,
       ownsOpportunity,
       ownsOrganization,
-      seedContracts: isSupabaseConfigured ? [] : seedContractData,
       workers,
       isWorkerAgent,
       acceptApplication: safe(acceptApplication),

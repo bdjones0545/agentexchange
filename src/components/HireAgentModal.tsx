@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 
 import { centsToDollarsInput, dollarsInputToCents, feeBreakdown, formatCents, parseMoneyToCents } from "../lib/money";
 
@@ -15,6 +15,7 @@ type HireAgentModalProps = {
 };
 
 export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) {
+  const titleId = useId();
   const { createdOpportunities, isSharedMode, ownsOpportunity, submitHireRequest } =
     useAgentExchange();
   // A shared-mode hire request is issued against one of YOUR posted
@@ -67,84 +68,93 @@ export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-ae-background-deep/80 p-4 backdrop-blur-xl">
-      <form
-        className="w-full max-w-xl space-y-5 rounded-ae-xl border border-white/[0.08] bg-ae-surface/95 p-5 shadow-ae-glow"
-        onSubmit={handleSubmit}
-      >
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Hire Agent
-          </p>
-          <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
-            {agent.name}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-ae-text-muted">
+    <div
+      aria-labelledby={titleId}
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-ae-background-deep/70 backdrop-blur-md"
+      role="dialog"
+    >
+      <div className="flex min-h-full items-center justify-center p-4 sm:p-6">
+        <form
+          className="ax-pop relative w-full max-w-xl space-y-6 rounded-3xl border border-white/10 bg-gradient-to-b from-ae-surface to-ae-background-deep p-6 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_40px_120px_-30px_rgb(0_0_0_/_0.9)] sm:p-8"
+          onSubmit={handleSubmit}
+        >
+          <div className="flex items-start gap-4">
+            <span
+              aria-hidden
+              className="grid size-12 shrink-0 place-items-center rounded-2xl border border-ae-primary/25 bg-gradient-to-br from-ae-primary/20 to-ae-cyan/10 font-ae-label text-sm font-semibold text-ae-primary"
+            >
+              {agent.avatarInitials}
+            </span>
+            <div className="min-w-0">
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+                Hire Agent
+              </p>
+              <h2 id={titleId} className="mt-1 break-words font-ae-display text-2xl font-semibold tracking-tight text-ae-text sm:text-3xl">
+                {agent.name}
+              </h2>
+            </div>
+          </div>
+          <p className="text-sm leading-6 text-ae-text-muted">
             {isSharedMode
               ? allOpportunities.length > 0
                 ? "Select one of your posted opportunities to hire this agent for. The agent's operator accepts or declines."
                 : "Post an opportunity first. Hire requests are issued against an opportunity you posted."
               : "Select an existing opportunity or create a quick job title for this local hire request."}
           </p>
-        </div>
 
-        <label className="block space-y-2">
-          <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
-            Opportunity
-          </span>
-          <select
-            className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
-            onChange={(event) => setOpportunityId(event.target.value)}
-            value={opportunityId}
-          >
-            <option value="">
-              {isSharedMode ? "Choose an opportunity" : "Create quick job title instead"}
-            </option>
-            {allOpportunities.map((opportunity) => (
-              <option key={opportunity.id} value={opportunity.id}>
-                {opportunity.title}
+          <label className="block space-y-2">
+            <span className="ax-label">Opportunity</span>
+            <select
+              className="ax-input"
+              onChange={(event) => setOpportunityId(event.target.value)}
+              value={opportunityId}
+            >
+              <option value="">
+                {isSharedMode ? "Choose an opportunity" : "Create quick job title instead"}
               </option>
-            ))}
-          </select>
-        </label>
+              {allOpportunities.map((opportunity) => (
+                <option key={opportunity.id} value={opportunity.id}>
+                  {opportunity.title}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        <label className="block space-y-2">
-          <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
-            Quick job title
-          </span>
-          <input
-            className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none transition placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
-            onChange={(event) => setQuickJobTitle(event.target.value)}
-            placeholder="Example: Enterprise workflow audit"
-            value={quickJobTitle}
-          />
-        </label>
+          <label className="block space-y-2">
+            <span className="ax-label">Quick job title</span>
+            <input
+              className="ax-input"
+              onChange={(event) => setQuickJobTitle(event.target.value)}
+              placeholder="Example: Enterprise workflow audit"
+              value={quickJobTitle}
+            />
+          </label>
 
-        <label className="block space-y-2">
-          <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
-            Offered price (USD)
-          </span>
-          <input
-            className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none transition placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
-            inputMode="decimal"
-            onChange={(event) => setAmountInput(event.target.value)}
-            placeholder="600"
-            value={amountInput}
-          />
-          <span className="block text-xs leading-5 text-ae-text-muted">
-            {amountCents
-              ? `The agent's operator receives ${formatCents(feeBreakdown(amountCents, 1500).netCents)} after the 15% platform fee. Accepting the request is accepting this price; it cannot be changed afterwards.`
-              : "A fixed price for the whole brief. No payment is taken yet."}
-          </span>
-        </label>
+          <label className="block space-y-2">
+            <span className="ax-label">Offered price (USD)</span>
+            <input
+              className="ax-input tabular-nums"
+              inputMode="decimal"
+              onChange={(event) => setAmountInput(event.target.value)}
+              placeholder="600"
+              value={amountInput}
+            />
+            <span className={`block rounded-xl border px-3.5 py-2.5 text-xs leading-5 ${amountCents ? "border-ae-primary/15 bg-ae-primary/[0.05] text-ae-text-muted" : "border-white/[0.06] bg-white/[0.02] text-ae-text-muted"}`}>
+              {amountCents
+                ? `The agent's operator receives ${formatCents(feeBreakdown(amountCents, 1500).netCents)} after the 15% platform fee. Accepting the request is accepting this price; it cannot be changed afterwards.`
+                : "A fixed price for the whole brief. No payment is taken yet."}
+            </span>
+          </label>
 
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
-          <PrimaryButton disabled={!canSubmit} type="submit">
-            Submit Hire Request
-          </PrimaryButton>
-        </div>
-      </form>
+          <div className="flex flex-col-reverse gap-3 border-t border-white/[0.06] pt-5 sm:flex-row sm:justify-end">
+            <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
+            <PrimaryButton disabled={!canSubmit} type="submit">
+              Submit Hire Request
+            </PrimaryButton>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
