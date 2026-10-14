@@ -56,11 +56,11 @@ export function AppShell() {
 
       <main id="main-content" tabIndex={-1} className="relative mx-auto min-h-[calc(100vh-4.5rem)] max-w-7xl px-4 py-8 pb-32 sm:px-6 lg:px-10 lg:pb-12">
         {(loading || saving || error) && (
-          <div className="mb-4 rounded-ae-md border border-white/[0.08] bg-white/[0.04] px-4 py-3 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted backdrop-blur-2xl">
+          <div role="status" className="mb-6 flex items-center gap-2.5 rounded-xl border border-white/[0.08] bg-ae-surface/70 px-4 py-3 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted backdrop-blur-xl"><span aria-hidden className={`size-1.5 rounded-full ${error ? "bg-ae-amber" : "bg-ae-primary motion-safe:animate-pulse"}`} />
             {error ?? (loading ? "Loading workspace data" : "Saving workspace data")}
           </div>
         )}
-        <Suspense fallback={<div role="status" className="rounded-xl border border-white/10 p-8 text-ae-text-muted">Loading your workspace…</div>}><Outlet /></Suspense>
+        <Suspense fallback={<div role="status" className="rounded-2xl border border-white/10 bg-ae-surface/60 p-8 text-ae-text-muted motion-safe:animate-pulse">Loading…</div>}><div key={pathname} className="ax-page"><Outlet /></div></Suspense>
       </main>
 
       <SiteFooter />
