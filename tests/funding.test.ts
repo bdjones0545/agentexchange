@@ -83,6 +83,20 @@ describe("pricing", () => {
 });
 
 describe("createFunding", () => {
+  it("replays a live attempt, and opens a new one only after the earlier hold ended", async () => {
+    const f = fakeLedger();
+    let ended = 0;
+    f.ledger.endedFundingAttempts = async () => ended;
+    const s = fakeStripe();
+    const first = await createFunding(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER });
+    const replay = await createFunding(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER });
+    expect(replay.url).toBe(first.url);
+    expect(s.log.filter((line) => line.startsWith("checkout"))).toHaveLength(1);
+    // The hold lapsed, was cancelled, or the Checkout was abandoned: the payment row is failed.
+    ended = 1;
+    await createFunding(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER });
+    expect(s.log.filter((line) => line.startsWith("checkout"))).toHaveLength(2);
+  });
   it("creates a manual-capture checkout for price + fee and records a pending payment", async () => {
     const f = fakeLedger();
     const s = fakeStripe();
