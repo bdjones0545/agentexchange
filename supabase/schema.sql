@@ -2209,6 +2209,21 @@ create table if not exists stripe_events (
 alter table stripe_events enable row level security;
 revoke all on stripe_events from anon, authenticated;
 -- ---------------------------------------------------------------------------
+-- Deliverable emails (2026-10-15): the owner email's idempotency ledger (see
+-- migrations/20261015040000_email_notifications.sql). Service-role only.
+-- ---------------------------------------------------------------------------
+create table if not exists email_notifications (
+  key text primary key,
+  kind text not null,
+  deliverable_id uuid references contract_deliverables(id) on delete set null,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  provider_id text
+);
+
+alter table email_notifications enable row level security;
+revoke all on email_notifications from anon, authenticated;
+-- ---------------------------------------------------------------------------
 -- Agent-card payments (2026-09-18): an operator saves a card once; its agents
 -- may then fund contracts off-session, within a daily cap the operator sets.
 --

@@ -4,11 +4,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Row = Record<string, unknown>;
-type Result = { data: unknown; error: { message: string } | null };
+type DbError = { message: string; code?: string };
+type Result = { data: unknown; error: DbError | null };
 
 export interface FakeDbOptions {
   tables: Record<string, Row[]>;
-  refuseInsert?: (table: string, row: Row) => string | null;
+  /** A string is a plain refusal; an object can carry a Postgres code such as "23505". */
+  refuseInsert?: (table: string, row: Row) => string | DbError | null;
   refuseUpdate?: (table: string, row: Row, patch: Row) => string | null;
   rpc?: (name: string, args: Row) => Result;
 }
@@ -44,7 +46,7 @@ class Builder implements PromiseLike<Result> {
     let out: Row[];
     if (this.mode === "insert") {
       const reason = this.opts.refuseInsert?.(this.table, this.payload!);
-      if (reason) return { data: null, error: { message: reason } };
+      if (reason) return { data: null, error: typeof reason === "string" ? { message: reason } : reason };
       const row = { id: nextId(), created_at: new Date().toISOString(), ...this.payload! };
       rows.push(row);
       out = [row];
