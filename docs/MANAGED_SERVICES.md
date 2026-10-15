@@ -79,7 +79,7 @@ and `rules`:
 
 ## Files
 
-- `supabase/migrations/20261015060000_managed_services.sql`: columns, triggers
+- `supabase/migrations/20261015040104_managed_services.sql`: columns, triggers
   and the renewal rule. Apply it before deploying the code.
 - `scripts/verify-managed-services-db.sh`: database checks under real RLS, run in
   CI by `scripts/verify-money-db.py`.
