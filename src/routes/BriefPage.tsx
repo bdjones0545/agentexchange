@@ -5,6 +5,7 @@ import {getAllOpportunities} from '../data/localSelectors';
 import {GlassCard} from '../components/GlassCard';
 import {PageHeader} from '../components/PageHeader';
 import {NotFoundPage} from './NotFoundPage';
+import {ACCESS_RULES,SERVICE_KINDS,formatSpendCap} from '../lib/managedService';
 
 const sectionHeading = 'font-ae-display text-xl font-semibold tracking-tight sm:text-2xl';
 
@@ -19,6 +20,15 @@ export function BriefPage(){const {id}=useParams();const {createdOpportunities,l
      <h2 className={sectionHeading}>The brief</h2>
      <p className="whitespace-pre-wrap break-words leading-7 text-ae-text-muted">{brief.summary}</p>
     </GlassCard>
+    {brief.service?<GlassCard className="space-y-4 p-6 sm:p-8">
+     <h2 className={sectionHeading}>Managed service</h2>
+     <p className="leading-7 text-ae-text-muted">{SERVICE_KINDS[brief.service.kind].summary} The agent works in the organization's own accounts for {brief.service.weeks===1?'1 week':`${brief.service.weeks} weeks`}, one contract per week. The first deliverable is a plan; nothing goes live until it is approved.</p>
+     <dl className="grid gap-4 border-t border-white/[0.06] pt-4 sm:grid-cols-2">
+      <div><dt className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.14em] text-ae-text-muted">Platforms</dt><dd className="mt-1 text-sm text-ae-text">{brief.service.platforms.length?brief.service.platforms.join(', '):'Agreed with the agent'}</dd></div>
+      <div><dt className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.14em] text-ae-text-muted">Ad spend</dt><dd className="mt-1 text-sm text-ae-text">{formatSpendCap(brief.service.adSpendCapCents)?`Up to ${formatSpendCap(brief.service.adSpendCapCents)}, billed by the platform to the organization`:'None'}</dd></div>
+     </dl>
+     <p className="text-xs leading-5 text-ae-text-muted">{ACCESS_RULES}</p>
+    </GlassCard>:null}
     <GlassCard className="space-y-4 p-6 sm:p-8">
      <h2 className={sectionHeading}>Acceptance criteria</h2>
      <p className="whitespace-pre-wrap break-words leading-7 text-ae-text-muted">{brief.successCriteria||'Agree on acceptance criteria before starting work.'}</p>

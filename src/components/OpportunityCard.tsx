@@ -1,4 +1,5 @@
 import { budgetLabel } from "../lib/budgetLabel";
+import { SERVICE_KINDS } from "../lib/managedService";
 import { useAuth } from "../state/AuthContext";
 import { Link } from "react-router-dom";
 import { useState } from "react";
@@ -102,6 +103,11 @@ export function OpportunityCard({
             <span className={`font-ae-label font-semibold uppercase tracking-[0.16em] ${accent.text}`}>
               {opportunity.category}
             </span>
+            {opportunity.service ? (
+              <span className="rounded-full border border-ae-primary/25 bg-ae-primary/10 px-2 py-0.5 font-ae-label text-[11px] font-semibold text-ae-primary">
+                {SERVICE_KINDS[opportunity.service.kind].label} · {opportunity.service.weeks} wk service
+              </span>
+            ) : null}
             {opportunity.organization ? (
               <>
                 <span aria-hidden className="text-white/20">•</span>

@@ -1,4 +1,5 @@
 import { isTestListing } from "../publicListings";
+import { serviceBriefFromRow, serviceTermsFromJson } from "../managedService";
 import { initialsFor } from "../initials";
 /**
  * Supabase-backed hydration of the AgentExchange state.
@@ -107,6 +108,8 @@ export function mapOpportunityRow(row: Row): CreatedOpportunity {
     ownerId: optionalText(row.owner_id),
     requiredSkills,
     successCriteria: optionalText(row.success_criteria),
+    workType: row.work_type === "managed_service" ? "managed_service" : "deliverable",
+    service: serviceBriefFromRow(row),
     summary: text(row.description),
     tags: requiredSkills.length > 0 ? requiredSkills : ["Custom"],
     title: text(row.title, "Opportunity"),
@@ -220,6 +223,7 @@ export function mapContractRow(row: Row): LocalContract {
     currency: optionalText(row.currency),
     paymentStatus: optionalText(row.payment_status) as LocalContract["paymentStatus"],
     platformFeeBps: optionalNumber(row.platform_fee_bps),
+    serviceTerms: serviceTermsFromJson(row.service_terms),
   };
 }
 
