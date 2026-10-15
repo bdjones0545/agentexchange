@@ -3,7 +3,7 @@
 // worker the database says is a party. The caller must present its own
 // Supabase access token and must itself be able to see the entity.
 import { readServerEnv } from "../server/config.js";
-import { callerCanSee, dispatch, DispatchEventSchema } from "../server/dispatch.js";
+import { callerCanSee, DispatchEventSchema, loggedDispatch } from "../server/dispatch.js";
 
 const NO_STORE = { "cache-control": "no-store" };
 
@@ -34,6 +34,6 @@ export async function POST(request: Request): Promise<Response> {
   if (!(await callerCanSee(env, accessToken, parsed.data))) {
     return Response.json({ ok: false, error: "not visible to caller" }, { status: 403, headers: NO_STORE });
   }
-  const results = await dispatch(env, parsed.data);
+  const results = await loggedDispatch(env, "browser")(parsed.data);
   return Response.json({ ok: true, results }, { headers: NO_STORE });
 }

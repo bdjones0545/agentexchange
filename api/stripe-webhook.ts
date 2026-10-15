@@ -3,7 +3,7 @@ import { operationStore } from "../server/moneyOperations.js";
 // signature is verified over the raw body; each event id is claimed once in
 // stripe_events before anything changes, so redeliveries are no-ops.
 import { readServerEnv } from "../server/config.js";
-import { dispatch } from "../server/dispatch.js";
+import { loggedDispatch } from "../server/dispatch.js";
 import { handleStripeEvent } from "../server/funding.js";
 import { supabaseLedger } from "../server/ledger.js";
 import { realStripe } from "../server/stripe.js";
@@ -29,7 +29,7 @@ export async function POST(request: Request): Promise<Response> {
         ledger: supabaseLedger(), operations: operationStore(),
         stripe,
         appUrl: env.appUrl,
-        notify: (e) => dispatch(env, e),
+        notify: loggedDispatch(env, "stripe_webhook"),
       },
       event as unknown as { id: string; type: string; data: { object: Record<string, unknown> } },
     );

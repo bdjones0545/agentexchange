@@ -7,7 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { agentSession, resolveAgentKey } from "../server/agentKeys.js";
 import { authenticateWorker, readServerEnv } from "../server/config.js";
-import { dispatch } from "../server/dispatch.js";
+import { loggedDispatch } from "../server/dispatch.js";
 import { jevEvaluator } from "../server/gate/deliverableGate.js";
 import { handleBody } from "../server/mcp/rpc.js";
 import { operatorSession } from "../server/operator.js";
@@ -64,7 +64,6 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return Response.json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }, { status: 400, headers: NO_STORE });
   }
-  const serverEnv = env;
   const result = await handleBody(body, {
     open: identity.open,
     worker: identity.name,
@@ -72,7 +71,7 @@ export async function POST(request: Request): Promise<Response> {
     paymentsAllowed: identity.paymentsAllowed,
     now: () => new Date().toISOString(),
     paymentsEnabled: env.paymentsEnabled,
-    notify: (e) => dispatch(serverEnv, e),
+    notify: loggedDispatch(env, "mcp"),
     // Deliverable quality gate; unset key = accept-and-stamp, never block.
     gate: jevEvaluator(process.env.AI_GATEWAY_API_KEY),
   });
