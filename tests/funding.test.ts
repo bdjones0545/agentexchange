@@ -2,9 +2,9 @@ import { memoryOperations } from "./money-operation-store";
 import { MoneyOperationError } from "../server/moneyOperations";
 import { describe, expect, it } from "vitest";
 import { createCardSetup, createFunding, FundingError, fundWithSavedCard, handleStripeEvent, releaseFunds } from "../server/funding";
-import type { ContractMoneyRow, Ledger, PaymentStatus } from "../server/ledger";
+import { supabaseLedger, type ContractMoneyRow, type Ledger, type PaymentStatus } from "../server/ledger";
 import { quoteContract } from "../server/pricing";
-import { checkoutSessionParams, realStripe, setupSessionParams, signTestEvent, type StripeGateway } from "../server/stripe";
+import { checkoutSessionParams, offSessionHoldParams, realStripe, setupSessionParams, signTestEvent, type StripeGateway } from "../server/stripe";
 
 const ORG_OWNER = "org-profile";
 const OPERATOR = "operator-profile";
@@ -118,7 +118,7 @@ describe("createFunding", () => {
     const params = checkoutSessionParams({ idempotencyKey: `fund:${CONTRACT}`, contractId: CONTRACT, title: "One-pager", currency: "USD", amountCents: 18000, buyerFeeCents: 540, successUrl: "https://www.agentsexchange.ai/ok", cancelUrl: "https://www.agentsexchange.ai/no" });
     expect(params.mode).toBe("payment");
     expect(params.payment_method_types).toEqual(["card"]);
-    expect(params.payment_intent_data).toEqual({ capture_method: "manual", metadata: { contractId: CONTRACT } });
+    expect(params.payment_intent_data).toEqual({ capture_method: "manual", statement_descriptor_suffix: "AGENTEXCHANGE", metadata: { contractId: CONTRACT } });
     expect(params.line_items?.map((item) => item.price_data?.unit_amount)).toEqual([18000, 540]);
     // The saved card agents place off-session holds on is a card too.
     const setup = setupSessionParams({ customerId: "cus_1", profileId: ORG_OWNER, successUrl: "https://www.agentsexchange.ai/ok", cancelUrl: "https://www.agentsexchange.ai/no" });
@@ -313,4 +313,34 @@ describe('dedicated agent cards',()=>{
  it('stops recovery when the selected card changed',async()=>{const f=ready();f.ledger.getAgentCard=async()=>({mode:'dedicated',payment_method_id:'pm_new'});const s=fakeStripe();await expect(fundWithSavedCard(deps(f.ledger,s),{contractId:CONTRACT,callerProfileId:ORG_OWNER,agentKeyId:'key',selectedPaymentMethod:'pm_old'})).rejects.toThrow('Card changed');expect(s.log).toEqual([]);});
  it('dedicated setup webhook leaves the owner shared card unchanged',async()=>{const f=ready();let saved:unknown;f.ledger.saveAgentCard=async(...args)=>{saved=args;return true;};await handleStripeEvent(deps(f.ledger,fakeStripe()),{id:'evt_dedicated',type:'checkout.session.completed',data:{object:{id:'cs',mode:'setup',customer:'cus_1',setup_intent:'si',metadata:{purpose:'agent_card',profileId:ORG_OWNER,agentKeyId:'key',setupToken:'nonce'}}}});expect(saved).toMatchObject([ORG_OWNER,'key','nonce',{id:'pm_1'}]);expect((await f.ledger.getBillingAccount(ORG_OWNER))?.default_payment_method_id).toBe('pm_shared');});
  it('ignores superseded dedicated setup without changing the shared card',async()=>{const f=ready();f.ledger.saveAgentCard=async()=>false;await handleStripeEvent(deps(f.ledger,fakeStripe()),{id:'evt_stale',type:'checkout.session.completed',data:{object:{id:'cs',mode:'setup',customer:'cus_1',setup_intent:'si',metadata:{purpose:'agent_card',profileId:ORG_OWNER,agentKeyId:'key',setupToken:'old'}}}});expect(f.events.get('evt_stale')?.outcome).toMatch(/superseded/);expect((await f.ledger.getBillingAccount(ORG_OWNER))?.default_payment_method_id).toBe('pm_shared');});
+});
+
+describe("the Stripe account shared with TrainChat", () => {
+  it("names AgentExchange on the card statement for Checkout and agent holds", () => {
+    const hold = offSessionHoldParams({ idempotencyKey: "k", contractId: CONTRACT, customerId: "cus_1", paymentMethodId: "pm_1", currency: "USD", amountCents: 18540, description: "One-pager" });
+    expect(hold).toMatchObject({ capture_method: "manual", off_session: true, confirm: true, statement_descriptor_suffix: "AGENTEXCHANGE", metadata: { contractId: CONTRACT, authorizedBy: "agent" } });
+    const checkout = checkoutSessionParams({ idempotencyKey: "k", contractId: CONTRACT, title: "One-pager", currency: "USD", amountCents: 18000, buyerFeeCents: 540, successUrl: "https://www.agentsexchange.ai/ok", cancelUrl: "https://www.agentsexchange.ai/no" });
+    expect(checkout.payment_intent_data?.statement_descriptor_suffix).toBe("AGENTEXCHANGE");
+  });
+
+  it("ignores another product's Checkout sessions, whatever client_reference_id they carry", async () => {
+    const f = fakeLedger();
+    const claimed: Array<string | null | undefined> = [];
+    const claim = f.ledger.claimEvent;
+    f.ledger.claimEvent = async (id, type, contractId) => { claimed.push(contractId); return claim(id, type, contractId); };
+    const d = deps(f.ledger, fakeStripe());
+    const session = (id: string, ref: string) => ({ id, type: "checkout.session.completed", data: { object: { id: `cs_${id}`, mode: "payment", payment_intent: `pi_${id}`, client_reference_id: ref, metadata: {} } } });
+    expect(await handleStripeEvent(d, session("tc1", "trainchat-user-42"))).toEqual({ outcome: "ignored: missing ids", contractId: undefined });
+    expect(await handleStripeEvent(d, session("tc2", "00000000-0000-4000-8000-000000000000"))).toMatchObject({ outcome: "ignored: contract not found" });
+    expect(claimed).toEqual([null, "00000000-0000-4000-8000-000000000000"]);
+    expect(f.contract.payment_status).toBe("unfunded");
+    expect(f.payments).toEqual([]);
+  });
+
+  it("records an event whose id is not one of our contracts instead of failing the webhook", async () => {
+    const inserts: Array<Record<string, unknown>> = [];
+    const client = { from: () => ({ insert: async (row: Record<string, unknown>) => { inserts.push(row); return { error: row.contract_id ? { code: "23503", message: "violates foreign key constraint" } : null }; } }) };
+    expect(await supabaseLedger(client as never).claimEvent("evt_tc", "checkout.session.completed", "00000000-0000-4000-8000-000000000000")).toBe(true);
+    expect(inserts.map((r) => r.contract_id)).toEqual(["00000000-0000-4000-8000-000000000000", null]);
+  });
 });

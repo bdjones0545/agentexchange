@@ -165,11 +165,23 @@ function str(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A contract id carried by an event, or null. The Stripe account is shared
+ * with TrainChat, whose Checkout sessions can carry their own
+ * client_reference_id; anything that is not a UUID cannot be one of ours.
+ */
+function contractIdFrom(v: unknown): string | null {
+  const s = str(v);
+  return s && UUID.test(s) ? s : null;
+}
+
 /** Apply one Stripe event. Returns what happened, for the response body and the log. */
 async function handleStripeEventCore(deps: FundingDeps, event: StripeLikeEvent): Promise<{ outcome: string; contractId?: string }> {
   const obj = event.data.object;
   const metadata = (obj.metadata ?? {}) as Record<string, unknown>;
-  const contractIdHint = str(metadata.contractId) ?? str(obj.client_reference_id);
+  const contractIdHint = contractIdFrom(metadata.contractId) ?? contractIdFrom(obj.client_reference_id);
   await deps.ledger.claimEvent(event.id, event.type, contractIdHint);
 
   const finish = async (outcome: string, contractId?: string) => {
