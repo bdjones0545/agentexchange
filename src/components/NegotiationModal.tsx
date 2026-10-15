@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { budgetLabel } from "../lib/budgetLabel";
 import type { Opportunity } from "../data/marketplace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { PrimaryButton } from "./PrimaryButton";
@@ -12,12 +13,46 @@ type NegotiationModalProps = {
   onClose: () => void;
 };
 
+const panelClass =
+  "ax-pop relative w-full max-w-xl space-y-6 rounded-3xl border border-white/10 bg-gradient-to-b from-ae-surface to-ae-background-deep p-6 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.05),0_40px_120px_-30px_rgb(0_0_0_/_0.9)] sm:p-8";
+
+function ModalFrame({ children, titleId }: { children: ReactNode; titleId: string }) {
+  return (
+    <div
+      aria-labelledby={titleId}
+      aria-modal="true"
+      className="fixed inset-0 z-50 overflow-y-auto bg-ae-background-deep/70 backdrop-blur-md"
+      role="dialog"
+    >
+      <div className="flex min-h-full items-center justify-center p-4 sm:p-6">{children}</div>
+    </div>
+  );
+}
+
+function ModalHeading({ opportunity, titleId, children }: { opportunity: Opportunity; titleId: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+        Negotiate opportunity
+      </p>
+      <h2 id={titleId} className="mt-2 break-words font-ae-display text-2xl font-semibold tracking-tight text-ae-text sm:text-3xl">
+        {opportunity.title}
+      </h2>
+      <p className="mt-3 inline-flex rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-xs text-ae-text-muted">
+        Posted budget · {budgetLabel(opportunity.budget, opportunity.cadence)}
+      </p>
+      <p className="mt-3 text-sm leading-6 text-ae-text-muted">{children}</p>
+    </div>
+  );
+}
+
 export function NegotiationModal({
   isOpen,
   onClose,
   opportunity,
 }: NegotiationModalProps) {
   const navigate = useNavigate();
+  const titleId = useId();
   const { createdAgents, isSharedMode, ownsAgent, submitNegotiation } =
     useAgentExchange();
   // Shared mode negotiates on behalf of one of your own agents. Demo mode
@@ -36,21 +71,13 @@ export function NegotiationModal({
 
   if (isSharedMode && ownedAgents.length === 0) {
     return (
-      <div className="fixed inset-0 z-50 grid place-items-center bg-ae-background-deep/80 p-4 backdrop-blur-xl">
-        <div className="w-full max-w-xl space-y-5 rounded-ae-xl border border-white/[0.08] bg-ae-surface/95 p-5 shadow-ae-glow">
-          <div>
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-              Negotiate opportunity
-            </p>
-            <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
-              {opportunity.title}
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-ae-text-muted">
-              Negotiations are opened on behalf of an agent you operate.
-              Publish an agent first, then come back to negotiate.
-            </p>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
+      <ModalFrame titleId={titleId}>
+        <div className={panelClass}>
+          <ModalHeading opportunity={opportunity} titleId={titleId}>
+            Negotiations are opened on behalf of an agent you operate.
+            Publish an agent first, then come back to negotiate.
+          </ModalHeading>
+          <div className="flex flex-col gap-3 sm:flex-row">
             <PrimaryButton onClick={() => navigate("/create-agent")} type="button">
               Create an agent
             </PrimaryButton>
@@ -59,7 +86,7 @@ export function NegotiationModal({
             </SecondaryButton>
           </div>
         </div>
-      </div>
+      </ModalFrame>
     );
   }
 
@@ -94,30 +121,17 @@ export function NegotiationModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-ae-background-deep/80 p-4 backdrop-blur-xl">
-      <form
-        className="w-full max-w-xl space-y-5 rounded-ae-xl border border-white/[0.08] bg-ae-surface/95 p-5 shadow-ae-glow"
-        onSubmit={handleSubmit}
-      >
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Negotiate opportunity
-          </p>
-          <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
-            {opportunity.title}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-ae-text-muted">
-            Propose a rate, delivery timeline, and milestone notes.
-          </p>
-        </div>
+    <ModalFrame titleId={titleId}>
+      <form className={panelClass} onSubmit={handleSubmit}>
+        <ModalHeading opportunity={opportunity} titleId={titleId}>
+          Propose a rate, delivery timeline, and milestone notes.
+        </ModalHeading>
 
         {isSharedMode ? (
           <label className="block space-y-2">
-            <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
-              Negotiating agent
-            </span>
+            <span className="ax-label">Negotiating agent</span>
             <select
-              className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+              className="ax-input"
               onChange={(event) => setAgentId(event.target.value)}
               value={selectedAgent?.id ?? ""}
             >
@@ -132,22 +146,18 @@ export function NegotiationModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block space-y-2">
-            <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
-              Rate
-            </span>
+            <span className="ax-label">Rate</span>
             <input
-              className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+              className="ax-input"
               onChange={(event) => setRate(event.target.value)}
               placeholder="$9k / project"
               value={rate}
             />
           </label>
           <label className="block space-y-2">
-            <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
-              Timeline
-            </span>
+            <span className="ax-label">Timeline</span>
             <input
-              className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+              className="ax-input"
               onChange={(event) => setTimeline(event.target.value)}
               placeholder="3 weeks"
               value={timeline}
@@ -156,24 +166,25 @@ export function NegotiationModal({
         </div>
 
         <label className="block space-y-2">
-          <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
-            Milestone notes
-          </span>
+          <span className="ax-label">Milestone notes</span>
           <textarea
-            className="min-h-28 w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none transition placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow"
+            className="ax-input min-h-28 resize-y leading-6"
             onChange={(event) => setMilestoneNotes(event.target.value)}
             placeholder="Describe proposed milestones and acceptance points..."
+            required
+            minLength={8}
             value={milestoneNotes}
           />
+          <span className="block text-xs text-ae-text-muted">Required, at least 8 characters. Rate and timeline are required too.</span>
         </label>
 
-        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <div className="flex flex-col-reverse gap-3 border-t border-white/[0.06] pt-5 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
           <PrimaryButton disabled={!canSubmit} type="submit">
             Submit Negotiation
           </PrimaryButton>
         </div>
       </form>
-    </div>
+    </ModalFrame>
   );
 }

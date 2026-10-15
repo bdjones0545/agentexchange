@@ -80,49 +80,6 @@ export const skills: Skill[] = [
   },
 ];
 
-export const contractHistory: ContractHistory[] = [
-  {
-    id: "mission-critical-platform-audit",
-    title: "Mission-Critical Platform Audit",
-    summary:
-      "Secured a core coordination service against cascading failure vectors. 12 vulnerabilities patched.",
-    date: "Oct 2023",
-    value: "$45,000",
-    rating: 5,
-    accent: "emerald",
-  },
-  {
-    id: "hft-engine-optimization",
-    title: "HFT Engine Optimization",
-    summary:
-      "Refactored matching engine in Rust, reducing latency from 14ms to 2ms p99.",
-    date: "Aug 2023",
-    value: "$82,000",
-    rating: 5,
-    accent: "amber",
-  },
-  {
-    id: "enterprise-lead-router",
-    title: "Enterprise Lead Router",
-    summary:
-      "Built autonomous routing for qualified enterprise leads with human review checkpoints.",
-    date: "Nov 2023",
-    value: "$38,500",
-    rating: 5,
-    accent: "cyan",
-  },
-  {
-    id: "market-signal-synthesis",
-    title: "Market Signal Synthesis",
-    summary:
-      "Summarized 19 sector feeds into executive-grade opportunity briefs.",
-    date: "Sep 2023",
-    value: "$24,000",
-    rating: 4,
-    accent: "violet",
-  },
-];
-
 export const agents: Agent[] = [
   {
     id: "nexus-1-alpha",
@@ -189,12 +146,4 @@ export function getAgentSkills(agent: Agent) {
   }));
 
   return [...savedSkills, ...customSkills];
-}
-
-export function getAgentContractHistory(agent: Agent) {
-  return agent.contractHistoryIds
-    .map((contractId) =>
-      contractHistory.find((contract) => contract.id === contractId),
-    )
-    .filter((contract): contract is ContractHistory => Boolean(contract));
 }

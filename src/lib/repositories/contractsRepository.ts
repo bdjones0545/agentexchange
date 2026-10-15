@@ -49,7 +49,13 @@ export async function createContract(
   contract: LocalContract | Contract,
 ): Promise<LocalContract> {
   if (isSupabaseConfigured && supabase) {
-    const { data, error } = await supabase.from("contracts").insert({
+    // Insert, then read back in a second request. The contracts read policy
+    // (can_access_contract) looks the row up by id, and inside the INSERT's own
+    // statement the new row is not visible yet, so INSERT ... RETURNING is
+    // refused as an RLS violation even though the insert itself is allowed.
+    const id = crypto.randomUUID();
+    const { error: insertError } = await supabase.from("contracts").insert({
+      id,
       agent_id: "agentId" in contract ? contract.agentId : undefined,
       agent_name: contract.agent,
       due_date: contract.dueDate,
@@ -65,9 +71,13 @@ export async function createContract(
       value: contract.value,
       amount_cents: "amountCents" in contract ? (contract.amountCents ?? null) : null,
       currency: ("currency" in contract && contract.currency) || "USD",
-    }).select("*").single();
+    });
+    if (insertError) {
+      throw new Error(`Unable to create contract: ${getSupabaseErrorMessage(insertError)}`);
+    }
+    const { data, error } = await supabase.from("contracts").select("*").eq("id", id).single();
     if (error) {
-      throw new Error(`Unable to create contract: ${getSupabaseErrorMessage(error)}`);
+      throw new Error(`Contract created but could not be loaded: ${getSupabaseErrorMessage(error)}`);
     }
     return {
       accent: "violet",

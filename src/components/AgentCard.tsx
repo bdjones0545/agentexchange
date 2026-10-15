@@ -24,6 +24,10 @@ type AgentCardProps = {
   agent: Agent;
 };
 
+// Ratings and badges come from stored columns and real reviews in every mode;
+// the demo heuristics invented a 5.0 rating and inferred verification.
+const STORED_TRUST = { sharedMode: true } as const;
+
 export function AgentCard({ agent }: AgentCardProps) {
   const navigate = useNavigate();
   const {
@@ -36,19 +40,20 @@ export function AgentCard({ agent }: AgentCardProps) {
     hireRequests,
     localContracts,
     negotiations,
-    savedOpportunities,
-    seedContracts,
     isWorkerAgent,
   } = useAgentExchange();
   const accent = accentStyles[agent.accent];
-  const previewSkills = getAgentSkills(agent).slice(0, 3);
-  const allContracts = [...localContracts, ...seedContracts].map((contract) => {
+  const agentSkills = getAgentSkills(agent);
+  const previewSkills = agentSkills.slice(0, 3);
+  const allContracts = localContracts.map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
     );
 
     return workspace ? applyWorkspaceToContract(contract, workspace) : contract;
   });
+  // The viewer's own saved briefs say nothing about this agent, so they are
+  // left out; otherwise every card read "Reviewing Opportunity".
   const status = getAgentStatus(agent, {
     activities: agentActivities,
     agents: getAllAgents(createdAgents),
@@ -56,67 +61,81 @@ export function AgentCard({ agent }: AgentCardProps) {
     contracts: allContracts,
     hireRequests,
     negotiations,
-    savedOpportunities,
     workspaces: contractWorkspaces,
   });
-  const verificationStatus = getVerificationStatus({
-    agent,
-    contracts: allContracts,
-    disputes: contractDisputes,
-    reviews: agentReviews,
-  });
+  const verificationStatus = getVerificationStatus(
+    {
+      agent,
+      contracts: allContracts,
+      disputes: contractDisputes,
+      reviews: agentReviews,
+    },
+    STORED_TRUST,
+  );
   const completedContracts = getAgentCompletedContracts(agent, allContracts).length;
 
   return (
-    <GlassCard
-      className={`grid gap-5 transition duration-200 hover:-translate-y-1 hover:border-ae-primary/30 lg:grid-cols-[auto_1fr_auto] lg:items-center ${accent.border}`}
-    >
-      <div
-        className={`grid size-20 place-items-center rounded-full border bg-white/[0.04] font-ae-label text-lg font-semibold ${accent.border} ${accent.text} ${accent.glow}`}
-      >
-        {agent.avatarInitials}
-      </div>
-
-      <div className="min-w-0 space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-text-muted">
-              {agent.specialty}
-            </p>
-            <h2 className="mt-2 font-ae-display text-2xl font-semibold tracking-[-0.02em] text-ae-text">
-              {agent.name}
-            </h2>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <VerificationBadge status={verificationStatus} />
-              {isWorkerAgent(agent) ? <WorkerBadge /> : null}
-              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
-                {getAgentRatingLabel(agent, agentReviews)}
-              </span>
-              <span className="rounded-full border border-white/[0.06] bg-white/[0.05] px-3 py-1 font-ae-label text-xs font-semibold text-ae-text-muted">
-                {completedContracts} completed
-              </span>
-            </div>
-          </div>
-          <StatusChip status={status} />
+    <GlassCard interactive className="flex h-full flex-col gap-5 sm:p-6">
+      <div className="flex items-start gap-4">
+        <div
+          aria-hidden
+          className={`grid size-14 shrink-0 place-items-center rounded-2xl border bg-gradient-to-br from-white/[0.08] to-white/[0.02] font-ae-label text-lg font-semibold ${accent.border} ${accent.text} ${accent.glow}`}
+        >
+          {agent.avatarInitials}
         </div>
 
-        <ProfileStats
-          compact
-          revenue={agent.revenue}
-          successRate={agent.successRate}
-          trustScore={agent.trustScore}
-        />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-text-muted">
+            {agent.specialty}
+          </p>
+          <h2 className="mt-1 break-words font-ae-display text-xl font-semibold tracking-tight text-ae-text sm:text-2xl">
+            {agent.name}
+          </h2>
+        </div>
+      </div>
 
+      {agent.description ? (
+        <p className="line-clamp-2 text-sm leading-6 text-ae-text-muted">
+          {agent.description}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusChip status={status} />
+        <VerificationBadge status={verificationStatus} />
+        {isWorkerAgent(agent) ? <WorkerBadge /> : null}
+      </div>
+
+      <ProfileStats
+        compact
+        revenue={agent.revenue}
+        successRate={agent.successRate}
+        trustScore={agent.trustScore}
+      />
+
+      {previewSkills.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {previewSkills.map((skill) => (
             <SkillChip key={skill.id} skill={skill} />
           ))}
+          {agentSkills.length > previewSkills.length ? (
+            <span className="inline-flex items-center px-1 text-xs text-ae-text-muted">
+              +{agentSkills.length - previewSkills.length} more
+            </span>
+          ) : null}
         </div>
-      </div>
+      ) : null}
 
-      <PrimaryButton onClick={() => navigate(`/agent/${agent.id}`)}>
-        View profile
-      </PrimaryButton>
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-4">
+        <p className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ae-text-muted">
+          <span>{getAgentRatingLabel(agent, agentReviews, STORED_TRUST)}</span>
+          <span aria-hidden className="text-white/20">•</span>
+          <span>{completedContracts} completed</span>
+        </p>
+        <PrimaryButton className="px-4 py-2.5" onClick={() => navigate(`/agent/${agent.id}`)}>
+          View profile
+        </PrimaryButton>
+      </div>
     </GlassCard>
   );
 }

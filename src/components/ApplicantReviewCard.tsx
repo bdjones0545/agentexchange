@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { initialsFor } from "../lib/initials";
 
 import { centsToDollarsInput, dollarsInputToCents, parseMoneyToCents } from "../lib/money";
 import { getAllOpportunities } from "../data/localSelectors";
@@ -21,6 +22,31 @@ type ApplicantReviewCardProps =
       negotiation: Negotiation;
       type: "negotiation";
     };
+
+const initials = (name: string) => initialsFor(name);
+
+function CardHeader({ kind, name, subtitle, status }: { kind: string; name: string; subtitle: string; status: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-start gap-3.5">
+      <span
+        aria-hidden
+        className="grid size-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-ae-primary to-ae-cyan font-ae-label text-sm font-bold text-ae-primary-ink"
+      >
+        {initials(name) || "AG"}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.16em] text-ae-text-muted">
+          {kind}
+        </p>
+        <h3 className="mt-1 break-words font-ae-display text-lg font-semibold tracking-tight text-ae-text">
+          {name}
+        </h3>
+        <p className="mt-0.5 break-words text-sm text-ae-text-muted">{subtitle}</p>
+      </div>
+      {status}
+    </div>
+  );
+}
 
 export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
   const {
@@ -53,41 +79,33 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
     const { application } = props;
 
     return (
-      <GlassCard className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-text-muted">
-              Application
-            </p>
-            <h3 className="mt-2 font-ae-display text-xl font-semibold text-ae-text">
-              {application.agentName}
-            </h3>
-            <p className="mt-1 text-sm text-ae-text-muted">
-              {application.opportunityTitle}
-            </p>
-          </div>
-          <ApplicationStatusBadge status={application.status} />
-        </div>
-        <p className="text-sm leading-6 text-ae-text-muted">
+      <GlassCard className="space-y-4 sm:p-6" interactive>
+        <CardHeader
+          kind="Application"
+          name={application.agentName}
+          status={<ApplicationStatusBadge status={application.status} />}
+          subtitle={application.opportunityTitle}
+        />
+        <p className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4 text-sm leading-6 text-ae-text-muted">
           {application.proposal}
         </p>
         {application.status === "pending" ? (
           canManageApplication(application) ? (
-            <div className="space-y-3">
-            <AgreedPriceField
-              amountCents={amountCents}
-              hint={opportunity?.budget ? `Suggested from the brief's budget (${opportunity.budget}).` : undefined}
-              onChange={setAmountInput}
-              value={amountInput}
-            />
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <PrimaryButton disabled={priceMissing} onClick={() => acceptApplication(application.id, amountCents ?? undefined)}>
-                Accept
-              </PrimaryButton>
-              <SecondaryButton onClick={() => rejectApplication(application.id)}>
-                Reject
-              </SecondaryButton>
-            </div>
+            <div className="space-y-4 border-t border-white/[0.06] pt-4">
+              <AgreedPriceField
+                amountCents={amountCents}
+                hint={opportunity?.budget ? `Suggested from the brief's budget (${opportunity.budget}).` : undefined}
+                onChange={setAmountInput}
+                value={amountInput}
+              />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <PrimaryButton disabled={priceMissing} onClick={() => acceptApplication(application.id, amountCents ?? undefined)}>
+                  Accept
+                </PrimaryButton>
+                <SecondaryButton onClick={() => rejectApplication(application.id)}>
+                  Reject
+                </SecondaryButton>
+              </div>
             </div>
           ) : (
             <p className="text-xs text-ae-text-muted">
@@ -102,49 +120,44 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
   const { negotiation } = props;
 
   return (
-    <GlassCard className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-text-muted">
-            Negotiation
-          </p>
-          <h3 className="mt-2 font-ae-display text-xl font-semibold text-ae-text">
-            {negotiation.agentName ?? "Recommended Agent"}
-          </h3>
-          <p className="mt-1 text-sm text-ae-text-muted">
-            {negotiation.opportunityTitle}
-          </p>
-        </div>
-        <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
-          {negotiation.status}
-        </span>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+    <GlassCard className="space-y-4 sm:p-6" interactive>
+      <CardHeader
+        kind="Negotiation"
+        name={negotiation.agentName ?? "Recommended Agent"}
+        status={
+          <span className="inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-ae-amber/25 bg-ae-amber/10 px-2.5 py-1 font-ae-label text-xs font-semibold capitalize text-ae-amber">
+            <span aria-hidden className="size-1.5 rounded-full bg-current" />
+            {negotiation.status}
+          </span>
+        }
+        subtitle={negotiation.opportunityTitle}
+      />
+      <dl className="grid gap-3 sm:grid-cols-3">
+        <div className="min-w-0 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
+          <dt className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
             Rate
-          </p>
-          <p className="mt-1 font-semibold text-ae-text">
+          </dt>
+          <dd className="mt-1 break-words font-semibold text-ae-text">
             {negotiation.counterRate ?? negotiation.rate}
-          </p>
+          </dd>
         </div>
-        <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+        <div className="min-w-0 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
+          <dt className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
             Timeline
-          </p>
-          <p className="mt-1 font-semibold text-ae-text">
+          </dt>
+          <dd className="mt-1 break-words font-semibold text-ae-text">
             {negotiation.counterTimeline ?? negotiation.timeline}
-          </p>
+          </dd>
         </div>
-        <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-3">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">
+        <div className="min-w-0 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
+          <dt className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
             Notes
-          </p>
-          <p className="mt-1 text-sm text-ae-text-muted">
+          </dt>
+          <dd className="mt-1 break-words text-sm text-ae-text-muted">
             {negotiation.counterNote ?? negotiation.milestoneNotes}
-          </p>
+          </dd>
         </div>
-      </div>
+      </dl>
       {(negotiation.status === "pending" || negotiation.status === "countered") &&
       !canManageNegotiation(negotiation) ? (
         <p className="text-xs text-ae-text-muted">
@@ -153,22 +166,25 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
       ) : null}
       {(negotiation.status === "pending" || negotiation.status === "countered") &&
       canManageNegotiation(negotiation) ? (
-        <div className="space-y-3">
+        <div className="space-y-4 border-t border-white/[0.06] pt-4">
           <div className="grid gap-2 sm:grid-cols-3">
             <input
-              className="rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+              aria-label="Counter rate"
+              className="ax-input"
               onChange={(event) => setCounterRate(event.target.value)}
               placeholder="Counter rate"
               value={counterRate}
             />
             <input
-              className="rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+              aria-label="Counter timeline"
+              className="ax-input"
               onChange={(event) => setCounterTimeline(event.target.value)}
               placeholder="Counter timeline"
               value={counterTimeline}
             />
             <input
-              className="rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow"
+              aria-label="Counter note"
+              className="ax-input"
               onChange={(event) => setCounterNote(event.target.value)}
               placeholder="Counter note"
               value={counterNote}
@@ -180,7 +196,7 @@ export function ApplicantReviewCard(props: ApplicantReviewCardProps) {
             onChange={setAmountInput}
             value={amountInput}
           />
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col flex-wrap gap-2 sm:flex-row">
             <PrimaryButton
               disabled={priceMissing || (negotiation.amountCents !== undefined && amountCents !== negotiation.amountCents)}
               onClick={() => acceptNegotiation(negotiation.id, amountCents ?? undefined)}

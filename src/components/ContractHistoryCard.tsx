@@ -11,26 +11,32 @@ export function ContractHistoryCard({ contract }: ContractHistoryCardProps) {
   const accent = accentStyles[contract.accent];
 
   return (
-    <GlassCard className={`space-y-4 ${accent.border}`}>
+    <GlassCard className="space-y-4">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="font-ae-display text-xl font-semibold text-ae-text">
+        <div className="min-w-0">
+          <h3 className="font-ae-display text-lg font-semibold tracking-tight text-ae-text">
             {contract.title}
           </h3>
-          <p className="mt-2 text-sm leading-6 text-ae-text-muted">
-            {contract.summary}
-          </p>
+          {contract.summary ? (
+            <p className="mt-1.5 text-sm leading-6 text-ae-text-muted">
+              {contract.summary}
+            </p>
+          ) : null}
         </div>
-        <div className={`font-ae-label text-xs font-semibold ${accent.text}`}>
-          {"*".repeat(contract.rating)}
-        </div>
+        {contract.rating > 0 ? (
+          <span
+            aria-label={`Rated ${contract.rating} of 5`}
+            className={`shrink-0 text-sm tracking-[0.15em] ${accent.text}`}
+            role="img"
+          >
+            {"★".repeat(contract.rating)}
+          </span>
+        ) : null}
       </div>
 
-      <div className="flex items-center justify-between border-t border-white/[0.06] pt-4">
-        <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-text-muted">
-          {contract.date}
-        </p>
-        <p className="font-ae-display text-lg font-semibold text-ae-text">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-4">
+        <p className="text-xs text-ae-text-muted">{contract.date}</p>
+        <p className="font-ae-display text-lg font-semibold tabular-nums text-ae-text">
           {contractPriceLabel(contract)}
         </p>
       </div>

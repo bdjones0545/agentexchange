@@ -11,12 +11,13 @@ export function CategoryCard({ category }: CategoryCardProps) {
   const accent = accentStyles[category.accent];
 
   return (
-    <Link to={`/marketplace?category=${encodeURIComponent(category.title)}`} className="block rounded-ae-lg"><GlassCard
-      className={`group flex min-h-48 flex-col justify-between transition duration-200 hover:-translate-y-1 hover:border-ae-primary/30 ${accent.border}`}
+    <Link to={`/marketplace?category=${encodeURIComponent(category.title)}`} className="block h-full rounded-2xl"><GlassCard
+      interactive
+      className={`group flex h-full min-h-48 flex-col justify-between ${accent.border}`}
     >
       <div className="space-y-4">
         <div
-          className={`grid size-12 place-items-center rounded-ae-md border font-ae-label text-sm font-semibold ${accent.badge}`}
+          className={`grid size-12 place-items-center rounded-xl border font-ae-label text-sm font-semibold ${accent.badge}`}
         >
           {category.title.slice(0, 2).toUpperCase()}
         </div>
@@ -40,7 +41,7 @@ export function CategoryCard({ category }: CategoryCardProps) {
           </p>
         </div>
         <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted transition group-hover:text-ae-primary">
-          Explore
+          Explore <span aria-hidden className="inline-block transition group-hover:translate-x-0.5">→</span>
         </span>
       </div>
     </GlassCard></Link>

@@ -1,4 +1,5 @@
 import type { NetworkNode } from "../data/operations";
+import { initialsFor } from "../lib/initials";
 import { accentStyles } from "./accentStyles";
 import { GlassCard } from "./GlassCard";
 
@@ -6,56 +7,51 @@ type AgentNetworkGraphProps = {
   nodes: NetworkNode[];
 };
 
+const initials = (name: string) => initialsFor(name);
+
+/** The agents the viewer works with, one row each, with what they are working on. */
 export function AgentNetworkGraph({ nodes }: AgentNetworkGraphProps) {
   return (
-    <GlassCard className="space-y-5">
+    <GlassCard className="space-y-6 sm:p-6">
       <div>
         <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
           Agent Network
         </p>
-        <h2 className="mt-2 font-ae-display text-3xl font-semibold text-ae-text">
-          Collaboration flow
+        <h2 className="mt-2 font-ae-display text-2xl font-semibold tracking-tight text-ae-text">
+          Agents on your contracts
         </h2>
       </div>
 
-      <div className="grid gap-3">
-        {nodes.map((node, index) => {
-          const accent = accentStyles[node.accent];
-          const isLast = index === nodes.length - 1;
+      {nodes.length > 0 ? (
+        <ul className="space-y-2.5">
+          {nodes.map((node) => {
+            const accent = accentStyles[node.accent] ?? accentStyles.violet;
 
-          return (
-            <div className="grid gap-3" key={node.id}>
-              <div
-                className={`grid gap-4 rounded-ae-lg border bg-white/[0.04] p-4 sm:grid-cols-[auto_1fr_auto] sm:items-center ${accent.border} ${accent.glow}`}
+            return (
+              <li
+                className="flex items-center gap-3.5 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3 transition hover:border-white/[0.12] hover:bg-white/[0.05]"
+                key={node.id}
               >
-                <div
-                  className={`grid size-12 place-items-center rounded-full border font-ae-label text-sm font-semibold ${accent.badge}`}
+                <span
+                  aria-hidden
+                  className={`grid size-10 shrink-0 place-items-center rounded-xl border font-ae-label text-xs font-bold ${accent.badge}`}
                 >
-                  {index + 1}
-                </div>
-                <div>
-                  <h3 className="font-ae-display text-xl font-semibold text-ae-text">
-                    {node.name}
-                  </h3>
-                  <p className="mt-1 text-sm text-ae-text-muted">
-                    {node.specialty}
-                  </p>
-                </div>
-                <span className={`font-ae-label text-xs font-semibold ${accent.text}`}>
-                  Online
+                  {initials(node.name)}
                 </span>
-              </div>
-              {!isLast ? (
-                <div className="flex justify-center">
-                  <span className="font-ae-display text-2xl text-ae-primary">
-                    v
-                  </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold text-ae-text">{node.name}</p>
+                  <p className="truncate text-sm text-ae-text-muted">{node.specialty}</p>
                 </div>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
+                <span aria-hidden className={`size-2 shrink-0 rounded-full ${accent.dot}`} />
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="rounded-xl border border-dashed border-white/[0.1] px-4 py-6 text-center text-sm text-ae-text-muted">
+          No agents on your contracts yet. Agents appear here once an application or hire request is accepted.
+        </p>
+      )}
     </GlassCard>
   );
 }
