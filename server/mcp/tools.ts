@@ -1,5 +1,5 @@
 import { isTestListing } from "../../src/lib/publicListings.js";
-import { SERVICE_KINDS, agentRules, serviceBriefColumns, serviceBriefFromRow, serviceSummary, serviceTermsFromJson, validateServiceBrief, weekStages, type ServiceKind } from "../../src/lib/managedService.js";
+import { SERVICE_COLUMNS, SERVICE_KINDS, SUPPORT_CHANNELS, agentRules, serviceBriefColumns, serviceBriefFromRow, serviceSummary, serviceTermsFromJson, validateServiceBrief, weekStages, type ServiceKind, type SupportChannel } from "../../src/lib/managedService.js";
 import { setupLink, setupStatus } from '../agentSetup.js';
 import { serviceClient } from '../service.js';
 import { sellerGateway } from '../connect.js';
@@ -109,7 +109,7 @@ async function opportunityOf(db: SupabaseClient, c: Row): Promise<Row | null> {
   if (!opportunityId) return null;
   const { data: opp } = await db
     .from("opportunities")
-    .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,work_type,service_kind,service_platforms,ad_spend_cap_cents,service_weeks")
+    .select(`id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,${SERVICE_COLUMNS}`)
     .eq("id", opportunityId)
     .maybeSingle();
   return opp ? withService(opp as Row) : null;
@@ -163,7 +163,7 @@ async function gateDeliverable(
   };
   try {
     const answers = await ctx.gate({ brief, title: input.title, notes: input.notes });
-    return decide(answers, priorReturns, ctx.now, { service: Boolean(brief.service) });
+    return decide(answers, priorReturns, ctx.now, { service: Boolean(brief.service), support: brief.service?.kind === "support" });
   } catch (e) {
     console.warn("[gate] evaluator failed; accepting without evaluation:", e instanceof Error ? e.message : e);
     return decide(null, priorReturns, ctx.now);
@@ -540,7 +540,7 @@ export const TOOLS = [
       const op = await ctx.open();
       let q = op.db
         .from("opportunities")
-        .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at,work_type,service_kind,service_platforms,ad_spend_cap_cents,service_weeks")
+        .select(`id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at,${SERVICE_COLUMNS}`)
         .eq("status", "open")
         .order("created_at", { ascending: false })
         .limit(200);
@@ -566,7 +566,7 @@ export const TOOLS = [
       const op = await ctx.open();
       const { data: o, error } = await op.db
         .from("opportunities")
-        .select("id,title,organization_name,organization_id,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at,work_type,service_kind,service_platforms,ad_spend_cap_cents,service_weeks")
+        .select(`id,title,organization_name,organization_id,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at,${SERVICE_COLUMNS}`)
         .eq("id", input.opportunityId)
         .maybeSingle();
       if (error) return fail("get_opportunity", error);
@@ -689,7 +689,7 @@ export const TOOLS = [
   tool({
     name: "post_opportunity",
     description:
-      "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it. Set `service` for a managed service (paid ads, SEO, social, email): weekly work in your own accounts, where the budget is the agent's fee per week and any ad spend is capped and paid by you to the platform.",
+      "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it. Set `service` for a managed service (paid ads, SEO, social, email, customer support): weekly work in your own accounts, where the budget is the agent's fee per week and any ad spend is capped and paid by you to the platform. Customer support also needs `service.support`, including the most the agent may refund or credit one customer.",
     schema: z.object({
       organization: z.string().min(2).max(120),
       title: z.string().min(4).max(160),
@@ -706,6 +706,16 @@ export const TOOLS = [
           platforms: z.array(z.string().min(1).max(48)).max(8).describe("Platforms you will share access to, e.g. \"Meta Ads\""),
           adSpendCapCents: z.number().int().min(0).nullable().describe("Weekly ad spend you pay the platform directly; null when there is none"),
           weeks: z.number().int().min(1).max(52),
+          support: z
+            .object({
+              channels: z.array(z.enum(Object.keys(SUPPORT_CHANNELS) as [SupportChannel, ...SupportChannel[]])).max(3),
+              hours: z.string().max(160).nullable().describe("When the agent answers, e.g. \"Mon–Fri 9am–6pm ET\""),
+              weeklyVolume: z.number().int().min(1).max(1_000_000).nullable().describe("Conversations you expect a week"),
+              refundLimitCents: z.number().int().min(0).max(100_000_000).nullable().describe("The most the agent may refund or credit one customer; 0 for none"),
+              escalationContact: z.string().max(200).nullable().describe("Who the agent hands off to; shown on the public brief, so use a team address or role"),
+            })
+            .optional()
+            .describe("Required when kind is \"support\""),
         })
         .optional()
         .describe("Present only for a managed service"),

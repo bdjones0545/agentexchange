@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Proves the managed-service rules in
-# supabase/migrations/*_managed_services.sql on a plain local Postgres:
-# terms frozen at contract creation, the seeded checklist, and who may renew a
-# week, under real RLS as three actors:
+# supabase/migrations/*_managed_services.sql and
+# supabase/migrations/*_customer_support_service.sql on a plain local Postgres:
+# terms frozen at contract creation (including the support authority limit), the
+# seeded checklist, and who may renew a week, under real RLS as three actors:
 #   A = organization side, B = agent operator, C = unrelated user.
 #
 # Every attack asserts the forbidden state is UNCHANGED afterwards. Exit 0 only
@@ -33,9 +34,12 @@ SQL
 
 psql -d "$DB" -v ON_ERROR_STOP=1 -q -f supabase/schema.sql
 MIGRATION=$(ls supabase/migrations/*_managed_services.sql)
+SUPPORT_MIGRATION=$(ls supabase/migrations/*_customer_support_service.sql)
 psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$MIGRATION"
 # Reapplying must be safe.
 psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$MIGRATION"
+psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$SUPPORT_MIGRATION"
+psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$SUPPORT_MIGRATION"
 
 psql -d "$DB" -v ON_ERROR_STOP=1 -q <<'SQL'
 grant all on all tables in schema public to anon, authenticated, service_role;
@@ -149,6 +153,75 @@ run_check "A9 a disputed week cannot be renewed" attack \
 run_check "L7 the agent side still cannot tick a seeded milestone (organization only)" attack \
   "select act_as('$B'); update contract_milestones set completed=true where contract_id='$W1' and title='Plan approved';" \
   "select completed from contract_milestones where contract_id='$W1' and title='Plan approved'" "f"
+
+# Customer support: channels, coverage, volume and the authority limit.
+SUP=60606060-6060-4060-8060-606060606060; SUP0=61616161-6161-4161-8161-616161616161
+APP_SUP=62626262-6262-4262-8262-626262626262; APP_SUP0=63636363-6363-4363-8363-636363636363
+SW1=64646464-6464-4464-8464-646464646464; SW2=65656565-6565-4565-8565-656565656565
+SZ1=66666666-6666-4666-8666-666666666666
+SUPPORT_COLS="organization_id, organization_name, title, category, work_type, service_kind, service_platforms, service_weeks, support_channels, support_hours, support_weekly_volume, refund_limit_cents, escalation_contact"
+
+psql -d "$DB" -v ON_ERROR_STOP=1 -qAt <<SQL >/dev/null
+select act_as('$A');
+insert into opportunities (id, $SUPPORT_COLS)
+  values ('$SUP', '$ORG', 'Acme', 'Answer our inbox and phone', 'Enterprise automation', 'managed_service', 'support', array['Gorgias','Aircall'], 2, array['email','phone'], 'Mon–Fri 9am–6pm ET', 300, 5000, 'Sam Lee, support@acme.test');
+insert into opportunities (id, $SUPPORT_COLS)
+  values ('$SUP0', '$ORG', 'Acme', 'Answer our chat', 'Enterprise automation', 'managed_service', 'support', array['Intercom'], 1, array['chat'], 'Weekends', 80, 0, 'support@acme.test');
+select act_as('$B');
+insert into applications (id, opportunity_id, agent_id, agent_name, proposal) values ('$APP_SUP', '$SUP', '$AGENT', 'Maria', 'I answer support');
+insert into applications (id, opportunity_id, agent_id, agent_name, proposal) values ('$APP_SUP0', '$SUP0', '$AGENT', 'Maria', 'I answer chat');
+SQL
+
+run_check "S2 a support brief needs an authority limit" attack \
+  "select act_as('$A'); insert into opportunities ($SUPPORT_COLS) values ('$ORG','Acme','No limit','Sales','managed_service','support','{}',2,array['email'],'24/7',100,null,'support@acme.test');" \
+  "select count(*) from opportunities where title='No limit'" "0"
+run_check "S3 a support brief needs an escalation contact" attack \
+  "select act_as('$A'); insert into opportunities ($SUPPORT_COLS) values ('$ORG','Acme','No contact','Sales','managed_service','support','{}',2,array['email'],'24/7',100,5000,null);" \
+  "select count(*) from opportunities where title='No contact'" "0"
+run_check "S4 a support brief needs at least one channel" attack \
+  "select act_as('$A'); insert into opportunities ($SUPPORT_COLS) values ('$ORG','Acme','No channel','Sales','managed_service','support','{}',2,'{}','24/7',100,5000,'x');" \
+  "select count(*) from opportunities where title='No channel'" "0"
+run_check "S5 channels are only email, chat or phone" attack \
+  "select act_as('$A'); insert into opportunities ($SUPPORT_COLS) values ('$ORG','Acme','Fax','Sales','managed_service','support','{}',2,array['fax'],'24/7',100,5000,'x');" \
+  "select count(*) from opportunities where title='Fax'" "0"
+run_check "S6 coverage hours are length-capped" attack \
+  "select act_as('$A'); insert into opportunities ($SUPPORT_COLS) values ('$ORG','Acme','Long hours','Sales','managed_service','support','{}',2,array['email'],repeat('x',161),100,5000,'x');" \
+  "select count(*) from opportunities where title='Long hours'" "0"
+run_check "S7 a negative authority limit is refused" attack \
+  "select act_as('$A'); insert into opportunities ($SUPPORT_COLS) values ('$ORG','Acme','Negative','Sales','managed_service','support','{}',2,array['email'],'24/7',100,-1,'x');" \
+  "select count(*) from opportunities where title='Negative'" "0"
+
+run_check "L8 a support contract freezes channels, hours, volume, limit and contact, ignoring client-sent terms" legit \
+  "select act_as('$A'); insert into contracts (id, organization_id, agent_id, organization_name, agent_name, title, source_id, source_type, amount_cents, service_terms) values ('$SW1','$ORG','$AGENT','Acme','Maria','Answer our inbox and phone','$APP_SUP','application',30000,'{\"kind\":\"support\",\"support\":{\"refundLimitCents\":99999999}}');" \
+  "select concat_ws(':', service_terms->>'kind', service_terms->>'adSpendCapCents', service_terms#>>'{support,channels,1}', service_terms#>>'{support,hours}', service_terms#>>'{support,weeklyVolume}', service_terms#>>'{support,refundLimitCents}', service_terms#>>'{support,escalationContact}') from contracts where id='$SW1'" \
+  "support:phone:Mon–Fri 9am–6pm ET:300:5000:Sam Lee, support@acme.test"
+run_check "L9 support week 1 starts with access per platform, playbook, go-live and report milestones" legit "select 1" \
+  "select string_agg(title, ' | ' order by created_at, title) from contract_milestones where contract_id='$SW1'" \
+  "Access shared: Aircall | Access shared: Gorgias | Go-live | Playbook approved | Week 1 of 2 report"
+run_check "L10 the playbook milestone states the authority limit and who to escalate to" legit "select 1" \
+  "select (notes like '%refund or credit up to \$50 per customer; anything more goes to Sam Lee, support@acme.test.')::text from contract_milestones where contract_id='$SW1' and title='Playbook approved'" "true"
+run_check "L11 a support week report asks for volume, response time, resolution, CSAT, escalations and transcripts" legit "select 1" \
+  "select (notes like 'Volume, response time, resolution rate, CSAT, escalations, refunds and credits, and sample transcripts%')::text from contract_milestones where contract_id='$SW1' and title='Week 1 of 2 report'" "true"
+run_check "L12 a \$0 limit means the agent may not refund at all" legit \
+  "select act_as('$A'); insert into contracts (id, organization_id, agent_id, organization_name, agent_name, title, source_id, source_type, amount_cents) values ('$SZ1','$ORG','$AGENT','Acme','Maria','Answer our chat','$APP_SUP0','application',10000);" \
+  "select (notes like '%may not refund or credit customers; every request goes to support@acme.test.')::text from contract_milestones where contract_id='$SZ1' and title='Playbook approved'" "true"
+run_check "A10 the agent operator cannot raise the authority limit on the contract" attack \
+  "select act_as('$B'); update contracts set service_terms = jsonb_set(service_terms, '{support,refundLimitCents}', '99999999') where id='$SW1';" \
+  "select service_terms#>>'{support,refundLimitCents}' from contracts where id='$SW1'" "5000"
+run_check "A11 the organization cannot raise the authority limit on the contract" attack \
+  "select act_as('$A'); update contracts set service_terms = jsonb_set(service_terms, '{support,refundLimitCents}', '99999999') where id='$SW1';" \
+  "select service_terms#>>'{support,refundLimitCents}' from contracts where id='$SW1'" "5000"
+run_check "L13 editing the brief afterwards leaves the agreed limit alone" legit \
+  "select act_as('$A'); update opportunities set refund_limit_cents = 99999 where id='$SUP';" \
+  "select (select refund_limit_cents from opportunities where id='$SUP') || ':' || (service_terms#>>'{support,refundLimitCents}') from contracts where id='$SW1'" "99999:5000"
+
+psql -d "$DB" -qAt -c "update contracts set payment_status='authorized' where id='$SW1';" >/dev/null
+run_check "L14 support week 2 keeps the agreed limit and starts with just its report" legit \
+  "select act_as('$A'); insert into contracts (id, organization_id, agent_id, organization_name, agent_name, title, source_id, source_type) values ('$SW2','$ORG','$AGENT','Acme','Maria','x','$SW1','renewal');" \
+  "select (service_terms#>>'{support,refundLimitCents}') || ':' || (select string_agg(title, ' | ') from contract_milestones where contract_id='$SW2') from contracts where id='$SW2'" "5000:Week 2 of 2 report"
+run_check "L15 the agent side cannot tick Go-live (organization only)" attack \
+  "select act_as('$B'); update contract_milestones set completed=true where contract_id='$SW1' and title='Go-live';" \
+  "select completed from contract_milestones where contract_id='$SW1' and title='Go-live'" "f"
 
 if [ "$FAILED" -ne 0 ]; then
   echo "Managed-service database verification FAILED"

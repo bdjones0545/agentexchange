@@ -6,6 +6,8 @@ import {
   SERVICE_KINDS,
   accessSteps,
   buyerStages,
+  formatChannels,
+  formatRefundLimit,
   formatSpendCap,
   renewalCheck,
   weekStages,
@@ -22,7 +24,8 @@ type ManagedServicePanelProps = {
 
 /**
  * One week of a managed service: where the agent works, how access is shared,
- * the ad-spend cap, and, for the organization, starting the next week.
+ * the ad-spend cap or the support authority limit, and, for the organization,
+ * starting the next week.
  */
 export function ManagedServicePanel({ contract, isOrganizationSide }: ManagedServicePanelProps) {
   const navigate = useNavigate();
@@ -37,6 +40,8 @@ export function ManagedServicePanel({ contract, isOrganizationSide }: ManagedSer
   const renewal = renewalCheck(contract);
   const stages = isOrganizationSide ? buyerStages(terms) : weekStages(terms);
   const isLastWeek = terms.week >= terms.weeks;
+  const support = terms.kind === "support" ? terms.support : undefined;
+  const contact = support?.escalationContact ?? (isOrganizationSide ? "you" : "the buyer");
 
   async function startNextWeek() {
     setBusy(true);
@@ -90,6 +95,36 @@ export function ManagedServicePanel({ contract, isOrganizationSide }: ManagedSer
               ? "The platform bills ad spend to your own account; it never goes through AgentExchange. Set the same limit as the account's spending limit, so a mistake can't overspend."
               : "The platform bills ad spend to the buyer's own account. Never raise budgets above the cap."}
           </p>
+        ) : null}
+
+        {support ? (
+          <div className="space-y-3">
+            <p className="rounded-xl border border-ae-amber/25 bg-ae-amber/[0.07] px-3.5 py-2.5 text-sm leading-6 text-ae-text-muted">
+              <span className="font-semibold text-ae-amber">Authority limit: {formatRefundLimit(support.refundLimitCents, contract.currency ?? "USD")}.</span>{" "}
+              {isOrganizationSide
+                ? `Anything above it, or outside the playbook, goes to ${contact}. Where your help desk or store allows it, give the agent's seat the same refund limit.`
+                : `Never refund or credit above it. Send anything above it, or outside the playbook, to ${contact}.`}
+            </p>
+            <dl className="grid gap-3 text-sm sm:grid-cols-3">
+              <div>
+                <dt className="text-xs text-ae-text-muted">Channels</dt>
+                <dd className="mt-0.5 text-ae-text">{support.channels.length ? formatChannels(support.channels) : "Agreed with the agent"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-ae-text-muted">Coverage</dt>
+                <dd className="mt-0.5 break-words text-ae-text">{support.hours ?? "Agreed with the agent"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-ae-text-muted">Expected volume</dt>
+                <dd className="mt-0.5 text-ae-text">{support.weeklyVolume ? `About ${support.weeklyVolume.toLocaleString("en-US")} a week` : "Not stated"}</dd>
+              </div>
+            </dl>
+            {support.channels.includes("phone") ? (
+              <p className="text-xs leading-5 text-ae-text-muted">
+                On calls the agent says it is an AI, follows call-recording consent, hands the caller to a person on request, and never takes card numbers by voice.
+              </p>
+            ) : null}
+          </div>
         ) : null}
 
         {terms.platforms.length ? (

@@ -8,10 +8,14 @@ import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
 import {
   ACCESS_RULES,
+  MAX_ESCALATION_CONTACT_LENGTH,
+  MAX_SUPPORT_HOURS_LENGTH,
   SERVICE_KINDS,
+  SUPPORT_CHANNELS,
   validateServiceBrief,
   type ServiceBrief,
   type ServiceKind,
+  type SupportChannel,
   type WorkType,
 } from "../lib/managedService";
 import { useAuth } from "../state/AuthContext";
@@ -55,10 +59,20 @@ const serviceSteps = [
   ["Pay week by week", "Each week is its own fixed-price contract you fund and approve. Ad spend is billed by the platform to your own account."],
 ];
 
+const supportSteps = [
+  ["Give the agent a seat, never a password", "You add the agent's operator as an agent seat or user in your help desk, inbox or phone system, or forward a number, and can remove it at any time."],
+  ["Approve the playbook, then go live", "The agent's first deliverable is the playbook. It answers real customers only after you approve it and review its test conversations."],
+  ["Pay week by week", "Each week is its own fixed-price contract you fund and approve. Refunds and credits stay within the limit you set."],
+];
+
 const WORK_TYPES: Array<{ value: WorkType; title: string; body: string }> = [
   { value: "deliverable", title: "One-off deliverable", body: "A report, plan, design, code or other finished work, paid when you approve it." },
-  { value: "managed_service", title: "Managed service", body: "An agent works in your own accounts (ads, SEO, social, email) week by week." },
+  { value: "managed_service", title: "Managed service", body: "An agent works in your own accounts (ads, SEO, social, email, customer support) week by week." },
 ];
+
+function chipClass(on: boolean) {
+  return `rounded-full border px-3.5 py-1.5 text-sm transition ${on ? "border-ae-primary/60 bg-ae-primary/15 text-ae-primary" : "border-white/15 text-ae-text-muted hover:border-white/30 hover:text-ae-text"}`;
+}
 
 /** Dollars typed in the form to cents, or null when blank or invalid. */
 function dollarsToCents(value: string): number | null {
@@ -84,6 +98,11 @@ export function PostOpportunityPage() {
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [spendCap, setSpendCap] = useState("");
   const [weeks, setWeeks] = useState("4");
+  const [channels, setChannels] = useState<SupportChannel[]>([]);
+  const [coverageHours, setCoverageHours] = useState("");
+  const [weeklyVolume, setWeeklyVolume] = useState("");
+  const [refundLimit, setRefundLimit] = useState("");
+  const [escalationContact, setEscalationContact] = useState("");
   // The home page brief box hands its text over as ?title=.
   const [searchParams] = useSearchParams();
   const [title, setTitle] = useState(() => (searchParams.get("title") ?? "").slice(0, 160));
@@ -96,6 +115,17 @@ export function PostOpportunityPage() {
         platforms,
         adSpendCapCents: kindInfo.adSpend ? dollarsToCents(spendCap) : null,
         weeks: Number.parseInt(weeks, 10) || 0,
+        ...(serviceKind === "support"
+          ? {
+              support: {
+                channels,
+                hours: coverageHours.trim() || null,
+                weeklyVolume: Number.parseInt(weeklyVolume.replace(/[,\s]/g, ""), 10) || null,
+                refundLimitCents: dollarsToCents(refundLimit),
+                escalationContact: escalationContact.trim() || null,
+              },
+            }
+          : {}),
       }
     : null;
   const serviceProblems = service ? validateServiceBrief(service) : [];
@@ -116,6 +146,10 @@ export function PostOpportunityPage() {
 
   function togglePlatform(platform: string) {
     setPlatforms((current) => (current.includes(platform) ? current.filter((p) => p !== platform) : [...current, platform]));
+  }
+
+  function toggleChannel(channel: SupportChannel) {
+    setChannels((current) => (current.includes(channel) ? current.filter((c) => c !== channel) : [...current, channel]));
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -263,7 +297,7 @@ export function PostOpportunityPage() {
                             <button
                               key={platform}
                               aria-pressed={on}
-                              className={`rounded-full border px-3.5 py-1.5 text-sm transition ${on ? "border-ae-primary/60 bg-ae-primary/15 text-ae-primary" : "border-white/15 text-ae-text-muted hover:border-white/30 hover:text-ae-text"}`}
+                              className={chipClass(on)}
                               onClick={() => togglePlatform(platform)}
                               type="button"
                             >
@@ -274,6 +308,69 @@ export function PostOpportunityPage() {
                       </div>
                       <Hint>{ACCESS_RULES}</Hint>
                     </fieldset>
+                  ) : null}
+                  {serviceKind === "support" ? (
+                    <>
+                      <fieldset className="space-y-2">
+                        <legend className="ax-label">Channels the agent answers</legend>
+                        <div className="flex flex-wrap gap-2">
+                          {(Object.keys(SUPPORT_CHANNELS) as SupportChannel[]).map((channel) => (
+                            <button key={channel} aria-pressed={channels.includes(channel)} className={chipClass(channels.includes(channel))} onClick={() => toggleChannel(channel)} type="button">
+                              {SUPPORT_CHANNELS[channel]}
+                            </button>
+                          ))}
+                        </div>
+                        {channels.includes("phone") ? (
+                          <Hint>On calls the agent says it is an AI, follows call-recording consent, hands the caller to a person on request, and never takes card numbers by voice.</Hint>
+                        ) : null}
+                      </fieldset>
+                      <div className="grid gap-5 sm:grid-cols-2">
+                        <label className="block space-y-2">
+                          <span className="ax-label">Coverage hours</span>
+                          <input
+                            className="ax-input"
+                            maxLength={MAX_SUPPORT_HOURS_LENGTH}
+                            onChange={(event) => setCoverageHours(event.target.value)}
+                            placeholder="Mon–Fri 9am–6pm ET"
+                            value={coverageHours}
+                          />
+                          <Hint>When the agent answers, with the time zone.</Hint>
+                        </label>
+                        <label className="block space-y-2">
+                          <span className="ax-label">Expected weekly volume</span>
+                          <input
+                            className="ax-input"
+                            inputMode="numeric"
+                            onChange={(event) => setWeeklyVolume(event.target.value)}
+                            placeholder="300"
+                            value={weeklyVolume}
+                          />
+                          <Hint>Conversations a week, across all channels. An estimate is fine.</Hint>
+                        </label>
+                        <label className="block space-y-2">
+                          <span className="ax-label">Refund or credit limit per customer</span>
+                          <input
+                            className="ax-input"
+                            inputMode="decimal"
+                            onChange={(event) => setRefundLimit(event.target.value)}
+                            placeholder="$50"
+                            value={refundLimit}
+                          />
+                          <Hint>The most the agent may refund or credit one customer on its own. Use $0 if it may not refund at all.</Hint>
+                        </label>
+                        <label className="block space-y-2">
+                          <span className="ax-label">Escalation contact</span>
+                          <input
+                            className="ax-input"
+                            maxLength={MAX_ESCALATION_CONTACT_LENGTH}
+                            onChange={(event) => setEscalationContact(event.target.value)}
+                            placeholder="Support lead, support@acme.com"
+                            value={escalationContact}
+                          />
+                          <Hint>Who gets anything above the limit or outside the playbook. It is shown on the brief, so use a team address or a role rather than a personal number.</Hint>
+                        </label>
+                      </div>
+                    </>
                   ) : null}
                   <div className="grid gap-5 sm:grid-cols-2">
                     {kindInfo.adSpend ? (
@@ -303,7 +400,7 @@ export function PostOpportunityPage() {
                       <Hint>Each week is its own contract you fund and approve. The agent agrees to this many weeks.</Hint>
                     </label>
                   </div>
-                  {serviceProblems.length && (platforms.length || spendCap) ? (
+                  {serviceProblems.length && (platforms.length || spendCap || channels.length || refundLimit || escalationContact) ? (
                     <ul className="space-y-1 text-sm text-ae-amber">
                       {serviceProblems.map((problem) => <li key={problem}>{problem}</li>)}
                     </ul>
@@ -386,7 +483,7 @@ export function PostOpportunityPage() {
           <GlassCard className="p-6">
             <h2 id="post-steps-title" className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">How it works</h2>
             <ol className="mt-5 space-y-5">
-              {(isService ? serviceSteps : steps).map(([heading, body], index) => (
+              {(isService ? (serviceKind === "support" ? supportSteps : serviceSteps) : steps).map(([heading, body], index) => (
                 <li key={heading} className="flex gap-3.5">
                   <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full bg-ae-primary/15 font-mono text-xs font-semibold text-ae-primary">{index + 1}</span>
                   <div>

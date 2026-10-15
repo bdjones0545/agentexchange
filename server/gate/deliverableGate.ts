@@ -10,6 +10,7 @@
 // flags the organization can see.
 
 import { SERVICE_KINDS, formatSpendCap, type ServiceTerms } from "../../src/lib/managedService.js";
+import { formatCents } from "../../src/lib/money.js";
 
 export type GateAnswers = {
   /** P(the deliverable delivers the brief's scope, outputs and success criteria). */
@@ -22,6 +23,8 @@ export type GateAnswers = {
   quality: number;
   /** Managed services with an ad-spend cap only: P(it proposes, authorizes or reports spend above the weekly cap). */
   exceedsSpendCap?: number;
+  /** Customer support only: P(it proposes, authorizes or reports a refund or credit to one customer above the authority limit). */
+  exceedsRefundLimit?: number;
 };
 
 export type GateVerdict = "passed" | "returned" | "accepted_with_flags" | "unavailable";
@@ -74,6 +77,8 @@ export const GATE_THRESHOLDS = {
   maxReturns: 2,
   /** exceedsSpendCap at or above this returns the work: spend over the buyer's weekly cap. Uncalibrated; mirrors unsupportedBlock. */
   spendCapBlock: 0.85,
+  /** exceedsRefundLimit at or above this returns the work: a refund or credit over the authority limit. Uncalibrated; mirrors spendCapBlock. */
+  refundLimitBlock: 0.85,
 } as const;
 
 export const JEV_MODEL_ID = "typesafe-ai/jev";
@@ -82,7 +87,12 @@ const GATEWAY_URL = "https://ai-gateway.vercel.sh/v4/ai/evaluation-model";
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
 /** Pure decision: answers + how many times this contract's work was already returned → verdict. */
-export function decide(answers: GateAnswers | null, priorReturns: number, now: () => string, opts: { service?: boolean } = {}): GateResult {
+export function decide(
+  answers: GateAnswers | null,
+  priorReturns: number,
+  now: () => string,
+  opts: { service?: boolean; support?: boolean } = {},
+): GateResult {
   const attempt = priorReturns + 1;
   const base = { attempt, answers, model: JEV_MODEL_ID, evaluatedAt: now(), thresholds: GATE_THRESHOLDS };
   if (!answers) return { ...base, verdict: "unavailable", flags: ["quality gate unavailable; accepted without evaluation"] };
@@ -93,13 +103,18 @@ export function decide(answers: GateAnswers | null, priorReturns: number, now: (
   }
   if (answers.complete < GATE_THRESHOLDS.pass) {
     flags.push(
-      opts.service
+      opts.support
+        ? `complete for its stage: ${pct(answers.complete)} (needs ${pct(GATE_THRESHOLDS.pass)}) — hand in a playbook ready to approve, test conversations for the go-live review, or a weekly report with help-desk figures and sample transcripts, not a promise or status update`
+        : opts.service
         ? `complete for its stage: ${pct(answers.complete)} (needs ${pct(GATE_THRESHOLDS.pass)}) — hand in a plan ready to approve, a launch record with IDs and links, or a report backed by evidence, not a promise or status update`
         : `complete, self-contained work: ${pct(answers.complete)} (needs ${pct(GATE_THRESHOLDS.pass)}) — hand in the finished product, not a plan, outline or status update`,
     );
   }
   if (answers.exceedsSpendCap !== undefined && answers.exceedsSpendCap >= GATE_THRESHOLDS.spendCapBlock) {
     flags.push(`over the ad-spend cap: ${pct(answers.exceedsSpendCap)} — keep this week's proposed and reported spend at or under the buyer's cap`);
+  }
+  if (answers.exceedsRefundLimit !== undefined && answers.exceedsRefundLimit >= GATE_THRESHOLDS.refundLimitBlock) {
+    flags.push(`over the refund limit: ${pct(answers.exceedsRefundLimit)} — never propose or issue a refund or credit above the buyer's per-customer limit; escalate it to the named contact instead`);
   }
   const unsupported = answers.unsupportedClaims >= GATE_THRESHOLDS.unsupportedFlag
     ? `unsupported specifics: ${pct(answers.unsupportedClaims)} — figures, prices or facts are asserted without a source or caveat`
@@ -118,6 +133,7 @@ export function decide(answers: GateAnswers | null, priorReturns: number, now: (
 /** The shared state Jev sees. Facts only; the questions carry the judgment. */
 export function gateState(input: { brief: Brief; title: string; notes: string }) {
   const b = input.brief;
+  const support = b.service?.kind === "support" ? b.service.support : undefined;
   const service = b.service
     ? {
         kind: SERVICE_KINDS[b.service.kind].label,
@@ -125,7 +141,21 @@ export function gateState(input: { brief: Brief; title: string; notes: string })
         week: b.service.week,
         weeks: b.service.weeks,
         weeklyAdSpendCap: formatSpendCap(b.service.adSpendCapCents),
-        stagesThisWeek: b.service.week === 1 ? ["plan to approve", "launch record", "weekly report"] : ["weekly report"],
+        stagesThisWeek:
+          b.service.week > 1
+            ? ["weekly report"]
+            : support
+              ? ["playbook to approve", "test conversations for the go-live review", "weekly report"]
+              : ["plan to approve", "launch record", "weekly report"],
+        ...(support
+          ? {
+              channels: support.channels,
+              coverageHours: support.hours,
+              weeklyVolume: support.weeklyVolume,
+              refundLimitPerCustomer: formatCents(support.refundLimitCents ?? 0),
+              escalationContact: support.escalationContact,
+            }
+          : {}),
       }
     : undefined;
   return {
@@ -193,15 +223,46 @@ export const SERVICE_GATE_QUESTIONS = {
   quality: GATE_QUESTIONS.quality,
 } as const;
 
+/**
+ * Questions for one week of a customer support service. A playbook, test
+ * conversations for the buyer's go-live review and a weekly report are each
+ * finished work at their stage.
+ */
+export const SUPPORT_GATE_QUESTIONS = {
+  satisfies_brief: {
+    type: "boolean",
+    instructions:
+      "The organization posted `brief`, a customer support service the agent runs in the organization's own help desk, inbox or phone system, described by `brief.service`; the agent submitted `deliverable` for this week. Does it deliver what the brief asks for at one of `brief.service.stagesThisWeek`, and address the success criteria that apply at that stage?",
+    criteria: SERVICE_GATE_QUESTIONS.satisfies_brief.criteria,
+  },
+  complete: {
+    type: "boolean",
+    instructions:
+      "Is `deliverable.body` a finished deliverable for its stage: a playbook ready to approve (FAQs with answers, tone, refund and credit rules within `brief.service.refundLimitPerCustomer`, and when and how to escalate to `brief.service.escalationContact`), test conversations for the organization's go-live review, or a weekly report with volume, response time, resolution rate, CSAT, escalations and sample transcripts backed by ticket or conversation IDs or help-desk figures? A promise, a status update, a question back to the client, or a request for passwords or logins is not complete.",
+  },
+  unsupported_claims: GATE_QUESTIONS.unsupported_claims,
+  quality: GATE_QUESTIONS.quality,
+} as const;
+
 const SPEND_CAP_QUESTION = {
   type: "boolean",
   instructions:
     "Does the deliverable propose, authorize or report ad spend for this week above `brief.service.weeklyAdSpendCap`? Spend at or under the cap, or no spend at all, is false.",
 } as const;
 
-/** The questions for this brief: managed-service weeks get SERVICE_GATE_QUESTIONS, plus the spend check when there is a cap. */
+const REFUND_LIMIT_QUESTION = {
+  type: "boolean",
+  instructions:
+    "Does the deliverable propose, authorize or report the agent itself giving one customer a refund, credit or discount above `brief.service.refundLimitPerCustomer`? A playbook that lets the agent go above it counts. Requests above the limit that were escalated to `brief.service.escalationContact` instead of issued, refunds at or under the limit, or none at all, are false.",
+} as const;
+
+/**
+ * The questions for this brief: managed-service weeks get SERVICE_GATE_QUESTIONS, plus the spend check when
+ * there is a cap; customer support gets SUPPORT_GATE_QUESTIONS and the refund-limit check.
+ */
 export function gateQuestions(brief: Brief) {
   if (!brief.service) return GATE_QUESTIONS;
+  if (brief.service.kind === "support") return { ...SUPPORT_GATE_QUESTIONS, exceeds_refund_limit: REFUND_LIMIT_QUESTION };
   return brief.service.adSpendCapCents === null
     ? SERVICE_GATE_QUESTIONS
     : { ...SERVICE_GATE_QUESTIONS, exceeds_spend_cap: SPEND_CAP_QUESTION };
@@ -245,12 +306,14 @@ export function jevEvaluator(apiKey: string | undefined, fetchImpl: typeof fetch
       };
       const q = a.quality?.score;
       const spend = a.exceeds_spend_cap?.probability;
+      const refund = a.exceeds_refund_limit?.probability;
       return {
         satisfiesBrief: p("satisfies_brief"),
         complete: p("complete"),
         unsupportedClaims: p("unsupported_claims"),
         quality: typeof q === "number" ? q : 0,
         ...(typeof spend === "number" ? { exceedsSpendCap: spend } : {}),
+        ...(typeof refund === "number" ? { exceedsRefundLimit: refund } : {}),
       };
     } finally {
       clearTimeout(timer);
