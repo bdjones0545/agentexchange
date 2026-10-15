@@ -12,7 +12,9 @@ Turns run in the background: POST /turn answers 202 with a job id at once
 (the product's function must not wait a minute for a model), a single worker
 thread runs jobs in order, and GET /jobs/<id> reports the outcome. A periodic
 sweep asks the agent to look for pending hire requests and contracts awaiting
-a reply, so a missed event never strands work.
+a reply, so a missed event never strands work. Before a timer sweep a model-free
+pre-check reads the same marketplace state through the MCP tools and skips the
+turn when nothing has changed (see "Sweep pre-check").
 
 Endpoints (127.0.0.1:2361, published as worker.agentsexchange.ai):
   GET  /health              no auth: {ok, ready, model, provider, mcpServers, mcpTools, queue}
@@ -24,6 +26,8 @@ Same shape as the trainchat coach runtime, deliberately.
 """
 from __future__ import annotations
 
+import errno
+import hashlib
 import hmac
 import json
 import logging
@@ -49,6 +53,11 @@ HOST = os.environ.get("AGENTEXCHANGE_WORKER_HOST", "127.0.0.1")
 PORT = int(os.environ.get("AGENTEXCHANGE_WORKER_PORT", "2361"))
 MAX_ITERATIONS = int(os.environ.get("AGENTEXCHANGE_WORKER_MAX_ITERATIONS", "14"))
 SWEEP_SECONDS = int(os.environ.get("AGENTEXCHANGE_WORKER_SWEEP_SECONDS", "1800"))
+# Timer sweeps run the model only when the pre-check sees a change, while a
+# decision is owed (at most every RETRY), or every FALLBACK regardless.
+PRECHECK = os.environ.get("AGENTEXCHANGE_WORKER_PRECHECK", "1") != "0"
+FALLBACK_SWEEP_SECONDS = int(os.environ.get("AGENTEXCHANGE_WORKER_FALLBACK_SWEEP_SECONDS", "28800"))
+RETRY_SWEEP_SECONDS = int(os.environ.get("AGENTEXCHANGE_WORKER_RETRY_SWEEP_SECONDS", "7200"))
 TOOLSETS = [t for t in os.environ.get("AGENTEXCHANGE_WORKER_TOOLSETS", "mcp-agentexchange").split(",") if t]
 MCP_SERVER = "agentexchange"
 EVENTS = ("hire_request", "contract_created", "contract_funded", "message", "deliverable_decision", "sweep")
@@ -102,10 +111,65 @@ class Cache:
     model: str = ""
     provider: str | None = None
     provider_error = False
+    # Set when a failure is attributable to OS resource exhaustion rather than
+    # to credentials. FD exhaustion surfaces as an auth.json read failure, which
+    # reads as "provider credential resolution failed" and sends the next person
+    # looking at the wrong thing (that is exactly what happened on 2026-09-24).
+    resource_error: str | None = None
     runtime_kwargs: dict[str, Any] | None = None
     mcp_tools: list[str] = []
     mcp_servers: list[str] = []
     lock = threading.Lock()
+
+
+def fd_usage() -> dict[str, int]:
+    """Open descriptors and the soft limit for this process. Cheap; /health calls it."""
+    try:
+        open_fds = len(os.listdir("/proc/self/fd"))
+    except OSError:
+        open_fds = -1
+    soft = -1
+    try:
+        import resource
+
+        soft = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+    except Exception:  # noqa: BLE001
+        pass
+    pct = int(100 * open_fds / soft) if open_fds >= 0 and soft > 0 else -1
+    return {"open": open_fds, "limit": soft, "pct": pct}
+
+
+_RESOURCE_ERRNOS = {
+    errno.EMFILE: "FILE_DESCRIPTOR_EXHAUSTION",
+    errno.ENFILE: "FILE_DESCRIPTOR_EXHAUSTION",
+    errno.ENOSPC: "DISK_EXHAUSTION",
+    errno.ENOMEM: "MEMORY_EXHAUSTION",
+}
+
+
+def classify_failure(exc: BaseException) -> tuple[str | None, str]:
+    """Return (RESOURCE_CLASS or None, human detail) for an exception.
+
+    Two independent signals, because the OSError is not always in the chain:
+    Hermes's auth loader catches EMFILE and logs it, then raises a plain
+    RuntimeError, so the original errno can be lost. The fd headroom probe
+    catches that case.  The underlying OS error is never hidden - it is
+    reported alongside the classification.
+    """
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, OSError) and cur.errno in _RESOURCE_ERRNOS:
+            return _RESOURCE_ERRNOS[cur.errno], f"{type(cur).__name__}: [Errno {cur.errno}] {cur.strerror}"
+        cur = cur.__cause__ or cur.__context__
+    usage = fd_usage()
+    if usage["pct"] >= 90:
+        return "FILE_DESCRIPTOR_EXHAUSTION", (
+            f"{type(exc).__name__} while file descriptors were exhausted "
+            f"({usage['open']}/{usage['limit']}, {usage['pct']}%)"
+        )
+    return None, f"{type(exc).__name__}"
 
 
 def discover_mcp() -> None:
@@ -311,16 +375,37 @@ def run_turn(body: dict[str, Any]) -> dict[str, Any]:
             Cache.runtime_kwargs = kwargs
             Cache.provider = kwargs.get("provider")
     except Exception as e:  # noqa: BLE001
+        resource_class, detail = classify_failure(e)
         with Cache.lock:
             Cache.provider_error = True
-        log.error("provider credential resolution failed: %s", type(e).__name__)
+            Cache.resource_error = resource_class
+        if resource_class:
+            # NOT a credential problem. Say so, and keep the OS error visible.
+            log.error(
+                "%s: credential resolution could not run (%s); fds=%s",
+                resource_class, detail, fd_usage(),
+            )
+            return {
+                "ok": False,
+                "error": "resource_error",
+                "resourceClass": resource_class,
+                "detail": detail,
+                "fds": fd_usage(),
+                "text": "resource exhaustion prevented credential resolution",
+            }
+        log.error("provider credential resolution failed: %s", detail)
         return {"ok": False, "error": "provider_error", "text": "model credentials unavailable"}
     session_db = None
     try:
         from hermes_state import SessionDB
 
         session_db = SessionDB()
-    except Exception:
+    except Exception as e:  # noqa: BLE001
+        resource_class, detail = classify_failure(e)
+        if resource_class:
+            with Cache.lock:
+                Cache.resource_error = resource_class
+            log.error("%s opening the session database (%s); fds=%s", resource_class, detail, fd_usage())
         session_db = None
     agent_kwargs: dict[str, Any] = dict(
         model=Cache.model,
@@ -337,6 +422,25 @@ def run_turn(body: dict[str, Any]) -> dict[str, Any]:
     )
     if session_db is not None:
         agent_kwargs["session_db"] = session_db
+    # SessionDB holds two descriptors (state.db + state.db-wal) and, once it has
+    # queued a token delta, is pinned by its own writer thread and an atexit
+    # hook - so scope exit and GC never reclaim it. One unclosed instance per
+    # turn is what consumed 1023 of 1024 descriptors by 2026-09-24. The finally
+    # covers the normal return, every early return and every exception path.
+    try:
+        return _run_turn_inner(agent_kwargs, message, t0, body)
+    finally:
+        if session_db is not None:
+            try:
+                session_db.close()
+            except Exception as e:  # noqa: BLE001
+                # Never let a close failure mask the turn's own result or error.
+                log.warning("session_db close failed: %s", type(e).__name__)
+
+
+def _run_turn_inner(agent_kwargs: dict[str, Any], message: str, t0: float, body: dict[str, Any]) -> dict[str, Any]:
+    from run_agent import AIAgent
+
     agent = AIAgent(**agent_kwargs)
     result = agent.run_conversation(message)
     model_ms = int((time.time() - t0) * 1000)
@@ -366,6 +470,170 @@ def run_turn(body: dict[str, Any]) -> dict[str, Any]:
     if provider_fail and not actions:
         return {"ok": False, "error": "provider_error", "text": text[:300], "timing": {"model_ms": model_ms}}
     return {"ok": True, "text": text, "actions": actions, "timing": {"model_ms": model_ms, "tool_actions": len(actions), "mcp_tools_available": len(Cache.mcp_tools)}}
+
+
+# ── Sweep pre-check ──────────────────────────────────────────────────────────
+#
+# A timer sweep used to start a model turn every 30 minutes whatever the state:
+# 48 turns and ~1,200 model calls a week, and from 2026-09-28 to 10-14 not one
+# of them wrote anything. Real work arrives as product events (POST /turn), so
+# the sweep is only the net for an event that never came. Before a timer sweep,
+# read the state the sweep prompt reads - pending hire requests, Active
+# contracts, my applications and negotiations, open briefs - by calling the
+# same MCP tools directly, with no model, and fingerprint the fields a sweep
+# acts on. The model runs only when:
+#   changed   the fingerprint differs from the one the last successful turn left
+#   owed      a hire request is pending or a negotiation is countered, and the
+#             last model sweep was RETRY ago or more (OWED_RETRIES times per
+#             unchanged state, so a request the database will not let change
+#             cannot keep the model busy)
+#   fallback  the last model sweep was FALLBACK ago or more
+#   error     the pre-check itself failed and the last model sweep was RETRY ago
+# Events and POST /sweep always run the model. Nothing here writes.
+
+PRECHECK_READS = (
+    ("list_hire_requests", {"status": "pending"}),
+    ("list_contracts", {"status": "Active"}),
+    ("list_my_applications", {"status": "all"}),
+    ("search_opportunities", {"limit": 50}),
+)
+OWED_RETRIES = 3
+
+
+class Sweep:
+    lock = threading.Lock()
+    signature: str | None = None  # state after the last successful model turn
+    last_model_at = 0.0  # last model sweep, timer or request
+    owed_runs = 0  # "owed" model runs since the signature last changed
+    last_check: dict[str, Any] = {}
+    checks = 0
+    skipped = 0
+    errors = 0
+
+
+def _read_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    from tools.registry import registry
+
+    raw = registry.dispatch(f"mcp__{MCP_SERVER}__{name}", dict(args))
+    data = _parse_payload(raw if isinstance(raw, str) else json.dumps(raw, default=str))
+    if not isinstance(data, dict) or data.get("ok") is not True:
+        raise RuntimeError(f"{name} did not answer ok")
+    return data
+
+
+def marketplace_state(read=_read_tool) -> tuple[str, dict[str, int]]:
+    """(fingerprint, counts) of what a sweep would act on. Identifiers and
+    statuses only; titles, briefs and messages never enter it."""
+    hire, contracts, mine, opps = (read(name, args) for name, args in PRECHECK_READS)
+    rows = lambda data, key: [r for r in (data.get(key) or []) if isinstance(r, dict)]  # noqa: E731
+    state = {
+        "hireRequests": sorted(str(h.get("id")) for h in rows(hire, "hireRequests")),
+        "contracts": sorted(
+            json.dumps(
+                [c.get("id"), c.get("status"), c.get("progress"), c.get("paymentStatus"),
+                 bool((c.get("funding") or {}).get("workMayStart")), c.get("deliverables"),
+                 c.get("lastMessageFrom"), bool(c.get("awaitingReply"))],
+                default=str,
+            )
+            for c in rows(contracts, "contracts")
+        ),
+        "applications": sorted(f"{a.get('id')}:{a.get('status')}" for a in rows(mine, "applications")),
+        "negotiations": sorted(
+            f"{n.get('id')}:{n.get('status')}:{n.get('counter_amount_cents')}" for n in rows(mine, "negotiations")
+        ),
+        "openBriefs": sorted(str(o.get("id")) for o in rows(opps, "opportunities")),
+    }
+    counts = {
+        "pendingHireRequests": len(state["hireRequests"]),
+        "activeContracts": len(state["contracts"]),
+        "awaitingReply": sum(1 for c in rows(contracts, "contracts") if c.get("awaitingReply")),
+        "counteredNegotiations": sum(1 for n in rows(mine, "negotiations") if n.get("status") == "countered"),
+        "openBriefs": len(state["openBriefs"]),
+    }
+    digest = hashlib.sha256(json.dumps(state, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+    return digest, counts
+
+
+def precheck_decision(now: float, signature: str | None, counts: dict[str, int] | None,
+                      last_signature: str | None, last_model_at: float, owed_runs: int = 0) -> tuple[bool, str]:
+    """Whether a timer sweep should run the model, and why. Pure, for the tests."""
+    since = now - last_model_at
+    if signature is None:
+        return since >= RETRY_SWEEP_SECONDS, "error"
+    if signature != last_signature:
+        return True, "changed"
+    owed = counts and (counts.get("pendingHireRequests") or counts.get("counteredNegotiations"))
+    if owed and owed_runs < OWED_RETRIES and since >= RETRY_SWEEP_SECONDS:
+        return True, "owed"
+    if since >= FALLBACK_SWEEP_SECONDS:
+        return True, "fallback"
+    return False, "unchanged"
+
+
+def _ensure_mcp() -> None:
+    if not Cache.ready:
+        warm()
+    if MCP_SERVER not in Cache.mcp_servers:
+        try:
+            discover_mcp()
+        except Exception as e:  # noqa: BLE001
+            log.error("mcp rediscovery failed: %s", e)
+
+
+def _check() -> tuple[str | None, dict[str, int] | None]:
+    try:
+        _ensure_mcp()
+        return marketplace_state()
+    except Exception as e:  # noqa: BLE001
+        with Sweep.lock:
+            Sweep.errors += 1
+        log.warning("sweep precheck failed: %s: %s", type(e).__name__, str(e)[:200])
+        return None, None
+
+
+def handle_job(body: dict[str, Any]) -> dict[str, Any]:
+    event = body.get("event")
+    if PRECHECK and event == "sweep" and body.get("source") == "timer":
+        signature, counts = _check()
+        with Sweep.lock:
+            run, reason = precheck_decision(time.time(), signature, counts, Sweep.signature, Sweep.last_model_at, Sweep.owed_runs)
+            if reason == "owed":
+                Sweep.owed_runs += 1
+            Sweep.checks += 1
+            Sweep.last_check = {"at": time.time(), "run": run, "reason": reason, "signature": signature, "counts": counts}
+            if not run:
+                Sweep.skipped += 1
+        log.info("sweep precheck run=%s reason=%s signature=%s counts=%s", run, reason, signature, counts)
+        if not run:
+            return {"ok": True, "skipped": True, "reason": reason, "counts": counts}
+    result = run_turn(body)
+    if event == "sweep":
+        with Sweep.lock:
+            Sweep.last_model_at = time.time()
+    if PRECHECK and result.get("ok"):
+        # Fingerprint the state this turn left behind (its own writes included),
+        # so the next timer sweep does not re-run the model just to see them.
+        signature, _ = _check()
+        if signature is not None:
+            with Sweep.lock:
+                if signature != Sweep.signature:
+                    Sweep.owed_runs = 0
+                Sweep.signature = signature
+    return result
+
+
+def sweep_status() -> dict[str, Any]:
+    with Sweep.lock:
+        return {
+            "precheck": PRECHECK,
+            "fallbackSeconds": FALLBACK_SWEEP_SECONDS,
+            "retrySeconds": RETRY_SWEEP_SECONDS,
+            "checks": Sweep.checks,
+            "skipped": Sweep.skipped,
+            "errors": Sweep.errors,
+            "lastModelSweepAt": Sweep.last_model_at or None,
+            "lastCheck": dict(Sweep.last_check),
+        }
 
 
 # ── Job queue ────────────────────────────────────────────────────────────────
@@ -411,14 +679,14 @@ class Jobs:
                 j["startedAt"] = time.time()
                 body = j["body"]
             try:
-                result = run_turn(body)
+                result = handle_job(body)
             except Exception as e:  # noqa: BLE001
                 log.error("job %s failed: %s\n%s", job_id, e, traceback.format_exc())
                 result = {"ok": False, "error": f"turn_failed: {type(e).__name__}"}
             with cls.lock:
                 j = cls.items.get(job_id)
                 if j:
-                    j["status"] = "done" if result.get("ok") else "failed"
+                    j["status"] = "skipped" if result.get("skipped") else "done" if result.get("ok") else "failed"
                     j["result"] = result
                     j["finishedAt"] = time.time()
 
@@ -456,7 +724,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         path = self.path.split("?")[0]
         if path in ("/health", "/"):
-            self._json(200, {"ok": not Cache.provider_error, "ready": Cache.ready and not Cache.provider_error, "providerError": Cache.provider_error, "model": Cache.model, "provider": Cache.provider, "toolsets": TOOLSETS, "mcpServers": Cache.mcp_servers, "mcpTools": len(Cache.mcp_tools), "queue": Jobs.counts(), "sweepSeconds": SWEEP_SECONDS})
+            usage = fd_usage()
+            # A descriptor leak is invisible until it is fatal, so report headroom
+            # before it bites: degraded at 80%, unhealthy at 95%.
+            fd_critical = usage["pct"] >= 95
+            self._json(200, {"ok": (not Cache.provider_error) and not fd_critical, "ready": Cache.ready and not Cache.provider_error and not fd_critical, "providerError": Cache.provider_error, "resourceError": Cache.resource_error or ("FILE_DESCRIPTOR_EXHAUSTION" if fd_critical else None), "fds": usage, "fdPressure": ("critical" if fd_critical else "warn" if usage["pct"] >= 80 else "ok"), "model": Cache.model, "provider": Cache.provider, "toolsets": TOOLSETS, "mcpServers": Cache.mcp_servers, "mcpTools": len(Cache.mcp_tools), "queue": Jobs.counts(), "sweepSeconds": SWEEP_SECONDS, "sweep": sweep_status()})
             return
         if path.startswith("/jobs/"):
             if not self._authorized():
@@ -502,7 +774,30 @@ class Handler(BaseHTTPRequestHandler):
         self._json(202, {"ok": True, "accepted": True, "jobId": job_id, "queue": Jobs.counts()})
 
 
+def raise_fd_soft_limit() -> dict[str, int]:
+    """Lift the soft descriptor limit to the hard limit at startup.
+
+    Defence in depth only - the leak itself is fixed in run_turn. This buys
+    headroom (1024 -> 4096 here) so a future regression degrades slowly enough
+    for the monitor to alert instead of failing the service outright.
+    """
+    try:
+        import resource
+
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        if soft < hard:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (hard, hard))
+            soft = hard
+        return {"soft": soft, "hard": hard}
+    except Exception as e:  # noqa: BLE001
+        log.warning("could not raise fd soft limit: %s", type(e).__name__)
+        return {}
+
+
 def main() -> None:
+    limits = raise_fd_soft_limit()
+    if limits:
+        log.info("fd limits soft=%s hard=%s", limits.get("soft"), limits.get("hard"))
     try:
         warm()
     except Exception as e:  # noqa: BLE001
