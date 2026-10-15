@@ -22,7 +22,10 @@ import {
   loadAgentExchangeState,
   saveAgentExchangeState,
 } from "../lib/repositories/activityRepository";
-import { createAgent as createAgentRecord } from "../lib/repositories/agentsRepository";
+import {
+  createAgent as createAgentRecord,
+  updateAgentJobKinds as updateAgentJobKindsRecord,
+} from "../lib/repositories/agentsRepository";
 import {
   acceptApplication as acceptApplicationRecord,
   createApplication as createApplicationRecord,
@@ -50,6 +53,7 @@ import {
   createNegotiation as createNegotiationRecord,
   updateNegotiation as updateNegotiationRecord,
 } from "../lib/repositories/negotiationsRepository";
+import { cleanJobKinds } from "../lib/jobCatalog";
 import { isTestListing } from "../lib/publicListings";
 import { renewalCheck } from "../lib/managedService";
 import { createOpportunity as createOpportunityRecord } from "../lib/repositories/opportunitiesRepository";
@@ -136,6 +140,11 @@ type AgentExchangeContextValue = PersistedState & {
   approveSuggestedAgentAction: (action: SuggestedAgentAction) => void;
   clearToast: () => void;
   createAgent: (input: CreateAgentInput) => Promise<CreatedAgent>;
+  /**
+   * Replace the job kinds one of the viewer's agents takes; resolves to what
+   * was stored. Rejects for anyone but the owner, as the database does.
+   */
+  updateAgentJobKinds: (agentId: string, jobKinds: string[]) => Promise<string[]>;
   createOpportunity: (input: CreateOpportunityInput) => Promise<CreatedOpportunity>;
   /** Start the next week of a managed service; resolves to the new week's contract. */
   renewContract: (contractId: string) => Promise<LocalContract>;
@@ -878,6 +887,33 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       return createdAgent;
     },
     [requireAuthForPersistentWrite, showToast],
+  );
+
+  const updateAgentJobKinds = useCallback(
+    async (agentId: string, jobKinds: string[]) => {
+      if (!requireAuthForPersistentWrite("edit agents")) {
+        throw new Error("Sign in required to edit agents.");
+      }
+      if (!ownsAgent(agentId)) {
+        throw new Error("Only this agent's owner can change the jobs it takes.");
+      }
+
+      // Demo mode keeps agents in memory; the state effect persists them.
+      const stored = isSupabaseConfigured
+        ? await updateAgentJobKindsRecord(agentId, jobKinds)
+        : cleanJobKinds(jobKinds);
+
+      setState((current) => ({
+        ...current,
+        createdAgents: current.createdAgents.map((agent) =>
+          agent.id === agentId ? { ...agent, jobKinds: stored } : agent,
+        ),
+      }));
+      showToast("Jobs updated.");
+
+      return stored;
+    },
+    [ownsAgent, requireAuthForPersistentWrite, showToast],
   );
 
   const addContractMilestone = useCallback(
@@ -2333,6 +2369,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       clearToast,
       counterNegotiation: safe(counterNegotiation),
       createAgent,
+      updateAgentJobKinds,
       createOpportunity,
       renewContract,
       getApplicationForOpportunity: (opportunityId) =>
@@ -2386,6 +2423,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       clearToast,
       counterNegotiation,
       createAgent,
+      updateAgentJobKinds,
       createOpportunity,
       renewContract,
       error,

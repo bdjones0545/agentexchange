@@ -5,8 +5,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ContractHistoryCard } from "../components/ContractHistoryCard";
 import { GlassCard } from "../components/GlassCard";
 import { HireAgentModal } from "../components/HireAgentModal";
+import { JobKindPicker } from "../components/JobKindPicker";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ProfileStats } from "../components/ProfileStats";
+import { SecondaryButton } from "../components/SecondaryButton";
 import { SkillChip } from "../components/SkillChip";
 import { StatusChip } from "../components/StatusChip";
 import {
@@ -49,6 +51,116 @@ function EmptyNote({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * The job kinds an agent takes. Its owner can change them here; everyone else
+ * sees the list, and nothing at all while the agent has none.
+ */
+function JobsItTakes({
+  canEdit,
+  jobKinds,
+  onSave,
+}: {
+  canEdit: boolean;
+  jobKinds: readonly string[];
+  onSave: (jobKinds: string[]) => Promise<unknown>;
+}) {
+  // null while not editing; otherwise the ids picked so far.
+  const [draft, setDraft] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const kinds = jobKinds.map((id) => jobKind(id)).filter((k) => k !== null);
+
+  if (!canEdit && kinds.length === 0) {
+    return null;
+  }
+
+  function startEditing() {
+    setError(null);
+    setDraft([...new Set(kinds.map((k) => k.id))]);
+  }
+
+  function toggle(id: string) {
+    setDraft((current) => current && (current.includes(id) ? current.filter((k) => k !== id) : [...current, id]));
+  }
+
+  async function save() {
+    if (!draft?.length) {
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await onSave(draft);
+      setDraft(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Unable to save the jobs.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <GlassCard className="space-y-4 p-6">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className={sectionHeading}>Jobs it takes</h2>
+        {canEdit && !draft && kinds.length > 0 ? (
+          <button
+            className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted transition hover:text-ae-primary"
+            onClick={startEditing}
+            type="button"
+          >
+            Edit
+          </button>
+        ) : null}
+      </div>
+      {draft ? (
+        <fieldset className="space-y-4" disabled={saving}>
+          <legend className="sr-only">Jobs this agent takes</legend>
+          <JobKindPicker onToggle={toggle} selected={draft} />
+          <p className="text-xs leading-5 text-ae-text-muted">
+            Pick at least one. Buyers and the matcher find agents by these, and your agent reads each one's guide over MCP (get_job_guide).
+          </p>
+          {error ? (
+            <p role="alert" className="rounded-xl border border-ae-error/25 bg-ae-error/10 px-4 py-3 text-sm text-ae-error">
+              {error}
+            </p>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <PrimaryButton className="px-4 py-2.5" disabled={saving || draft.length === 0} onClick={() => void save()}>
+              {saving ? "Saving..." : "Save jobs"}
+            </PrimaryButton>
+            <SecondaryButton className="px-4 py-2.5" onClick={() => setDraft(null)}>
+              Cancel
+            </SecondaryButton>
+          </div>
+        </fieldset>
+      ) : kinds.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {kinds.map((k) => (
+            <li
+              key={k.id}
+              className="rounded-full border border-ae-primary/20 bg-ae-primary/[0.08] px-3 py-1 text-xs text-ae-primary"
+              title={k.summary}
+            >
+              {k.label}
+              {k.family === "managed_service" ? <span className="text-ae-text-muted"> · weekly</span> : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-sm leading-6 text-ae-text-muted">
+            No jobs picked yet, so buyers and the matcher can't find this agent by the work it does. Add the jobs it takes.
+          </p>
+          <PrimaryButton className="px-4 py-2.5" onClick={startEditing}>
+            Add jobs
+          </PrimaryButton>
+        </div>
+      )}
+    </GlassCard>
+  );
+}
+
 export function AgentProfilePage() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -68,6 +180,7 @@ export function AgentProfilePage() {
     isSharedMode,
     isWorkerAgent,
     loading,
+    updateAgentJobKinds,
   } = useAgentExchange();
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
   const allAgents = getAllAgents(createdAgents);
@@ -366,23 +479,12 @@ export function AgentProfilePage() {
         </div>
 
         <aside className="min-w-0 space-y-6">
-          {agent.jobKinds?.length ? (
-            <GlassCard className="space-y-4 p-6">
-              <h2 className={sectionHeading}>Jobs it takes</h2>
-              <ul className="flex flex-wrap gap-2">
-                {agent.jobKinds.map((id) => jobKind(id)).filter((k) => k !== null).map((k) => (
-                  <li
-                    key={k.id}
-                    className="rounded-full border border-ae-primary/20 bg-ae-primary/[0.08] px-3 py-1 text-xs text-ae-primary"
-                    title={k.summary}
-                  >
-                    {k.label}
-                    {k.family === "managed_service" ? <span className="text-ae-text-muted"> · weekly</span> : null}
-                  </li>
-                ))}
-              </ul>
-            </GlassCard>
-          ) : null}
+          <JobsItTakes
+            canEdit={ownsAgent(agent.id)}
+            jobKinds={agent.jobKinds ?? []}
+            key={agent.id}
+            onSave={(jobKinds) => updateAgentJobKinds(agent.id, jobKinds)}
+          />
           {agent.startingRate || agent.toolAccess?.length ? (
             <GlassCard className="space-y-5 p-6">
               {agent.startingRate ? (

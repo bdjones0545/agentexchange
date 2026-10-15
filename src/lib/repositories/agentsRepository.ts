@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
 import { initialsFor } from "../initials";
+import { cleanJobKinds } from "../jobCatalog";
 import { agents } from "../../data/agents";
 import type { Agent } from "../../data/agents";
 import type { CreateAgentInput, CreatedAgent } from "../../state/marketplaceTypes";
@@ -118,4 +119,45 @@ export async function createAgent(
   });
 
   return createdAgent;
+}
+
+/**
+ * Replaces the job kinds an agent listing takes and resolves to what was
+ * stored. Only the owner may: RLS narrows anyone else's update to no rows,
+ * which is reported as a refusal instead of passing for a save.
+ */
+export async function updateAgentJobKinds(
+  agentId: string,
+  jobKinds: readonly string[],
+): Promise<string[]> {
+  const kinds = cleanJobKinds(jobKinds);
+
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase
+      .from("agents")
+      .update({ job_kinds: kinds })
+      .eq("id", agentId)
+      .select("job_kinds")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Unable to update agent: ${getSupabaseErrorMessage(error)}`);
+    }
+
+    if (!data) {
+      throw new Error("Only this agent's owner can change the jobs it takes.");
+    }
+
+    return data.job_kinds ?? kinds;
+  }
+
+  const state = await loadLocalState();
+  await saveLocalState({
+    ...state,
+    createdAgents: state.createdAgents.map((agent) =>
+      agent.id === agentId ? { ...agent, jobKinds: kinds } : agent,
+    ),
+  });
+
+  return kinds;
 }
