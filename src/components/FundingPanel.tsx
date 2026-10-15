@@ -33,6 +33,25 @@ function Row({ label, value, strong = false }: { label: string; value: string; s
   );
 }
 
+/**
+ * The `?funding=` Checkout return marker still worth showing, given the status
+ * now. It only describes the moment after Checkout: once the status leaves
+ * unfunded (the hold was confirmed) it is spent, so a later cancel, which
+ * returns the contract to unfunded, does not bring back "confirming with the
+ * payment provider".
+ */
+export function nextReturnNotice(funding: string | null, status: ContractPaymentStatus): string | null {
+  return status === "unfunded" ? funding : null;
+}
+
+/** Removes the `?funding=` Checkout return marker so a reload does not bring its notice back. */
+function dropFundingParam() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("funding")) return;
+  url.searchParams.delete("funding");
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 type FundingPanelProps = {
   contract: LocalContract;
   isOrganizationSide: boolean;
@@ -67,6 +86,13 @@ export function FundingPanel({ allDeliverablesApproved, contract, isOrganization
     };
   }, []);
 
+  useEffect(() => {
+    if (funding !== null && nextReturnNotice(funding, status) === null) {
+      setFunding(null);
+      dropFundingParam();
+    }
+  }, [funding, status]);
+
   if (!config?.enabled || !contract.amountCents) {
     return null;
   }
@@ -96,6 +122,8 @@ export function FundingPanel({ allDeliverablesApproved, contract, isOrganization
       setError(r.error);
       return;
     }
+    setFunding(null);
+    dropFundingParam();
     onChanged();
   }
 

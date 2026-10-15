@@ -55,38 +55,65 @@ function integrationId(seed: string) {
   const suffix = Array.from(createHash('sha256').update(seed).digest().subarray(0,8), b => String.fromCharCode(97+b%26)).join('');
   return `agentexchange_${suffix}`;
 }
+
+type SessionCreateParams = Parameters<Stripe["checkout"]["sessions"]["create"]>[0];
+
+/** The Checkout session that funds a contract. Pure, so the request is testable. */
+export function checkoutSessionParams(input: CheckoutSessionInput): SessionCreateParams {
+  return {
+    mode: "payment",
+    integration_identifier: integrationId(input.contractId),
+    client_reference_id: input.contractId,
+    line_items: [
+      {
+        quantity: 1,
+        price_data: {
+          currency: input.currency.toLowerCase(),
+          unit_amount: input.amountCents,
+          product_data: { name: input.title, description: "Agreed contract price. Held until you approve the work." },
+        },
+      },
+      {
+        quantity: 1,
+        price_data: {
+          currency: input.currency.toLowerCase(),
+          unit_amount: input.buyerFeeCents,
+          product_data: { name: "Service fee (3%)" },
+        },
+      },
+    ],
+    // Cards only. Without this Checkout also offers Affirm, Klarna, Cash App Pay
+    // and bank debits, none of which is the expiring card authorization hold the
+    // product describes and reconciles.
+    payment_method_types: ["card"],
+    // A hold, not a charge: captured when the organization approves the work.
+    payment_intent_data: { capture_method: "manual", metadata: { contractId: input.contractId } },
+    metadata: { contractId: input.contractId },
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+  };
+}
+
+/** The Checkout session where an operator saves the card agents place holds on. */
+export function setupSessionParams(input: Parameters<StripeGateway["createSetupSession"]>[0]): SessionCreateParams {
+  return {
+    mode: "setup",
+    currency: "usd",
+    // Off-session holds are manual-capture card authorizations, so only a card will do.
+    payment_method_types: ["card"],
+    integration_identifier: integrationId(input.profileId),
+    customer: input.customerId,
+    metadata: { profileId: input.profileId, purpose: "agent_card", ...(input.agentKeyId ? {agentKeyId:input.agentKeyId,setupToken:input.setupToken!} : {}) },
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+  };
+}
+
 export function realStripe(secretKey: string): StripeGateway {
   const stripe = new Stripe(secretKey, { apiVersion: "2026-08-26.dahlia", typescript: true, timeout: 5000, maxNetworkRetries: 1 });
   return {
     async createCheckoutSession(input) {
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        integration_identifier: integrationId(input.contractId),
-        client_reference_id: input.contractId,
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: input.currency.toLowerCase(),
-              unit_amount: input.amountCents,
-              product_data: { name: input.title, description: "Agreed contract price. Held until you approve the work." },
-            },
-          },
-          {
-            quantity: 1,
-            price_data: {
-              currency: input.currency.toLowerCase(),
-              unit_amount: input.buyerFeeCents,
-              product_data: { name: "Service fee (3%)" },
-            },
-          },
-        ],
-        // A hold, not a charge: captured when the organization approves the work.
-        payment_intent_data: { capture_method: "manual", metadata: { contractId: input.contractId } },
-        metadata: { contractId: input.contractId },
-        success_url: input.successUrl,
-        cancel_url: input.cancelUrl,
-      }, { idempotencyKey: input.idempotencyKey });
+      const session = await stripe.checkout.sessions.create(checkoutSessionParams(input), { idempotencyKey: input.idempotencyKey });
       return { id: session.id, url: session.url };
     },
     async createCustomer(input) {
@@ -94,15 +121,7 @@ export function realStripe(secretKey: string): StripeGateway {
       return { id: c.id };
     },
     async createSetupSession(input) {
-      const session = await stripe.checkout.sessions.create({
-        mode: "setup",
-        currency: "usd",
-        integration_identifier: integrationId(input.profileId),
-        customer: input.customerId,
-        metadata: { profileId: input.profileId, purpose: "agent_card", ...(input.agentKeyId ? {agentKeyId:input.agentKeyId,setupToken:input.setupToken!} : {}) },
-        success_url: input.successUrl,
-        cancel_url: input.cancelUrl,
-      });
+      const session = await stripe.checkout.sessions.create(setupSessionParams(input));
       return { id: session.id, url: session.url };
     },
     async retrieveSetupIntentPaymentMethod(setupIntentId) {

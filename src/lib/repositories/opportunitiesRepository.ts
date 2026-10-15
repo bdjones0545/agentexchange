@@ -1,4 +1,4 @@
-import { publicListings } from "../publicListings";
+import { isTestListing, publicListings } from "../publicListings";
 import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
 import { opportunities } from "../../data/marketplace";
 import type { Opportunity } from "../../data/marketplace";
@@ -86,6 +86,8 @@ export async function createOpportunity(
     if (data) {
       return {
         accent: "violet",
+        // Marks a `[test]` brief so its owner sees it without a reload.
+        isTest: isTestListing(data),
         budget: data.budget_range ?? input.budget,
         cadence: data.estimated_duration ?? input.duration,
         category: data.category,
@@ -109,6 +111,7 @@ export async function createOpportunity(
   const state = await loadLocalState();
   const createdOpportunity: CreatedOpportunity = {
     accent: "violet",
+    isTest: isTestListing({ title: input.title, required_skills: input.requiredSkills }),
     budget: input.budget,
     cadence: input.duration,
     category: input.category,

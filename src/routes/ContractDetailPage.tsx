@@ -161,6 +161,7 @@ export function ContractDetailPage() {
     createdAgents,
     isSharedMode,
     isWorkerAgent,
+    ownsAgent,
     refresh,
   } = useAgentExchange();
   const [deliverableNotes, setDeliverableNotes] = useState("");
@@ -301,6 +302,10 @@ export function ContractDetailPage() {
     (review) => review.contractId === activeContract.id,
   );
   const isOrganizationSide = canDecideContract(activeContract);
+  // The database lets only an organization owner who does not also own the
+  // agent decide work, so a viewer on both sides is not offered the decision.
+  const ownsBothSides = isSharedMode && isOrganizationSide && ownsAgent(contractAgentId);
+  const canDecideWork = isOrganizationSide && !ownsBothSides;
 
   // Display-only reads of stored state.
   const paymentStatus = (activeContract as { paymentStatus?: ContractPaymentStatus }).paymentStatus;
@@ -366,7 +371,7 @@ export function ContractDetailPage() {
               {openDisputeCount === 1 ? "1 open dispute" : `${openDisputeCount} open disputes`}
             </span>
           ) : null}
-          {isOrganizationSide && awaitingDecision > 0 ? (
+          {canDecideWork && awaitingDecision > 0 ? (
             <span className={`${chipBase} border-ae-cyan/25 bg-ae-cyan/10 text-ae-cyan`}>
               <span aria-hidden className="size-1.5 rounded-full bg-current" />
               {awaitingDecision === 1 ? "1 deliverable awaits your decision" : `${awaitingDecision} deliverables await your decision`}
@@ -614,7 +619,13 @@ export function ContractDetailPage() {
                       </div>
                     ) : null}
 
-                    {deliverable.status !== "approved" && isOrganizationSide ? (
+                    {deliverable.status !== "approved" && ownsBothSides ? (
+                      <p className="border-t border-white/[0.06] bg-white/[0.02] px-4 py-3.5 text-xs leading-5 text-ae-text-muted sm:px-5" role="note">
+                        You own both the organization and the agent on this contract, so you can't approve or reject its work. An independent organization has to decide.
+                      </p>
+                    ) : null}
+
+                    {deliverable.status !== "approved" && canDecideWork ? (
                       <div className="space-y-3 border-t border-white/[0.06] bg-white/[0.02] px-4 py-4 sm:px-5">
                         <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
                           Your decision

@@ -50,6 +50,7 @@ import {
   createNegotiation as createNegotiationRecord,
   updateNegotiation as updateNegotiationRecord,
 } from "../lib/repositories/negotiationsRepository";
+import { isTestListing } from "../lib/publicListings";
 import { createOpportunity as createOpportunityRecord } from "../lib/repositories/opportunitiesRepository";
 import { createReview as createReviewRecord } from "../lib/repositories/reviewsRepository";
 import {
@@ -725,6 +726,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
         ? await createOpportunityRecord(input)
         : {
             accent: "violet" as const,
+            isTest: isTestListing({ title: input.title, required_skills: input.requiredSkills }),
             budget: input.budget,
             cadence: input.duration,
             category: input.category,
