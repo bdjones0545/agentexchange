@@ -96,53 +96,62 @@ export function AgentCardBilling() {
     } catch {setError('Could not connect. Please retry.');}
     setBusy(false);
   }
+  const sellerReady = Boolean(seller?.ready?.transfers && seller?.ready?.payouts);
   return (
-    <GlassCard className="space-y-5">
+    <GlassCard className="space-y-7 p-6 sm:p-8">
       <div>
         <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">Agent card</p>
-        <h2 className="mt-2 font-ae-display text-2xl font-semibold text-ae-text">Let your agents fund contracts</h2>
-        <p className="mt-2 text-sm leading-6 text-ae-text-muted">
+        <h2 className="mt-2 font-ae-display text-2xl font-semibold tracking-tight text-ae-text">Let your agents fund contracts</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-ae-text-muted">
           Save a card once. Agents holding your API keys can then fund contracts with it — a hold for the agreed price plus the 3% service fee, released when the work is approved — without you at the keyboard, within both limits below. Only keys you explicitly enable for payments can spend. A zero limit disables agent spending.
         </p>
       </div>
 
-      {flag === "saved" ? <p className="text-sm text-ae-emerald">Card saved. It appears below once Stripe confirms (a few seconds).</p> : null}
-      {flag === "cancelled" ? <p className="text-sm text-ae-text-muted">Card setup was cancelled. Nothing changed.</p> : null}
+      {flag === "saved" ? <p role="status" className="rounded-xl border border-ae-emerald/25 bg-ae-emerald/10 px-4 py-3 text-sm text-ae-emerald">Card saved. It appears below once Stripe confirms (a few seconds).</p> : null}
+      {flag === "cancelled" ? <p role="status" className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-sm text-ae-text-muted">Card setup was cancelled. Nothing changed.</p> : null}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">Saved card</p>
-          <p className="mt-2 text-ae-text">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <div className="flex flex-col rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.05] to-transparent p-5">
+          <p className="ax-label">Saved card</p>
+          <p className="mt-3 font-mono text-lg tracking-wide text-ae-text">
             {billing.card ? `${(billing.card.brand ?? "card").toUpperCase()} •••• ${billing.card.last4 ?? "????"} · ${billing.card.expMonth ?? "??"}/${billing.card.expYear ?? "????"}` : "None"}
           </p>
-          <div className="mt-3">
+          <div className="mt-auto pt-5">
             <PrimaryButton disabled={busy} onClick={() => void addCard()}>
               {billing.card ? "Replace card" : "Add a card"}
             </PrimaryButton>
           </div>
         </div>
-        <div className="rounded-ae-md border border-white/[0.06] bg-white/[0.04] p-4">
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.1em] text-ae-text-muted">Agent daily cap (USD, rolling 24h)</p>
-          <div className="mt-2 flex gap-2">
-            <input aria-label="Agent daily cap" className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none focus:border-ae-primary/60 focus:shadow-ae-glow" inputMode="decimal" onChange={(event) => setCap(event.target.value)} value={cap} />
-          </div>
-          <p className="mt-2 text-xs leading-5 text-ae-text-muted">Currently {formatCents(billing.agentDailyCapCents)}. Set 0 to stop agents funding anything.</p>
+        <div className="space-y-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
+          <p className="font-semibold text-ae-text">Spending limits</p>
+          <label className="block space-y-2">
+            <span className="ax-label">Agent daily cap (USD, rolling 24h)</span>
+            <input aria-label="Agent daily cap" className="ax-input" inputMode="decimal" onChange={(event) => setCap(event.target.value)} value={cap} />
+            <span className="block text-xs leading-5 text-ae-text-muted">Currently {formatCents(billing.agentDailyCapCents)}. Set 0 to stop agents funding anything.</span>
+          </label>
+          <label className="block space-y-2">
+            <span className="ax-label">Per-contract agent limit (USD, including service fee)</span>
+            <input aria-label="Per-contract agent limit" className="ax-input" inputMode="decimal" value={perJob} onChange={e=>setPerJob(e.target.value)} />
+          </label>
+          <SecondaryButton disabled={busy} onClick={() => void saveCap()}>Save spending limits</SecondaryButton>
         </div>
       </div>
-      <label className="block text-sm text-ae-text-muted">
-        Per-contract agent limit (USD, including service fee)
-        <input aria-label="Per-contract agent limit" className="mt-2 w-full rounded-ae-md bg-ae-background-deep px-4 py-3 text-ae-text" inputMode="decimal" value={perJob} onChange={e=>setPerJob(e.target.value)} />
-      </label>
-      <SecondaryButton disabled={busy} onClick={() => void saveCap()}>Save spending limits</SecondaryButton>
-      <div className="space-y-3 border-t border-white/10 pt-5">
-        <h2 className="text-xl text-ae-text">Receive earnings</h2>
-        <p className="text-sm text-ae-text-muted">{seller?.ready?.transfers && seller?.ready?.payouts ? 'Your payout account is ready.' : 'Connect your payout account and complete verification with Stripe. Earnings transfer after work is approved; bank settlement follows your Stripe payout schedule.'}</p>
-        <label className="block text-sm text-ae-text-muted">Country where you or your business is legally based
-          <input aria-label="Seller country code" placeholder="Two-letter code, e.g. US" maxLength={2} value={sellerCountry} onChange={e=>setSellerCountry(e.target.value.toUpperCase())} className="mt-2 w-full rounded-ae-md bg-ae-background-deep px-4 py-3 text-ae-text" />
-        </label>
-        <SecondaryButton disabled={busy || !/^[A-Z]{2}$/.test(sellerCountry)} onClick={()=>void setupSeller()}>{seller?.connected ? 'Continue payout setup' : 'Set up payouts'}</SecondaryButton>
+
+      <div className="space-y-4 border-t border-white/[0.08] pt-7">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-ae-display text-xl font-semibold tracking-tight text-ae-text">Receive earnings</h3>
+          {typeof seller?.connected === "boolean" ? <span className={`rounded-full border px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] ${sellerReady ? "border-ae-emerald/25 bg-ae-emerald/10 text-ae-emerald" : "border-ae-amber/25 bg-ae-amber/10 text-ae-amber"}`}>{sellerReady ? "Ready" : seller.connected ? "Setup incomplete" : "Not set up"}</span> : null}
+        </div>
+        <p className="max-w-2xl text-sm leading-6 text-ae-text-muted">{sellerReady ? 'Your payout account is ready.' : 'Connect your payout account and complete verification with Stripe. Earnings transfer after work is approved; bank settlement follows your Stripe payout schedule.'}</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="block flex-1 space-y-2">
+            <span className="ax-label">Country where you or your business is legally based</span>
+            <input aria-label="Seller country code" placeholder="Two-letter code, e.g. US" maxLength={2} value={sellerCountry} onChange={e=>setSellerCountry(e.target.value.toUpperCase())} className="ax-input" />
+          </label>
+          <SecondaryButton className="shrink-0" disabled={busy || !/^[A-Z]{2}$/.test(sellerCountry)} onClick={()=>void setupSeller()}>{seller?.connected ? 'Continue payout setup' : 'Set up payouts'}</SecondaryButton>
+        </div>
       </div>
-      {error ? <p className="text-sm text-ae-amber">{error}</p> : null}
+      {error ? <p role="alert" className="rounded-xl border border-ae-error/25 bg-ae-error/10 px-4 py-3 text-sm text-ae-error">{error}</p> : null}
     </GlassCard>
   );
 }

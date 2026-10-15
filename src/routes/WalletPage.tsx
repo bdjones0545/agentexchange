@@ -1,182 +1,150 @@
-import { EarningsChart } from "../components/EarningsChart";
-import { PayoutCard } from "../components/PayoutCard";
+import { Link } from "react-router-dom";
+
+import { AuthRequiredNotice } from "../components/AuthRequiredNotice";
+import { GlassCard } from "../components/GlassCard";
+import { PayoutNotice } from "../components/PayoutNotice";
 import { RevenueCard } from "../components/RevenueCard";
 import { TransactionList } from "../components/TransactionList";
 import { WalletSummary } from "../components/WalletSummary";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
-import {
-  earningsHistory,
-  payouts,
-  revenueMetrics,
-  transactions,
-  walletSummary,
-} from "../data/earnings";
-import { contractPriceLabel, contractValueDollars } from "../lib/money";
+import type { RevenueMetric, WalletSummary as WalletSummaryData } from "../data/earnings";
+import { contractPriceLabel, contractValueDollars, formatCents } from "../lib/money";
 import { useAgentExchange } from "../state/AgentExchangeContext";
+import { useAuth } from "../state/AuthContext";
+import type { LocalContract } from "../state/marketplaceTypes";
 
-function formatMoney(value: number) {
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(2)}M`;
-  }
+function formatMoney(dollars: number) {
+  return formatCents(Math.round(dollars * 100));
+}
 
-  if (value >= 1000) {
-    return `$${(value / 1000).toFixed(1)}k`;
-  }
+function totalValue(contracts: LocalContract[]) {
+  return contracts.reduce((total, contract) => total + contractValueDollars(contract), 0);
+}
 
-  return `$${Math.round(value)}`;
+function contractCount(count: number) {
+  return `${count} ${count === 1 ? "contract" : "contracts"}`;
 }
 
 export function WalletPage() {
   const { contractWorkspaces, isSharedMode, localContracts } = useAgentExchange();
-  // In shared mode nothing is simulated: every figure derives from the stated
-  // value of the user's own contracts, and there is no payout system yet.
-  const baseSummary = isSharedMode
-    ? {
-        ...walletSummary,
-        accountName: "Your contracts",
-        reportingPeriod: "All time",
-        totalRevenue: "$0",
-        pendingPayouts: "$0",
-        availableBalance: "$0",
-        revenueThisMonth: "$0",
-      }
-    : walletSummary;
-  const seedTransactions = isSharedMode ? [] : transactions;
-  const seedPayouts = isSharedMode ? [] : payouts;
-  const localContractsWithProgress = localContracts.map((contract) => {
+  const { loading: authLoading } = useAuth();
+  // Every figure derives from the contracts this account is a party to: their
+  // agreed price, status and platform-managed payment state. Nothing here is
+  // simulated, and none of it is a balance that can be withdrawn.
+  const contracts: LocalContract[] = localContracts.map((contract) => {
     const workspace = contractWorkspaces.find(
       (candidate) => candidate.contractId === contract.id,
     );
 
-    return workspace ? applyWorkspaceToContract(contract, workspace) : contract;
+    return workspace ? { ...contract, ...applyWorkspaceToContract(contract, workspace) } : contract;
   });
-  const completedLocalContracts = localContractsWithProgress.filter(
-    (contract) => contract.status === "Completed",
+  const completed = contracts.filter((contract) => contract.status === "Completed");
+  const inProgress = contracts.filter((contract) => contract.status !== "Completed");
+  const held = contracts.filter((contract) => contract.paymentStatus === "authorized");
+  const released = contracts.filter(
+    (contract) => contract.paymentStatus === "captured" || contract.paymentStatus === "paid_out",
   );
-  const pendingLocalContracts = localContractsWithProgress.filter(
-    (contract) => contract.status !== "Completed",
-  );
-  const localTotalRevenue = localContractsWithProgress.reduce(
-    (total, contract) => total + contractValueDollars(contract),
-    0,
-  );
-  const localCompletedRevenue = completedLocalContracts.reduce(
-    (total, contract) => total + contractValueDollars(contract),
-    0,
-  );
-  const localPendingRevenue = pendingLocalContracts.reduce(
-    (total, contract) => total + contractValueDollars(contract),
-    0,
-  );
-  const dynamicWalletSummary = {
-    ...baseSummary,
-    availableBalance:
-      localCompletedRevenue > 0
-        ? formatMoney(localCompletedRevenue)
-        : baseSummary.availableBalance,
-    pendingPayouts:
-      localPendingRevenue > 0
-        ? formatMoney(localPendingRevenue)
-        : baseSummary.pendingPayouts,
-    revenueThisMonth:
-      localTotalRevenue > 0
-        ? formatMoney(localTotalRevenue)
-        : baseSummary.revenueThisMonth,
-    // Demo mode stacks the user's contracts on top of the seed ledger; shared
-    // mode reports only what the user's own contracts say.
-    totalRevenue:
-      localTotalRevenue > 0
-        ? formatMoney((isSharedMode ? 0 : 1840000) + localTotalRevenue)
-        : baseSummary.totalRevenue,
+
+  // WalletSummary shows the account name, period and total agreed value.
+  const summary: WalletSummaryData = {
+    accountName: "Your contracts",
+    reportingPeriod: "All time",
+    totalRevenue: formatMoney(totalValue(contracts)),
+    pendingPayouts: formatMoney(totalValue(inProgress)),
+    availableBalance: formatMoney(totalValue(released)),
+    revenueThisMonth: formatMoney(totalValue(contracts)),
   };
-  const dynamicRevenueMetrics = revenueMetrics.map((metric) => {
-    if (metric.id === "total-revenue") {
-      return { ...metric, value: dynamicWalletSummary.totalRevenue };
-    }
+  const metrics: RevenueMetric[] = [
+    {
+      id: "in-progress",
+      label: "In progress",
+      value: formatMoney(totalValue(inProgress)),
+      detail: `${contractCount(inProgress.length)} not yet completed`,
+      accent: "amber",
+    },
+    {
+      id: "completed",
+      label: "Completed",
+      value: formatMoney(totalValue(completed)),
+      detail: `${contractCount(completed.length)} marked completed`,
+      accent: "violet",
+    },
+    {
+      id: "held",
+      label: "Funded · held",
+      value: formatMoney(totalValue(held)),
+      detail: "Card authorization holds awaiting approval. Holds can expire.",
+      accent: "cyan",
+    },
+    {
+      id: "released",
+      label: "Paid",
+      value: formatMoney(totalValue(released)),
+      detail: "Payment captured after the work was approved",
+      accent: "emerald",
+    },
+  ];
+  const transactions = contracts.map((contract) => {
+    const paymentStatus = contract.paymentStatus ?? "unfunded";
+    const paid = paymentStatus === "captured" || paymentStatus === "paid_out";
 
-    if (metric.id === "pending-payouts") {
-      return { ...metric, value: dynamicWalletSummary.pendingPayouts };
-    }
-
-    if (metric.id === "available-balance") {
-      return { ...metric, value: dynamicWalletSummary.availableBalance };
-    }
-
-    if (metric.id === "revenue-this-month") {
-      return { ...metric, value: dynamicWalletSummary.revenueThisMonth };
-    }
-
-    return metric;
+    return {
+      id: `local-${contract.id}`,
+      date: contract.startDate || "—",
+      organization: contract.organization,
+      agent: contract.agent,
+      contract: contract.title,
+      amount: contractPriceLabel(contract),
+      status: paid ? ("Paid" as const) : ("Pending" as const),
+      accent: paid ? ("emerald" as const) : ("amber" as const),
+      paymentStatus,
+    };
   });
-  const localTransactions = localContractsWithProgress.map((contract) => ({
-    id: `local-${contract.id}`,
-    date: new Date().toLocaleDateString("en-US", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }),
-    organization: contract.organization,
-    agent: contract.agent,
-    contract: contract.title,
-    amount: contractPriceLabel(contract),
-    status: contract.status === "Completed" ? "Paid" as const : "Pending" as const,
-    accent: contract.status === "Completed" ? "emerald" as const : "amber" as const,
-  }));
-  const pendingPayouts = seedPayouts.filter((payout) => payout.status !== "Paid");
-  const completedPayouts = seedPayouts.filter((payout) => payout.status === "Paid");
 
   return (
-    <section className="space-y-10">
+    <div className="space-y-10">
       <WalletSummary
         description={
           isSharedMode
-            ? "No payments move through AgentExchange yet. Everything below is derived from the stated value of your own contracts; nothing here is a balance you can withdraw."
-            : undefined
+            ? "Figures come from the agreed price and payment status of contracts you’re a party to. None of it is a balance you can withdraw here."
+            : "Local demo mode: figures come from contracts created in this browser. No real payments are made."
         }
-        summary={dynamicWalletSummary}
+        summary={summary}
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {dynamicRevenueMetrics.map((metric) => (
+      {authLoading ? null : <AuthRequiredNotice action="see your contracts and payments" />}
+
+      <section aria-label="Contract value by status" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => (
           <RevenueCard key={metric.id} metric={metric} />
         ))}
       </section>
 
-      {isSharedMode ? null : <EarningsChart points={earningsHistory} />}
+      <TransactionList
+        emptyState={
+          <>
+            <p>No contracts yet. When you hire an agent, or your agent is hired, the contract appears here.</p>
+            <p className="mt-4 flex flex-wrap justify-center gap-x-5 gap-y-2 font-semibold">
+              <Link className="text-ae-primary underline decoration-ae-primary/40 underline-offset-4" to="/marketplace">Browse briefs</Link>
+              <Link className="text-ae-primary underline decoration-ae-primary/40 underline-offset-4" to="/agents">Browse agents</Link>
+            </p>
+          </>
+        }
+        transactions={transactions}
+      />
 
-      <TransactionList transactions={[...localTransactions, ...seedTransactions]} />
-
-      <section className="space-y-4">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Pending Payouts
+      <div className="grid gap-4 lg:grid-cols-2">
+        <PayoutNotice />
+        <GlassCard className="flex flex-col p-5 sm:p-6">
+          <h3 className="font-ae-display text-base font-semibold text-ae-text">Payout history</h3>
+          <p className="mt-1.5 text-sm leading-6 text-ae-text-muted">
+            Payout history isn’t shown here yet. Earnings transfer to your connected Stripe account after work is approved; bank settlement follows your Stripe payout schedule.
           </p>
-          <h2 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text">
-            Scheduled earnings releases
-          </h2>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {pendingPayouts.map((payout) => (
-            <PayoutCard key={payout.id} payout={payout} />
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-4">
-        <div>
-          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-            Completed Payouts
-          </p>
-          <h2 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text">
-            Recently completed payouts
-          </h2>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {completedPayouts.map((payout) => (
-            <PayoutCard key={payout.id} payout={payout} />
-          ))}
-        </div>
-      </section>
-    </section>
+          <Link className="mt-4 inline-flex w-fit items-center gap-2 text-sm font-semibold text-ae-primary underline decoration-ae-primary/40 underline-offset-4 transition hover:decoration-ae-primary" to="/account#payment-settings">
+            Payout settings <span aria-hidden>→</span>
+          </Link>
+        </GlassCard>
+      </div>
+    </div>
   );
 }

@@ -1,3 +1,4 @@
+import { initialsFor } from "../lib/initials";
 import {
   createContext,
   useCallback,
@@ -15,9 +16,7 @@ import {
   withMilestoneToggled,
 } from "../data/contractWorkspace";
 import { agents } from "../data/agents";
-import { contracts as seedContractData } from "../data/operations";
 import type { SuggestedAgentAction } from "../data/agentRecommendations";
-import { opportunities } from "../data/marketplace";
 import {
   createActivityEvent,
   loadAgentExchangeState,
@@ -214,7 +213,6 @@ type AgentExchangeContextValue = PersistedState & {
    * Seed contracts for browsing. Empty in shared mode so a real user's
    * contracts, wallet and history never mix with demo fixtures.
    */
-  seedContracts: typeof seedContractData;
   /**
    * Hermes workers registered with the product (shared mode only). Agents
    * owned by one of these profiles execute their contracts autonomously.
@@ -301,7 +299,7 @@ function getOpportunityForState(
   current: PersistedState,
   opportunityId: string,
 ) {
-  return [...current.createdOpportunities, ...opportunities].find(
+  return current.createdOpportunities.find(
     (opportunity) => opportunity.id === opportunityId,
   );
 }
@@ -789,13 +787,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
         : {
             accent: "violet" as const,
             availability: input.availability,
-            avatarInitials:
-              input.name
-                .split(" ")
-                .map((part) => part[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase() || "AI",
+            avatarInitials: initialsFor(input.name, "AI"),
             contractHistoryIds: [],
             createdAt: new Date().toISOString(),
             customSkills: input.skills,
@@ -809,7 +801,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
             successRate: "New",
             tier: "Local Agent",
             toolAccess: input.toolAccess,
-            trustScore: 90,
+            trustScore: 0,
           };
 
       setState((current) => ({
@@ -1457,9 +1449,17 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
         }
 
         if (isSupabaseConfigured && isRealSupabaseOpportunity) {
-          void saveOpportunityRecord(opportunityId).catch((error) =>
-            setError(error instanceof Error ? error.message : "Unable to save opportunity."),
-          );
+          void saveOpportunityRecord(opportunityId).catch((error) => {
+            // Undo the optimistic save so the button matches what was stored.
+            setState((latest) => ({
+              ...latest,
+              savedOpportunities: latest.savedOpportunities.filter(
+                (savedOpportunity) => savedOpportunity.opportunityId !== opportunityId,
+              ),
+            }));
+            showToast("Couldn't save this brief. Please try again.");
+            setError(error instanceof Error ? error.message : "Unable to save opportunity.");
+          });
         }
         showToast("Opportunity saved.");
         return {
@@ -2256,7 +2256,6 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       ownsAgent,
       ownsOpportunity,
       ownsOrganization,
-      seedContracts: isSupabaseConfigured ? [] : seedContractData,
       workers,
       isWorkerAgent,
       acceptApplication: safe(acceptApplication),

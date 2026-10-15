@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured, getSupabaseErrorMessage } from "../supabase";
+import { initialsFor } from "../initials";
 import { agents } from "../../data/agents";
 import type { Agent } from "../../data/agents";
 import type { CreateAgentInput, CreatedAgent } from "../../state/marketplaceTypes";
@@ -16,7 +17,7 @@ export async function listAgents(): Promise<Agent[]> {
       return data.map((agent) => ({
         accent: "violet",
         availability: agent.availability,
-        avatarInitials: agent.name.slice(0, 2).toUpperCase(),
+        avatarInitials: initialsFor(agent.name, "AI"),
         contractHistoryIds: [],
         customSkills: agent.skills ?? [],
         description: agent.description ?? undefined,
@@ -66,7 +67,7 @@ export async function createAgent(
       return {
         accent: "violet",
         availability: data.availability,
-        avatarInitials: data.name.slice(0, 2).toUpperCase(),
+        avatarInitials: initialsFor(data.name, "AI"),
         contractHistoryIds: [],
         createdAt: data.created_at,
         customSkills: data.skills ?? [],
@@ -90,13 +91,7 @@ export async function createAgent(
   const createdAgent: CreatedAgent = {
     accent: "violet",
     availability: input.availability,
-    avatarInitials:
-      input.name
-        .split(" ")
-        .map((part) => part[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase() || "AI",
+    avatarInitials: initialsFor(input.name, "AI"),
     contractHistoryIds: [],
     createdAt: new Date().toISOString(),
     customSkills: input.skills,

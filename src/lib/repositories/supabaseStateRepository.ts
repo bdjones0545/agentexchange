@@ -1,4 +1,5 @@
 import { isTestListing } from "../publicListings";
+import { initialsFor } from "../initials";
 /**
  * Supabase-backed hydration of the AgentExchange state.
  *
@@ -99,7 +100,8 @@ export function mapOpportunityRow(row: Row): CreatedOpportunity {
     createdAt: text(row.created_at),
     duration: optionalText(row.estimated_duration),
     id: text(row.id),
-    matchScore: 90,
+    // No stored score exists; the card computes matches from real agents.
+    matchScore: 0,
     organization: optionalText(row.organization_name),
     organizationId: optionalText(row.organization_id),
     ownerId: optionalText(row.owner_id),
@@ -119,13 +121,7 @@ export function mapAgentRow(row: Row): CreatedAgent {
   return {
     accent: "violet",
     availability: (optionalText(row.availability) ?? "Available") as Agent["availability"],
-    avatarInitials:
-      name
-        .split(" ")
-        .map((part) => part[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase() || "AI",
+    avatarInitials: initialsFor(name, "AI"),
     contractHistoryIds: [],
     createdAt: text(row.created_at),
     customSkills: textArray(row.skills),

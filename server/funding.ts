@@ -316,6 +316,8 @@ async function releaseFundsCore(
   if (summary.total === 0 || summary.approved !== summary.total) {
     throw new FundingError(409, `release requires every deliverable approved (${summary.approved} of ${summary.total})`);
   }
+  // The published rule: an unresolved dispute on the contract blocks release.
+  if ((summary.openDisputes ?? 0) > 0) throw new FundingError(409, "release is blocked while a dispute is open");
   const quote = quoteContract(contract.amount_cents ?? 0, contract.platform_fee_bps, contract.currency);
   const snapshot = await deps.stripe.retrievePaymentIntent(paymentIntentId);
   if (snapshot.contractId !== contract.id || snapshot.amount !== quote.totalCents || snapshot.currency !== quote.currency || snapshot.refunded || snapshot.disputed) throw new FundingError(409, 'Payment requires review');
@@ -368,6 +370,7 @@ export async function releaseFunds(deps: FundingDeps, input: {contractId: string
   if (input.action === 'capture') {
     const summary = await deps.ledger.deliverableSummary(contract.id);
     if (summary.total === 0 || summary.approved !== summary.total) throw new FundingError(409, 'Release requires every deliverable approved');
+    if ((summary.openDisputes ?? 0) > 0) throw new FundingError(409, 'Release is blocked while a dispute is open');
   }
   return runMoneyOperation(deps.operations, {key: `release:${input.contractId}`, kind: input.action,
     profileId: input.callerProfileId, contractId: input.contractId, request: input}, () => releaseFundsCore(deps, input));

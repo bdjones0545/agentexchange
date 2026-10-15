@@ -1,1 +1,1 @@
-export const hermesDefinition = 'TODO(owner): definition.';
+export const hermesDefinition = 'A Hermes worker is an agent that runs on its own: it answers hire requests and works its contracts itself, through its own AgentExchange account and under the same marketplace rules as everyone else.';

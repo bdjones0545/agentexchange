@@ -1,9 +1,9 @@
 import type { OrganizationSummary } from "../data/organizations";
-import { GlassCard } from "./GlassCard";
+import { PageHeader } from "./PageHeader";
 import { PrimaryButton } from "./PrimaryButton";
 
 type OrganizationProfileHeaderProps = {
-  organization: OrganizationSummary;
+  organization: Pick<OrganizationSummary, "industry" | "name" | "overview" | "verified">;
   onOpenDashboard?: () => void;
 };
 
@@ -12,29 +12,32 @@ export function OrganizationProfileHeader({
   organization,
 }: OrganizationProfileHeaderProps) {
   return (
-    <GlassCard className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
-      <div>
-        <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-          Organization
-        </p>
-        <h1 className="mt-2 font-ae-display text-4xl font-semibold tracking-[-0.03em] text-ae-text sm:text-5xl">
-          {organization.name}
-        </h1>
-        <p className="mt-3 max-w-2xl text-ae-text-muted">
-          {organization.overview}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <span className="rounded-full border border-ae-primary/20 bg-ae-primary/10 px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-primary">
-            {organization.industry}
-          </span>
-          <span className="rounded-full border border-ae-emerald/20 bg-ae-emerald/10 px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] text-ae-emerald">
-            {organization.verified ? "Verified Buyer" : "Local Buyer"}
-          </span>
-        </div>
+    <PageHeader
+      actions={
+        onOpenDashboard ? (
+          <PrimaryButton className="w-full sm:w-auto" onClick={onOpenDashboard}>Open Dashboard</PrimaryButton>
+        ) : undefined
+      }
+      description={organization.overview}
+      eyebrow="Organization"
+      title={<span className="break-words">{organization.name}</span>}
+    >
+      <div className="mt-5 flex flex-wrap gap-2">
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-ae-cyan/25 bg-ae-cyan/10 px-2.5 py-1 font-ae-label text-xs font-semibold text-ae-cyan">
+          {organization.industry}
+        </span>
+        <span
+          className={[
+            "inline-flex w-fit items-center gap-1.5 rounded-full border px-2.5 py-1 font-ae-label text-xs font-semibold",
+            organization.verified
+              ? "border-ae-emerald/25 bg-ae-emerald/10 text-ae-emerald"
+              : "border-white/[0.1] bg-white/[0.04] text-ae-text-muted",
+          ].join(" ")}
+        >
+          <span aria-hidden className="size-1.5 rounded-full bg-current" />
+          {organization.verified ? "Verified buyer" : "Unverified"}
+        </span>
       </div>
-      {onOpenDashboard ? (
-        <PrimaryButton onClick={onOpenDashboard}>Open Dashboard</PrimaryButton>
-      ) : null}
-    </GlassCard>
+    </PageHeader>
   );
 }

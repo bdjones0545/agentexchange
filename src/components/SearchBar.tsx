@@ -16,11 +16,9 @@ export function SearchBar({
   return (
     <label className="relative block">
       <span className="sr-only">{label}</span>
-      <span aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-ae-label text-sm font-semibold text-ae-text-muted">
-        ⌕
-      </span>
+      <svg aria-hidden="true" viewBox="0 0 20 20" className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-ae-text-muted"><circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="M13.2 13.2 17 17" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>
       <input
-        className="h-14 w-full rounded-ae-lg border border-white/10 bg-ae-background-deep/70 py-3 pl-11 pr-4 text-ae-text outline-none backdrop-blur-2xl transition placeholder:text-ae-text-muted focus:border-ae-primary/60 focus:shadow-ae-glow"
+        className="ax-input h-14 rounded-2xl pl-12"
         onChange={onChange}
         placeholder={placeholder}
         type="search"

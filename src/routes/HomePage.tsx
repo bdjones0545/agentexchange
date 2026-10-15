@@ -1,6 +1,6 @@
 import { ContractLifecycle } from "../components/ContractLifecycle";
 import { ListingSkeleton } from "../components/ListingResults";
-import { publicListings, showHomeCounters } from "../lib/publicListings";
+import { publicContracts, publicListings, showHomeCounters } from "../lib/publicListings";
 import { useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -15,13 +15,8 @@ import { BriefComposer } from "../components/landing/BriefComposer";
 import { ContractDemo } from "../components/landing/ContractDemo";
 import { BriefMarquee, ControlBento, DeveloperSection, Faq, FinalCta, PathCards, SectionHeading } from "../components/landing/LandingSections";
 import { NetworkCanvas } from "../components/landing/NetworkCanvas";
-import {
-  categories,
-  liveActivity,
-  marketplaceMetrics,
-  opportunities,
-  type Opportunity,
-} from "../data/marketplace";
+import { categories, type Opportunity } from "../data/marketplace";
+import { getListedAgents } from "../data/localSelectors";
 import {
   getLiveActivity,
   getLiveCategories,
@@ -52,20 +47,17 @@ export function HomePage() {
     localContracts,
     loading,
   } = useAgentExchange();
-  // Shared mode shows the marketplace as it is; demo mode shows the seed story.
-  const metrics = isSharedMode
-    ? getLiveMarketplaceMetrics({
-        agents: createdAgents,
-        contracts: localContracts,
-        hireRequests,
-        opportunities: createdOpportunities,
-      })
-    : marketplaceMetrics;
-  const categoryCards = isSharedMode ? getLiveCategories(categories, createdOpportunities) : categories;
-  const activity = isSharedMode ? getLiveActivity(agentActivities) : liveActivity;
-  const featuredOpportunity: Opportunity | undefined = isSharedMode
-    ? publicListings(createdOpportunities).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
-    : opportunities[0];
+  // Every number and listing here comes from rows the visitor can see; nothing is seeded.
+  const listedAgents = getListedAgents(createdAgents);
+  const metrics = getLiveMarketplaceMetrics({
+    agents: listedAgents as typeof createdAgents,
+    contracts: localContracts,
+    hireRequests,
+    opportunities: createdOpportunities,
+  });
+  const categoryCards = getLiveCategories(categories, createdOpportunities);
+  const activity = getLiveActivity(agentActivities);
+  const featuredOpportunity: Opportunity | undefined = publicListings(createdOpportunities).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const [applicationOpportunity, setApplicationOpportunity] =
     useState<Opportunity | null>(null);
   const [negotiationOpportunity, setNegotiationOpportunity] =
@@ -102,7 +94,7 @@ export function HomePage() {
 
         <BriefMarquee />
 
-        {!loading && isSharedMode && showHomeCounters(createdAgents.length, localContracts.length) ? <section aria-label="Marketplace activity" className="grid gap-4 md:grid-cols-3">{metrics.map(metric=><MetricCard key={metric.id} metric={metric}/>)}</section> : !isSharedMode ? <p className="rounded-xl border border-ae-amber/20 bg-ae-amber/5 px-4 py-3 text-sm text-ae-amber">Demo workspace · Listings below are sample data.</p> : null}
+        {!loading && isSharedMode && showHomeCounters(listedAgents.length, publicContracts(localContracts).length) ? <section aria-label="Marketplace activity" className="grid gap-4 md:grid-cols-3">{metrics.map(metric=><MetricCard key={metric.id} metric={metric}/>)}</section> : !isSharedMode ? <p className="rounded-xl border border-ae-amber/20 bg-ae-amber/5 px-4 py-3 text-sm text-ae-amber">Local preview · Live marketplace data loads when Supabase is configured.</p> : null}
       </div>
 
       <PathCards />
@@ -127,7 +119,7 @@ export function HomePage() {
           {loading ? <ListingSkeleton label="Loading marketplace activity…"/> : featuredOpportunity ? (
             <div className="ax-reveal space-y-4">
               <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-                {isSharedMode ? "Newest brief" : "Featured brief"}
+                Newest brief
               </p>
               <OpportunityCard
                 defaultExpanded
@@ -137,7 +129,7 @@ export function HomePage() {
               />
             </div>
           ) : null}
-          {!loading && <div className="ax-reveal"><ActivityFeed items={activity} /></div>}
+          {!loading && activity.length > 0 && <div className="ax-reveal"><ActivityFeed items={activity} /></div>}
         </div>
       </section>
 

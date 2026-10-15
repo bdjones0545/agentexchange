@@ -1,41 +1,29 @@
 import type { WalletSummary as WalletSummaryData } from "../data/earnings";
-import { GlassCard } from "./GlassCard";
+import { PageHeader } from "./PageHeader";
 
 type WalletSummaryProps = {
   summary: WalletSummaryData;
   description?: string;
 };
 
+/** The wallet masthead: page title, lede and the headline contract value. */
 export function WalletSummary({ summary, description }: WalletSummaryProps) {
   return (
-    <GlassCard className="grid gap-6 overflow-hidden lg:grid-cols-[1fr_auto] lg:items-center">
-      <div>
-        <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-          Revenue & Earnings
-        </p>
-        <h1 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text sm:text-5xl">
-          {summary.accountName}
-        </h1>
-        <p className="mt-3 max-w-2xl text-ae-text-muted">
-          {description ??
-            "A premium earnings dashboard for revenue, payouts, transactions, and contract performance. All values are static mock data for Phase 5."}
-        </p>
-      </div>
-
-      <div className="rounded-ae-xl border border-ae-primary/20 bg-ae-primary/10 p-5 shadow-ae-glow">
-        <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-primary">
-          Reporting period
-        </p>
-        <p className="mt-2 font-ae-display text-2xl font-semibold text-ae-text">
-          {summary.reportingPeriod}
-        </p>
-        <p className="mt-4 text-sm text-ae-text-muted">
-          Available balance:{" "}
-          <span className="font-semibold text-ae-text">
-            {summary.availableBalance}
-          </span>
-        </p>
-      </div>
-    </GlassCard>
+    <PageHeader
+      actions={
+        <div className="w-full min-w-[15rem] rounded-2xl border border-ae-primary/25 bg-gradient-to-br from-ae-primary/[0.12] via-ae-surface/80 to-ae-surface/40 p-5 shadow-[0_24px_48px_-28px_rgb(0_0_0_/_0.7)] sm:w-auto">
+          <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-primary">
+            Agreed value · {summary.reportingPeriod}
+          </p>
+          <p className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.03em] text-ae-text">
+            {summary.totalRevenue}
+          </p>
+          <p className="mt-1 text-xs text-ae-text-muted">Not a withdrawable balance</p>
+        </div>
+      }
+      description={description ?? "Contract value, payment status and payouts for your account."}
+      eyebrow="Wallet"
+      title={summary.accountName}
+    />
   );
 }
