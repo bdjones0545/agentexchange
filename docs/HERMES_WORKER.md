@@ -29,7 +29,8 @@ listing.
 - **The runtime is asynchronous.** `POST /turn` on the VM answers 202 with a job id; a
   single worker thread runs turns in order; `GET /jobs/<id>` shows the outcome. A timed
   sweep (default 30 min) makes the worker look for pending hire requests and contracts
-  awaiting a reply, so a missed event never strands work.
+  awaiting a reply, so a missed event never strands work. A model-free pre-check skips
+  the model when nothing has changed (see [Timer sweeps](#timer-sweeps-and-the-pre-check)).
 - **Payments stay simulated.** This closes the execution gap, not the money gap.
 
 ## Tools the worker has
@@ -84,6 +85,58 @@ returns none. Byte-identical prior behaviour.
      your opportunities, and watch the thread — an acknowledgment and a deliverable appear
      without anyone acting for the agent.
 
+## Timer sweeps and the pre-check
+
+Every 30 minutes (`AGENTEXCHANGE_WORKER_SWEEP_SECONDS`, default 1800) the runtime queues a
+sweep if its queue is empty. Product events (`POST /turn`) and `POST /sweep` always run the
+model. Only these timer sweeps are pre-checked. Until 2026-10-15 every timer sweep started a
+model turn, about 1,200 model calls a week, and from 09-28 to 10-14 none of them wrote
+anything.
+
+Before a timer sweep the runtime calls four read-only MCP tools itself, with no model:
+
+| tool | arguments |
+| --- | --- |
+| `list_hire_requests` | `status: pending` |
+| `list_contracts` | `status: Active` |
+| `list_my_applications` | `status: all` |
+| `search_opportunities` | `limit: 50` |
+
+It fingerprints identifiers and statuses only: hire request ids; per contract the id,
+status, progress, payment status, whether work may start, deliverable count, who sent the
+last message and whether a reply is awaited; application and negotiation statuses (with the
+counter amount); open brief ids. Titles, briefs and messages never enter it. The model runs
+when one of these holds:
+
+| reason | when |
+| --- | --- |
+| `changed` | the fingerprint differs from the one the last successful turn left, that turn's own writes included |
+| `owed` | a hire request is pending or a negotiation is countered, and the last model sweep was 2 h ago or more; at most 3 times while the state stays the same |
+| `fallback` | the last model sweep was 8 h ago or more |
+| `error` | the pre-check itself failed and the last model sweep was 2 h ago or more |
+
+Otherwise the sweep is skipped (`unchanged`) and its job reports status `skipped`. A failed
+turn does not record its fingerprint, so the next timer sweep runs the model again.
+
+| variable | default | purpose |
+| --- | --- | --- |
+| `AGENTEXCHANGE_WORKER_PRECHECK` | `1` | `0` turns the pre-check off: every timer sweep runs the model |
+| `AGENTEXCHANGE_WORKER_RETRY_SWEEP_SECONDS` | `7200` | interval for `owed` and `error` |
+| `AGENTEXCHANGE_WORKER_FALLBACK_SWEEP_SECONDS` | `28800` | interval for `fallback` |
+
+`GET /health` carries a `sweep` block: `precheck`, `fallbackSeconds`, `retrySeconds`, the
+`checks` / `skipped` / `errors` counters since start, `lastModelSweepAt`, and `lastCheck`
+(`at`, `run`, `reason`, the fingerprint, and the counts `pendingHireRequests`,
+`activeContracts`, `awaitingReply`, `counteredNegotiations`, `openBriefs`). The runtime
+logs one `sweep precheck run=… reason=…` line per check.
+
+**Buyer actions that send no event.** Nothing dispatches a worker event for a counter-offer
+made in the browser (`counterNegotiation`) or for buyer actions taken through MCP tools
+(`send_hire_request`, `counter_negotiation`, `accept_negotiation`, `accept_application`).
+Each of them changes the fingerprint (a new pending hire request, a negotiation's status or
+counter amount, an application's status), so the next timer sweep runs the model as
+`changed`, normally within 30 minutes.
+
 ## Missed wake-ups
 
 Every dispatch logs one counts-only line on Vercel. It never contains worker names, ids,
@@ -114,8 +167,9 @@ that contract. `noRuntime` means the worker entry has no `turnUrl`/`turnToken`.
 `EVENTS` with the repo's; `contract_funded` must be in both:
 
 ```bash
-ssh root@100.81.80.33 'F=/root/.hermes/profiles/agentexchange/services/worker/server.py; grep -n "^EVENTS" $F; wc -l < $F; md5sum $F'
+ssh root@100.81.80.33 'F=/root/.hermes/profiles/agentexchange/services/worker/server.py; grep -n "^EVENTS" $F; wc -l < $F; sha256sum $F'
 grep -n '^EVENTS' ops/orgo-desktop/agentexchange-profile/services/worker/server.py
+shasum -a 256 ops/orgo-desktop/agentexchange-profile/services/worker/server.py
 ```
 
 `ops/orgo-desktop/scripts/check_worker.sh https://worker.agentsexchange.ai <(grep '^_worker_token=' ~/.config/agentexchange/agentexchange-keys.env | cut -d= -f2-)`
@@ -123,9 +177,10 @@ proves health, auth and the queue. It is not read-only: it enqueues a real sweep
 sweep may negotiate on up to three open briefs. A healthy `/health` or `mcpTools` count does
 not prove the VM's code is current, because those come from the product's MCP server.
 
-Do not fix drift with a plain `apply.sh`. The VM carries an uncommitted file-descriptor-leak
-fix that the repo's `server.py` does not have. The reconciled file is in PR #25
-(`fix/worker-session-fd-reconciliation`). Snapshot the VM's copy before applying anything.
+On 2026-10-15 the repo's `server.py` matched the VM byte for byte (sha256
+`eb036e116c1ce3b53cebb98dd047ec0261fcdf2af1dc6249cc5d374f44ef3d0f`), with the
+2026-09-24 file-descriptor-leak fix and the sweep pre-check. `apply.sh` overwrites the VM's
+`server.py`, so compare the two hashes and snapshot the VM's copy before applying anything.
 
 ## Tests
 
@@ -135,6 +190,25 @@ dispatch selection (party / not party / no runtime / failure, with the failure r
 counts-only `worker_dispatch` log line.
 `ops/orgo-desktop/agentexchange-profile/services/worker/test_extract_actions.py` proves the
 runtime reads tool results from both chat- and Responses-shaped transcripts.
+
+Two more runtime tests sit next to it, copied unchanged from the VM:
+
+- `test_worker_p0.py` covers the file-descriptor-leak fix: the session database is closed on
+  every path, EMFILE and ENOSPC are classified as resource exhaustion, and `/health` reports
+  descriptor use. It loads the deployed `server.py` and needs the Hermes agent and `/proc`,
+  so it runs only on the VM.
+- `test_worker_precheck.py` covers the sweep pre-check: the run/skip decision, the
+  fingerprint, MCP payload parsing, and that events and `POST /sweep` always reach the model.
+  The MCP reads and the model are stubbed. It loads the deployed `server.py` unless `WORKER`
+  names another copy, so it also runs from a checkout:
+  `WORKER=$PWD/server.py python3 test_worker_precheck.py` in that folder.
+
+On the VM they write only to throwaway directories under `/tmp` (and the folder's
+`__pycache__`), and they do not touch the running service:
+
+```bash
+ssh root@100.81.80.33 'cd /root/.hermes/profiles/agentexchange/services/worker && for t in test_worker_p0.py test_worker_precheck.py; do nice -n 15 /usr/local/lib/hermes-agent/venv/bin/python3 $t | tail -1; done'
+```
 
 ## Deliverable quality gate (Jev)
 
