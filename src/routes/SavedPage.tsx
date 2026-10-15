@@ -7,7 +7,6 @@ import { NegotiationModal } from "../components/NegotiationModal";
 import { OpportunityCard } from "../components/OpportunityCard";
 import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
-import { getAllOpportunities } from "../data/localSelectors";
 import type { Opportunity } from "../data/marketplace";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
@@ -21,7 +20,8 @@ export function SavedPage() {
 
   const savedItems = useMemo(
     () => {
-      const allOpportunities = getAllOpportunities(createdOpportunities);
+      // Everything the user saved, including [test] briefs the public lists hide.
+      const allOpportunities: Opportunity[] = createdOpportunities;
 
       return savedOpportunities
         .map((savedOpportunity) =>

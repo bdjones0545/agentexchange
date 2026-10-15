@@ -1449,9 +1449,17 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
         }
 
         if (isSupabaseConfigured && isRealSupabaseOpportunity) {
-          void saveOpportunityRecord(opportunityId).catch((error) =>
-            setError(error instanceof Error ? error.message : "Unable to save opportunity."),
-          );
+          void saveOpportunityRecord(opportunityId).catch((error) => {
+            // Undo the optimistic save so the button matches what was stored.
+            setState((latest) => ({
+              ...latest,
+              savedOpportunities: latest.savedOpportunities.filter(
+                (savedOpportunity) => savedOpportunity.opportunityId !== opportunityId,
+              ),
+            }));
+            showToast("Couldn't save this brief. Please try again.");
+            setError(error instanceof Error ? error.message : "Unable to save opportunity.");
+          });
         }
         showToast("Opportunity saved.");
         return {
