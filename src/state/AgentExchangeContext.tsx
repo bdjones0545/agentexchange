@@ -252,6 +252,13 @@ function isUuid(value: string | undefined) {
   );
 }
 
+/**
+ * Default due date for a new contract. A card hold lasts about seven days and is
+ * never renewed, so priced work is scheduled to be delivered, approved and
+ * released inside that window.
+ */
+const CONTRACT_DUE_DAYS = 6;
+
 function formatLocalDate(offsetDays = 0) {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
@@ -1739,7 +1746,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
         value: opportunity?.budget ?? "Custom scope",
         status: "Active",
         startDate: formatLocalDate(),
-        dueDate: formatLocalDate(21),
+        dueDate: formatLocalDate(CONTRACT_DUE_DAYS),
         progress: 8,
         accent: "violet",
       };
@@ -1895,7 +1902,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
         value: negotiation.counterRate ?? negotiation.rate,
         status: "Active",
         startDate: formatLocalDate(),
-        dueDate: formatLocalDate(21),
+        dueDate: formatLocalDate(CONTRACT_DUE_DAYS),
         progress: 5,
         accent: "violet",
       };
@@ -2064,7 +2071,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
         value: opportunity?.budget ?? "Custom scope",
         status: "Active",
         startDate: formatLocalDate(),
-        dueDate: formatLocalDate(14),
+        dueDate: formatLocalDate(CONTRACT_DUE_DAYS),
         progress: 5,
         accent: "emerald",
       };

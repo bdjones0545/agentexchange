@@ -360,7 +360,14 @@ async function fundingOperation<T>(deps: FundingDeps, input: {contractId: string
   try { quote = quoteContract(contract.amount_cents ?? 0, contract.platform_fee_bps, contract.currency); }
   catch { throw new FundingError(409, 'Contract has no valid agreed price'); }
   if (quote.currency !== 'USD') throw new FundingError(409, 'Payment launch supports USD contracts only');
-  return runMoneyOperation(deps.operations, { key: `fund:${contract.id}`, kind, profileId: input.callerProfileId,
+  // One operation key per funding attempt. The first attempt keeps the original
+  // key; a new one opens only after every earlier hold ended without a capture,
+  // so a lapsed, cancelled or abandoned hold can be funded again while a live
+  // hold can never be doubled.
+  // A retry of the live attempt maps to the same key and gets its stored result.
+  const ended = (await deps.ledger.endedFundingAttempts?.(contract.id)) ?? 0;
+  const key = ended === 0 ? `fund:${contract.id}` : `fund:${contract.id}:${ended}`;
+  return runMoneyOperation(deps.operations, { key, kind, profileId: input.callerProfileId,
     contractId: contract.id, amountCents: quote.totalCents, request: {contractId: contract.id, quote, ...(input.agentKeyId ? {agentKeyId:input.agentKeyId,selectedPaymentMethod:input.selectedPaymentMethod} : {})} }, run);
 }
 export async function createFunding(deps: FundingDeps, input: {contractId: string; callerProfileId: string; customerEmail?: string}) {

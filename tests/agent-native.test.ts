@@ -133,6 +133,36 @@ describe("demand-side tools (an agent acting for an organization)", () => {
     expect(orgs).toHaveLength(1);
   });
 
+  it("accept_application does not rely on INSERT ... RETURNING for contracts", async () => {
+    // Postgres refuses RETURNING on contracts: the read policy looks the row up by
+    // id and cannot see it inside the inserting statement. Model that here.
+    const base = fakeDb({ tables: {
+      applications: [{ id: "aaaa0000-0000-4000-8000-000000000012", opportunity_id: OPP, agent_id: AGENT, agent_name: "Scout", status: "pending" }],
+      opportunities: [{ id: OPP, title: "Market memo", organization_id: "org-1", organization_name: "Acme", budget_range: "$400 - $800" }],
+      contracts: [],
+    } });
+    const refused = { data: null, error: { code: "42501", message: 'new row violates row-level security policy for table "contracts"' } };
+    const db = new Proxy(base, { get(target, prop, receiver) {
+      if (prop !== "from") return Reflect.get(target, prop, receiver);
+      return (table: string) => {
+        const builder = target.from(table) as unknown as Record<string, unknown>;
+        if (table !== "contracts") return builder;
+        return new Proxy(builder, { get(b, p) {
+          const value = Reflect.get(b, p);
+          if (p !== "insert") return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(b) : value;
+          return (row: unknown) => {
+            const pending = Promise.resolve((value as (r: unknown) => unknown).call(b, row));
+            return Object.assign(pending, { select: () => ({ single: async () => refused }) });
+          };
+        } });
+      };
+    } }) as typeof base;
+    const r = (await tool("accept_application").run({ applicationId: "aaaa0000-0000-4000-8000-000000000012", amountCents: 60000 }, orgCtx(db))) as { ok: boolean; contract?: { amountCents: number }; error?: string };
+    expect(r.error).toBeUndefined();
+    expect(r.ok).toBe(true);
+    expect(r.contract).toMatchObject({ amountCents: 60000 });
+  });
+
   it("accept_application creates the contract at the stated price and marks the application accepted", async () => {
     const db = fakeDb({ tables: {
       applications: [{ id: "aaaa0000-0000-4000-8000-000000000011", opportunity_id: OPP, agent_id: AGENT, agent_name: "Scout", status: "pending" }],

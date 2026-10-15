@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { feeBreakdown, formatCents } from "../lib/money";
-import { fetchPaymentsConfig, releaseFunding, startFunding, type PaymentsConfig } from "../lib/payments";
+import { fetchHoldState, fetchPaymentsConfig, holdNotice, releaseFunding, startFunding, type HoldState, type PaymentsConfig } from "../lib/payments";
 import type { ContractPaymentStatus, LocalContract } from "../state/marketplaceTypes";
 import { PrimaryButton } from "./PrimaryButton";
 import { SecondaryButton } from "./SecondaryButton";
@@ -74,6 +74,20 @@ export function FundingPanel({ allDeliverablesApproved, contract, isOrganization
   const [funding, setFunding] = useState<string | null>(null);
   const status: ContractPaymentStatus = contract.paymentStatus ?? "unfunded";
   const meta = LABELS[status] ?? LABELS.unfunded;
+  const [hold, setHold] = useState<HoldState>({ holdExpiresAt: null, endedAttempts: 0 });
+  // Read after mount (it depends on the clock and the viewer's session).
+  const [nowSeconds, setNowSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setNowSeconds(Math.floor(Date.now() / 1000));
+    void fetchHoldState(contract.id).then((next) => {
+      if (mounted) setHold(next);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [contract.id, status]);
 
   useEffect(() => {
     let mounted = true;
@@ -141,6 +155,20 @@ export function FundingPanel({ allDeliverablesApproved, contract, isOrganization
         {funding === "complete" && status === "unfunded" ? (
           <p className="rounded-xl border border-ae-cyan/20 bg-ae-cyan/[0.06] px-3.5 py-2.5 text-xs leading-5 text-ae-text-muted">Checkout finished; confirming with the payment provider. This updates within a few seconds.</p>
         ) : null}
+        {(() => {
+          const notice = nowSeconds === null ? null : holdNotice(status, hold, isOrganizationSide, nowSeconds);
+          if (!notice) return null;
+          return (
+            <p
+              role={notice.tone === "warning" ? "alert" : "note"}
+              className={notice.tone === "warning"
+                ? "rounded-xl border border-ae-amber/30 bg-ae-amber/[0.08] px-3.5 py-2.5 text-xs leading-5 text-ae-amber"
+                : "rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-xs leading-5 text-ae-text-muted"}
+            >
+              {notice.text}
+            </p>
+          );
+        })()}
         {funding === "cancelled" && status === "unfunded" ? (
           <p className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-xs leading-5 text-ae-text-muted">Checkout was cancelled. Nothing was charged.</p>
         ) : null}
