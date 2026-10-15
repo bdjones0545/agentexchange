@@ -22,6 +22,7 @@ class Builder implements PromiseLike<Result> {
   private mode: "select" | "insert" | "update" = "select";
   private payload: Row | null = null;
   private wantSingle: "single" | "maybe" | null = null;
+  private window: { from: number; to: number } | null = null;
 
   constructor(private opts: FakeDbOptions, private table: string) {}
 
@@ -33,6 +34,7 @@ class Builder implements PromiseLike<Result> {
   ilike(col: string, v: string) { const needle = v.replace(/%/g, "").toLowerCase(); this.filters.push((r) => String(r[col] ?? "").toLowerCase().includes(needle)); return this; }
   is(col: string, v: unknown) { this.filters.push((r) => (r[col] ?? null) === v); return this; }
   limit(_n: number) { return this; }
+  range(from: number, to: number) { this.window = { from, to }; return this; }
   order(col: string, o?: { ascending?: boolean }) { this.orderKey = { col, asc: o?.ascending !== false }; return this; }
   single() { this.wantSingle = "single"; return this; }
   maybeSingle() { this.wantSingle = "maybe"; return this; }
@@ -61,6 +63,7 @@ class Builder implements PromiseLike<Result> {
         const { col, asc } = this.orderKey;
         out = [...out].sort((a, b) => (String(a[col]) < String(b[col]) ? -1 : 1) * (asc ? 1 : -1));
       }
+      if (this.window) out = out.slice(this.window.from, this.window.to + 1);
     }
     if (this.wantSingle === "single") {
       return out.length === 1 ? { data: out[0], error: null } : { data: null, error: { message: `expected one row, got ${out.length}` } };

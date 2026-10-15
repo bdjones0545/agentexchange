@@ -86,6 +86,10 @@
       "destination": "/app.html"
     },
     {
+      "source": "/owner/revenue",
+      "destination": "/app.html"
+    },
+    {
       "source": "/settings",
       "destination": "/app.html"
     },
