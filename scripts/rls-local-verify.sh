@@ -38,7 +38,11 @@ alter default privileges in schema public grant all on tables to anon, authentic
 alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
 SQL
 
+# Storage stub (buckets + objects with RLS), then the schema, then the newest
+# migration again: reapplying it over the full schema must be a no-op.
+psql -d "$DB" -v ON_ERROR_STOP=1 -q -f scripts/supabase-storage-stub.sql
 psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$SCHEMA"
+psql -d "$DB" -v ON_ERROR_STOP=1 -q -f supabase/migrations/20261015120000_deliverable_attachments.sql
 
 psql -d "$DB" -v ON_ERROR_STOP=1 -q <<'SQL'
 -- Grants must be issued AFTER every table exists (a missing grant makes an
@@ -385,6 +389,147 @@ run_check "N9  B materializes: contract priced at the COUNTER, unfunded, org der
 run_check "N10 materializing again returns the same contract" legit \
   "select act_as('$A'); select materialize_negotiation_contract('cccc1111-0000-4000-8000-000000000001');" \
   "select count(*) from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "1"
+
+# --- Deliverable attachments (F checks): a private bucket the contract's two sides
+# read; only the agent side uploads and attaches, only to a draft, never on hold.
+# An INSERT here is the check Storage runs before signing an upload URL; a SELECT
+# is the check before signing a download URL.
+BKT=deliverable-attachments
+U=f0000000-0000-4000-8000-0000000000
+q () { psql -d "$DB" -v ON_ERROR_STOP=1 -qAt -c "$1" >/dev/null; }
+try () { psql -d "$DB" -qAt -c "$1" >/dev/null 2>&1 || true; }
+obj () { echo "insert into storage.objects (bucket_id, name, owner_id, metadata) values ('$BKT', '$1', 'x', jsonb_build_object('size', $2, 'mimetype', '$3'));"; }
+stored () { echo "select act_as_admin(); select count(*) from storage.objects where bucket_id='$BKT' and name like '$1%'"; }
+attached () { echo "select act_as_admin(); select count(*) from contract_deliverable_attachments where deliverable_id='$1'"; }
+P1="$CID/${U}01/report.pdf"
+run_check "F1  the bucket is private, capped at 25 MB, and refuses HTML and SVG" legit "select 1" \
+  "select public::text || ' ' || file_size_limit || ' ' || (not ('text/html' = any(allowed_mime_types) or 'image/svg+xml' = any(allowed_mime_types)))::text from storage.buckets where id='$BKT'" "false 26214400 true"
+run_check "F2  agent side B uploads a file to its contract" legit \
+  "select act_as('$B'); $(obj "$P1" 1024 application/pdf)" "$(stored "$P1")" "1"
+run_check "F3  organization side A cannot upload into the contract" attack \
+  "select act_as('$A'); $(obj "$CID/${U}02/org.pdf" 1024 application/pdf)" "$(stored "$CID/${U}02/")" "0"
+run_check "F4  unrelated C cannot upload into the contract" attack \
+  "select act_as('$C'); $(obj "$CID/${U}03/c.pdf" 1024 application/pdf)" "$(stored "$CID/${U}03/")" "0"
+run_check "F5  anon cannot upload" attack \
+  "select act_as_anon(); $(obj "$CID/${U}04/anon.pdf" 1024 application/pdf)" "$(stored "$CID/${U}04/")" "0"
+for bad in "../escape.pdf" ".env" "nested/dir.pdf" "evil<script>.pdf" "a..b.pdf"; do
+  try "select act_as('$B'); $(obj "$CID/${U}05/$bad" 1024 application/pdf)"
+done
+run_check "F6  B cannot upload a traversal, hidden, nested or unsanitised name" attack "select 1" "$(stored "$CID/${U}05/")" "0"
+try "select act_as('$B'); $(obj "$(echo "$CID" | tr a-f A-F)/${U}05/upper.pdf" 1024 application/pdf)"
+run_check "F6b B cannot upload under a second spelling of the contract id" attack "select 1" \
+  "select act_as_admin(); select count(*) from storage.objects where bucket_id='$BKT' and name like '%upper.pdf'" "0"
+run_check "F7  B cannot upload to a priced contract before it is funded" attack \
+  "select act_as('$B'); $(obj "$MC/${U}06/early.pdf" 1024 application/pdf)" "$(stored "$MC/")" "0"
+run_check "F8  organization side A can read the agent's file" legit "select 1" \
+  "select act_as('$A'); select count(*) from storage.objects where name='$P1'" "1"
+run_check "F9  agent side B can read its file" legit "select 1" \
+  "select act_as('$B'); select count(*) from storage.objects where name='$P1'" "1"
+run_check "F10 unrelated C cannot read or list the contract's files" attack "select 1" \
+  "select act_as('$C'); select count(*) from storage.objects where bucket_id='$BKT'" "0"
+run_check "F11 anon cannot read the contract's files" attack "select 1" \
+  "select act_as_anon(); select count(*) from storage.objects where bucket_id='$BKT'" "0"
+run_check "F12 B cannot overwrite a stored file" attack \
+  "select act_as('$B'); update storage.objects set metadata=jsonb_build_object('size', 1, 'mimetype', 'text/html') where name='$P1';" \
+  "select act_as_admin(); select metadata->>'mimetype' from storage.objects where name='$P1'" "application/pdf"
+run_check "F13 B cannot delete a stored file" attack \
+  "select act_as('$B'); delete from storage.objects where name='$P1';" "$(stored "$P1")" "1"
+# A broad permissive policy added later (say, for a public avatars bucket) must not open this one.
+q "create policy sim_broad_storage on storage.objects for all to authenticated using (true) with check (true);"
+run_check "F14 with a broad storage policy present, C still cannot read the files" attack "select 1" \
+  "select act_as('$C'); select count(*) from storage.objects where bucket_id='$BKT'" "0"
+run_check "F15 ...C still cannot upload into the contract" attack \
+  "select act_as('$C'); $(obj "$CID/${U}08/c.pdf" 1024 application/pdf)" "$(stored "$CID/${U}08/")" "0"
+run_check "F16 ...and B still cannot delete its file" attack \
+  "select act_as('$B'); delete from storage.objects where name='$P1';" "$(stored "$P1")" "1"
+q "drop policy sim_broad_storage on storage.objects;"
+
+DRAFT=f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1
+q "select act_as('$B'); insert into contract_deliverables (id, contract_id, title, status) values ('$DRAFT','$CID','Report','draft');"
+run_check "F20 organization side A cannot attach files to a deliverable" attack \
+  "select act_as('$A'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT','$P1');" "$(attached "$DRAFT")" "0"
+run_check "F21 unrelated C cannot attach files" attack \
+  "select act_as('$C'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT','$P1');" "$(attached "$DRAFT")" "0"
+run_check "F22 B cannot attach a file that was never uploaded" attack \
+  "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT','$CID/${U}09/missing.pdf');" "$(attached "$DRAFT")" "0"
+q "$(obj "$MC/${U}10/other.pdf" 1024 application/pdf)"
+run_check "F23 B cannot attach another contract's upload" attack \
+  "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT','$MC/${U}10/other.pdf');" "$(attached "$DRAFT")" "0"
+q "$(obj "$CID/${U}11/page.pdf" 1024 text/html)"
+run_check "F24 B cannot attach a file whose stored type is not allowed" attack \
+  "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT','$CID/${U}11/page.pdf');" "$(attached "$DRAFT")" "0"
+q "$(obj "$CID/${U}12/huge.pdf" 26214401 application/pdf)"
+run_check "F25 B cannot attach a file over 25 MB" attack \
+  "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT','$CID/${U}12/huge.pdf');" "$(attached "$DRAFT")" "0"
+run_check "F26 B attaches its upload; name, type and size come from storage, not the caller" legit \
+  "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, contract_id, storage_path, file_name, content_type, size_bytes) values ('$DRAFT','$MC','$P1','setup.exe','application/x-msdownload',1);" \
+  "select file_name || ' ' || content_type || ' ' || size_bytes || ' ' || (contract_id='$CID')::text || ' ' || (uploaded_by='$PB')::text from contract_deliverable_attachments where storage_path='$P1'" "report.pdf application/pdf 1024 true true"
+run_check "F27 organization side A can see the attachment" legit "select 1" \
+  "select act_as('$A'); select count(*) from contract_deliverable_attachments where deliverable_id='$DRAFT'" "1"
+run_check "F28 unrelated C cannot see it" attack "select 1" \
+  "select act_as('$C'); select count(*) from contract_deliverable_attachments" "0"
+run_check "F29 attachment records are immutable" attack \
+  "select act_as('$B'); update contract_deliverable_attachments set storage_path='$CID/${U}11/page.pdf', size_bytes=1 where deliverable_id='$DRAFT';" \
+  "select storage_path || ' ' || size_bytes from contract_deliverable_attachments where deliverable_id='$DRAFT'" "$P1 1024"
+DRAFT2=f2f2f2f2-f2f2-4f2f-8f2f-f2f2f2f2f2f2
+q "select act_as('$B'); insert into contract_deliverables (id, contract_id, title, status) values ('$DRAFT2','$CID','Second','draft');"
+run_check "F30 one upload cannot be attached to two deliverables" attack \
+  "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT2','$P1');" "$(attached "$DRAFT2")" "0"
+q "insert into storage.objects (bucket_id, name, owner_id, metadata) select '$BKT', '$CID/${U}' || n || '/part.pdf', 'x', jsonb_build_object('size', 10, 'mimetype', 'application/pdf') from generate_series(13, 22) n;"
+q "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, storage_path) select '$DRAFT', '$CID/${U}' || n || '/part.pdf' from generate_series(13, 21) n;"
+run_check "F31 a deliverable carries at most 10 files" attack \
+  "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT','$CID/${U}22/part.pdf');" "$(attached "$DRAFT")" "10"
+run_check "F32 B removes files from its draft" legit \
+  "select act_as('$B'); delete from contract_deliverable_attachments where deliverable_id='$DRAFT' and file_name='part.pdf';" "$(attached "$DRAFT")" "1"
+run_check "F33 organization side A cannot remove the agent's files" attack \
+  "select act_as('$A'); delete from contract_deliverable_attachments where deliverable_id='$DRAFT';" "$(attached "$DRAFT")" "1"
+q "select act_as('$A'); insert into disputes (id, contract_id, reason) values ('e2e2e2e2-e2e2-4e2e-8e2e-e2e2e2e2e2e2','$CID','missing appendix');"
+run_check "F34 B cannot upload while a dispute is open" attack \
+  "select act_as('$B'); $(obj "$CID/${U}23/held.pdf" 1024 application/pdf)" "$(stored "$CID/${U}23/")" "0"
+q "$(obj "$CID/${U}24/held.pdf" 1024 application/pdf)"
+run_check "F35 B cannot attach while a dispute is open" attack \
+  "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT','$CID/${U}24/held.pdf');" "$(attached "$DRAFT")" "1"
+run_check "F36 B cannot remove files while a dispute is open" attack \
+  "select act_as('$B'); delete from contract_deliverable_attachments where deliverable_id='$DRAFT';" "$(attached "$DRAFT")" "1"
+q "select act_as('$A'); update disputes set status='Resolved' where id='e2e2e2e2-e2e2-4e2e-8e2e-e2e2e2e2e2e2';"
+DRAFT_MC=f3f3f3f3-f3f3-4f3f-8f3f-f3f3f3f3f3f3
+q "insert into contract_deliverables (id, contract_id, title, status) values ('$DRAFT_MC','$MC','Early','draft');"
+run_check "F37 B cannot attach on a priced contract before it is funded" attack \
+  "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT_MC','$MC/${U}10/other.pdf');" "$(attached "$DRAFT_MC")" "0"
+q "select act_as('$B'); update contract_deliverables set status='submitted', submitted_at=now() where id='$DRAFT';"
+run_check "F38 files cannot be added once the deliverable is submitted" attack \
+  "select act_as('$B'); insert into contract_deliverable_attachments (deliverable_id, storage_path) values ('$DRAFT','$CID/${U}24/held.pdf');" "$(attached "$DRAFT")" "1"
+run_check "F39 files cannot be removed once the deliverable is submitted" attack \
+  "select act_as('$B'); delete from contract_deliverable_attachments where deliverable_id='$DRAFT';" "$(attached "$DRAFT")" "1"
+
+SUBMIT="submit_deliverable_with_attachments"
+P2="$CID/${U}27/memo.pdf"
+q "select act_as('$B'); $(obj "$P2" 2048 application/pdf)"
+run_check "F40 B submits a new deliverable with its file in one call" legit \
+  "select act_as('$B'); select $SUBMIT('$CID', null, 'Memo with appendix', 'body', '{}'::jsonb, array['$P2'], now());" \
+  "select d.status || ':' || count(a.id) from contract_deliverables d left join contract_deliverable_attachments a on a.deliverable_id=d.id where d.title='Memo with appendix' group by d.status" "submitted:1"
+run_check "F41 a refused file rolls the whole submission back" attack \
+  "select act_as('$B'); select $SUBMIT('$CID', null, 'Ghost', 'body', '{}'::jsonb, array['$CID/${U}28/missing.pdf'], now());" \
+  "select count(*) from contract_deliverables where title='Ghost'" "0"
+q "$(obj "$CID/${U}29/planted.pdf" 1024 application/pdf)"
+run_check "F42 the organization side cannot submit files as the agent" attack \
+  "select act_as('$A'); select $SUBMIT('$CID', null, 'OrgAttempt', 'body', '{}'::jsonb, array['$CID/${U}29/planted.pdf'], now());" \
+  "select count(*) from contract_deliverables where title='OrgAttempt'" "0"
+run_check "F43 unrelated C cannot submit into the contract" attack \
+  "select act_as('$C'); select $SUBMIT('$CID', null, 'Intruder', 'body', '{}'::jsonb, array['$CID/${U}29/planted.pdf'], now());" \
+  "select count(*) from contract_deliverables where title='Intruder'" "0"
+MEMO=$(psql -d "$DB" -qAt -c "select id from contract_deliverables where title='Memo with appendix'")
+q "select act_as('$A'); update contract_deliverables set status='draft', decisions=decisions || '[{\"status\":\"rejected\",\"note\":\"tighten\"}]'::jsonb where id='$MEMO';"
+P3="$CID/${U}30/memo-v2.pdf"
+q "select act_as('$B'); $(obj "$P3" 4096 application/pdf)"
+run_check "F44 revising a rejected draft replaces its file set and resubmits" legit \
+  "select act_as('$B'); select $SUBMIT('$CID', '$MEMO', 'Memo v2', 'body v2', '{}'::jsonb, array['$P3'], now());" \
+  "select d.status || ':' || string_agg(a.file_name, ',') from contract_deliverables d join contract_deliverable_attachments a on a.deliverable_id=d.id where d.id='$MEMO' group by d.status" "submitted:memo-v2.pdf"
+run_check "F45 a submitted deliverable cannot be revised through the submit function" attack \
+  "select act_as('$B'); select $SUBMIT('$CID', '$MEMO', 'Memo v3', 'body v3', '{}'::jsonb, array[]::text[], now());" \
+  "select title || ':' || (select count(*) from contract_deliverable_attachments where deliverable_id='$MEMO') from contract_deliverables where id='$MEMO'" "Memo v2:1"
+run_check "F46 anon cannot submit, and no user can call the hold helper directly" attack "select 1" \
+  "select has_function_privilege('anon', 'public.$SUBMIT(uuid,uuid,text,text,jsonb,text[],timestamptz)', 'execute') or has_function_privilege('authenticated', 'public.delivery_hold_reason(uuid)', 'execute')" "f"
 
 echo
 if [ "$FAILED" -ne 0 ]; then echo "RLS LOCAL VERIFY: FAILED"; exit 1; fi

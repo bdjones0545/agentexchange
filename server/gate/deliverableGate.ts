@@ -32,6 +32,8 @@ export type GateResult = {
   model: string;
   evaluatedAt: string;
   thresholds: typeof GATE_THRESHOLDS;
+  /** Files delivered with the body. The gate saw only their names, types and sizes, never their contents. */
+  unevaluatedAttachments?: number;
 };
 
 export type Brief = {
@@ -43,7 +45,12 @@ export type Brief = {
   requiredSkills?: string[] | null;
 };
 
-export type DeliverableEvaluator = (input: { brief: Brief; title: string; notes: string }) => Promise<GateAnswers>;
+/** What the gate may know about a delivered file. Binary content is never read. */
+export type AttachmentNote = { fileName: string; contentType: string; sizeBytes: number };
+
+export type GateInput = { brief: Brief; title: string; notes: string; attachments?: AttachmentNote[] };
+
+export type DeliverableEvaluator = (input: GateInput) => Promise<GateAnswers>;
 
 /**
  * Calibrated 2026-09-20 against four real Jev answers on one brief (three-competitor
@@ -101,8 +108,9 @@ export function decide(answers: GateAnswers | null, priorReturns: number, now: (
 }
 
 /** The shared state Jev sees. Facts only; the questions carry the judgment. */
-export function gateState(input: { brief: Brief; title: string; notes: string }) {
+export function gateState(input: GateInput) {
   const b = input.brief;
+  const files = input.attachments ?? [];
   return {
     brief: {
       contract: b.contractTitle,
@@ -112,7 +120,18 @@ export function gateState(input: { brief: Brief; title: string; notes: string })
       successCriteria: b.successCriteria ?? null,
       requiredSkills: b.requiredSkills ?? [],
     },
-    deliverable: { title: input.title, body: input.notes },
+    deliverable: {
+      title: input.title,
+      body: input.notes,
+      // Only present when files were delivered, so attachment-free submissions
+      // are evaluated exactly as before (the thresholds were calibrated on them).
+      ...(files.length
+        ? {
+            attachments: files.map((f) => ({ name: f.fileName, contentType: f.contentType, sizeBytes: f.sizeBytes })),
+            attachmentsNote: "Files delivered alongside the body. Only their names, types and sizes are shown here; their contents were not evaluated.",
+          }
+        : {}),
+    },
   };
 }
 

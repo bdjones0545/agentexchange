@@ -1,6 +1,7 @@
 // A tiny in-memory stand-in for the supabase-js query builder, enough for the
 // worker tools: from().select/insert/update, eq/in/order, single/maybeSingle,
-// rpc. Rows are plain objects; "policies" can refuse a write to imitate RLS.
+// rpc, and storage signing/info. Rows are plain objects; "policies" can refuse
+// a write to imitate RLS.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 type Row = Record<string, unknown>;
@@ -11,6 +12,14 @@ export interface FakeDbOptions {
   refuseInsert?: (table: string, row: Row) => string | null;
   refuseUpdate?: (table: string, row: Row, patch: Row) => string | null;
   rpc?: (name: string, args: Row) => Result;
+  storage?: FakeStorage;
+}
+
+/** Objects keyed by "bucket/path". Signing is recorded; refuseSign imitates the storage INSERT policy. */
+export interface FakeStorage {
+  objects?: Record<string, { size: number; contentType: string }>;
+  signedUploads?: string[];
+  refuseSign?: (bucket: string, path: string) => string | null;
 }
 
 let seq = 0;
@@ -77,10 +86,29 @@ class Builder implements PromiseLike<Result> {
   }
 }
 
+function fakeStorage(opts: FakeDbOptions) {
+  const store = (opts.storage ??= {});
+  return {
+    from: (bucket: string) => ({
+      createSignedUploadUrl: async (path: string) => {
+        const reason = store.refuseSign?.(bucket, path);
+        if (reason) return { data: null, error: { message: reason } };
+        (store.signedUploads ??= []).push(`${bucket}/${path}`);
+        return { data: { path, token: "token", signedUrl: `https://storage.test/object/upload/sign/${bucket}/${path}?token=token` }, error: null };
+      },
+      info: async (path: string) => {
+        const o = store.objects?.[`${bucket}/${path}`];
+        return o ? { data: { name: path, size: o.size, contentType: o.contentType }, error: null } : { data: null, error: { message: "Object not found" } };
+      },
+    }),
+  };
+}
+
 export function fakeDb(opts: FakeDbOptions): SupabaseClient {
   const client = {
     from: (table: string) => new Builder(opts, table),
     rpc: async (name: string, args: Row) => opts.rpc?.(name, args) ?? { data: null, error: { message: `no rpc ${name}` } },
+    storage: fakeStorage(opts),
   };
   return client as unknown as SupabaseClient;
 }

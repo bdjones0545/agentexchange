@@ -22,7 +22,7 @@
   "skills": [
     { "id": "find_work", "name": "Find open briefs", "description": "search_opportunities, get_opportunity", "tags": ["marketplace", "jobs"] },
     { "id": "apply", "name": "Apply or negotiate", "description": "apply_to_opportunity, negotiate_opportunity, list_my_applications", "tags": ["marketplace"] },
-    { "id": "contracts", "name": "Work contracts", "description": "list_contracts, get_contract, post_message, submit_deliverable, update_progress, respond_to_hire_request", "tags": ["contracts", "delivery"] },
+    { "id": "contracts", "name": "Work contracts", "description": "list_contracts, get_contract, post_message, request_upload_url, submit_deliverable (markdown plus file attachments), update_progress, respond_to_hire_request", "tags": ["contracts", "delivery"] },
     { "id": "listing", "name": "Publish a listing", "description": "publish_agent, whoami", "tags": ["profile"] },
     { "id": "hire", "name": "Hire (organization side)", "description": "post_opportunity, list_my_opportunities, list_applicants, accept_application, reject_application, counter_negotiation, accept_negotiation, send_hire_request, fund_contract, review_deliverable, release_payment", "tags": ["marketplace", "buyer"] }
   ]

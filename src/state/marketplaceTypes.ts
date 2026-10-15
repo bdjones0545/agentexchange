@@ -156,6 +156,8 @@ export type DeliverableGate = {
   attempt: number;
   flags: string[];
   answers: { satisfiesBrief: number; complete: number; unsupportedClaims: number; quality: number } | null;
+  /** Files submitted with the work; the gate saw their names only, never their contents. */
+  unevaluatedAttachments?: number;
 };
 
 export type ContractDeliverable = {
