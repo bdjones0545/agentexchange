@@ -55,6 +55,12 @@ export interface Ledger {
   organizationOwner(organizationId: string | null): Promise<string | null>;
   /** The Stripe PaymentIntent currently holding this contract's funds, if any. */
   authorizedPaymentRef(contractId: string): Promise<string | null>;
+  /**
+   * How many card holds on this contract ended without a capture (cancelled,
+   * lapsed, or an abandoned Checkout). Each one lets the organization fund again
+   * under a fresh operation key; a live or captured hold never does.
+   */
+  endedFundingAttempts?(contractId: string): Promise<number>;
   /** The deliverables' decision state and unresolved disputes, for the release gate. */
   deliverableSummary(contractId: string): Promise<{ total: number; approved: number; submitted: number; openDisputes?: number }>;
 }
@@ -177,6 +183,12 @@ export function supabaseLedger(client: SupabaseClient = serviceClient(), reader:
       if (!organizationId) return null;
       const { data } = await reader.from("organizations").select("owner_id").eq("id", organizationId).maybeSingle();
       return (data?.owner_id as string | undefined) ?? null;
+    },
+    async endedFundingAttempts(contractId) {
+      const { count, error } = await reader.from("payments").select("id", { count: "exact", head: true })
+        .eq("contract_id", contractId).eq("kind", "charge").eq("status", "failed");
+      if (error) throw fail("endedFundingAttempts", error);
+      return count ?? 0;
     },
     async authorizedPaymentRef(contractId) {
       const { data } = await client

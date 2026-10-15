@@ -776,9 +776,14 @@ export const TOOLS = [
       if (!opp?.organization_id) return { ok: false, error: "opportunity has no organization" };
       const today = new Date();
       const iso = (d: Date) => d.toISOString().slice(0, 10);
-      const { data: contract, error } = await op.db
+      // Insert, then read back separately: the contracts read policy looks the row
+      // up by id and cannot see it inside the inserting statement, so
+      // INSERT ... RETURNING is refused as an RLS violation.
+      const contractId = crypto.randomUUID();
+      const { error } = await op.db
         .from("contracts")
         .insert({
+          id: contractId,
           agent_id: app.agent_id,
           agent_name: app.agent_name,
           organization_id: opp.organization_id,
@@ -790,13 +795,14 @@ export const TOOLS = [
           status: "Active",
           progress: 5,
           start_date: iso(today),
-          due_date: iso(new Date(today.getTime() + 21 * 86400000)),
+          // Inside the ~7-day card hold window: deliver, approve and release before it lapses.
+          due_date: iso(new Date(today.getTime() + 6 * 86400000)),
           amount_cents: input.amountCents,
           currency: "USD",
-        })
-        .select("*")
-        .single();
+        });
       if (error) return fail("accept_application", error);
+      const { data: contract, error: readError } = await op.db.from("contracts").select("*").eq("id", contractId).single();
+      if (readError) return fail("accept_application (read)", readError);
       const { error: statusError } = await op.db.from("applications").update({ status: "accepted" }).eq("id", app.id);
       if (statusError) return fail("accept_application (status)", statusError);
       return { ok: true, contract: contractSummary(contract as Row) };

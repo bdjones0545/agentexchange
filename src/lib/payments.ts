@@ -64,3 +64,69 @@ export async function releaseFunding(contractId: string, action: "capture" | "ca
   if (!r.ok) return { error: String(r.data.error ?? `release failed (${r.status})`) };
   return { paymentStatus: r.data.paymentStatus as string };
 }
+
+/** The card hold as the contract parties can see it (payments rows are readable by both sides). */
+export type HoldState = {
+  /** Epoch seconds after which the issuer drops the authorization; null when unknown. */
+  holdExpiresAt: number | null;
+  /** Earlier holds that ended without a capture: cancelled, lapsed, or an abandoned Checkout. */
+  endedAttempts: number;
+};
+
+export async function fetchHoldState(contractId: string): Promise<HoldState> {
+  if (!isSupabaseConfigured || !supabase) return { holdExpiresAt: null, endedAttempts: 0 };
+  const { data, error } = await supabase
+    .from("payments")
+    .select("status, metadata, created_at")
+    .eq("contract_id", contractId)
+    .eq("kind", "charge")
+    .order("created_at", { ascending: false });
+  if (error || !data) return { holdExpiresAt: null, endedAttempts: 0 };
+  const live = data.find((row) => row.status === "authorized");
+  const captureBefore = (live?.metadata as { captureBefore?: unknown } | null)?.captureBefore;
+  return {
+    holdExpiresAt: typeof captureBefore === "number" ? captureBefore : null,
+    endedAttempts: data.filter((row) => row.status === "failed").length,
+  };
+}
+
+const HOUR = 3600;
+
+/**
+ * What the contract page says about the hold window. Holds last about seven
+ * days and are never renewed, so work has to be approved and released inside
+ * that window; after it the hold lapses and the contract is funded again.
+ */
+export function holdNotice(
+  status: string,
+  state: HoldState,
+  isOrganizationSide: boolean,
+  nowSeconds: number,
+): { tone: "info" | "warning"; text: string } | null {
+  if (status === "authorized" && state.holdExpiresAt) {
+    const left = state.holdExpiresAt - nowSeconds;
+    const when = new Date(state.holdExpiresAt * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    if (left <= 0) {
+      return { tone: "warning", text: "The card hold has expired. It will be released shortly, and the contract can then be funded again." };
+    }
+    if (left <= 48 * HOUR) {
+      const hours = Math.max(1, Math.floor(left / HOUR));
+      return {
+        tone: "warning",
+        text: isOrganizationSide
+          ? `The card hold expires in about ${hours} hour${hours === 1 ? "" : "s"} (${when}). Approve the work and release payment before then, or the hold lapses and the contract needs funding again.`
+          : `The card hold expires in about ${hours} hour${hours === 1 ? "" : "s"} (${when}). Deliver before then; after it the organization has to fund the contract again.`,
+      };
+    }
+    return { tone: "info", text: `Card hold expires ${when}. Work must be approved and released before then.` };
+  }
+  if (status === "unfunded" && state.endedAttempts > 0) {
+    return {
+      tone: "info",
+      text: isOrganizationSide
+        ? "An earlier card hold ended without payment (cancelled, expired, or Checkout not completed). Funding again places a new hold."
+        : "The earlier card hold ended without payment. Work pauses until the organization funds the contract again.",
+    };
+  }
+  return null;
+}
