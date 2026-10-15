@@ -9,7 +9,7 @@ holder; nothing here may be done by pasting keys into chat.
 ## 0. Before starting
 
 - [ ] Merged and deployed: the hold-window/re-funding fixes, and the Stripe-mode tagging
-      change with its migration `20261015013000_payment_provider_mode.sql` **applied
+      change with its migration `20261015014913_payment_provider_mode.sql` **applied
       before** that code deploys.
 - [ ] Business details on the site: legal entity, address, support/privacy/abuse
       contacts. Lawyer review of `/terms`, `/privacy`, `/refunds` and `/acceptable-use`
