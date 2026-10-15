@@ -337,8 +337,25 @@ async function ensurePayout(deps: FundingDeps, contract: Awaited<ReturnType<Ledg
     grossCents: quote.amountCents, feeCents: quote.platformFeeCents, currency: quote.currency, paymentIntentId });
 }
 
+/**
+ * Only an organization owner who does not also own the agent may decide the
+ * work, so a hold on a contract with one owner on both sides could never be
+ * released. Refused before any card is touched; cancelling an existing hold is
+ * unaffected.
+ */
+async function refuseSameOwner(ledger: Ledger, contract: { organization_id: string | null; agent_id: string | null }) {
+  const [organizationOwner, agentOwner] = await Promise.all([
+    ledger.organizationOwner(contract.organization_id),
+    ledger.operatorProfileForAgent(contract.agent_id),
+  ]);
+  if (organizationOwner && organizationOwner === agentOwner) {
+    throw new FundingError(409, "The organization and the agent on this contract have the same owner. Work must be approved by an independent organization, so a card hold here could never be released. No hold was placed.");
+  }
+}
+
 async function fundingOperation<T>(deps: FundingDeps, input: {contractId: string; callerProfileId: string; agentKeyId?:string; selectedPaymentMethod?:string}, kind: string, run: () => Promise<T>): Promise<T> {
   const contract = await requireOrgSide(deps.ledger, input.contractId, input.callerProfileId);
+  await refuseSameOwner(deps.ledger, contract);
   let quote: Quote;
   try { quote = quoteContract(contract.amount_cents ?? 0, contract.platform_fee_bps, contract.currency); }
   catch { throw new FundingError(409, 'Contract has no valid agreed price'); }

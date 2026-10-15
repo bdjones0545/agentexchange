@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createCardSetup, createFunding, FundingError, fundWithSavedCard, handleStripeEvent, releaseFunds } from "../server/funding";
 import type { ContractMoneyRow, Ledger, PaymentStatus } from "../server/ledger";
 import { quoteContract } from "../server/pricing";
-import { realStripe, signTestEvent, type StripeGateway } from "../server/stripe";
+import { checkoutSessionParams, realStripe, setupSessionParams, signTestEvent, type StripeGateway } from "../server/stripe";
 
 const ORG_OWNER = "org-profile";
 const OPERATOR = "operator-profile";
@@ -99,6 +99,41 @@ describe("createFunding", () => {
     await expect(createFunding(deps(fakeLedger({ amount_cents: null }).ledger, fakeStripe()), { contractId: CONTRACT, callerProfileId: ORG_OWNER })).rejects.toMatchObject({ status: 409 });
     await expect(createFunding(deps(fakeLedger({ payment_status: "authorized" }).ledger, fakeStripe()), { contractId: CONTRACT, callerProfileId: ORG_OWNER })).rejects.toMatchObject({ status: 409 });
     await expect(createFunding(deps(fakeLedger().ledger, fakeStripe()), { contractId: "00000000-0000-4000-8000-000000000000", callerProfileId: ORG_OWNER })).rejects.toBeInstanceOf(FundingError);
+  });
+  it("asks Stripe for a card-only Checkout, so the buyer gets a card hold and not Affirm, Klarna, Cash App Pay or a bank debit", () => {
+    const params = checkoutSessionParams({ idempotencyKey: `fund:${CONTRACT}`, contractId: CONTRACT, title: "One-pager", currency: "USD", amountCents: 18000, buyerFeeCents: 540, successUrl: "https://www.agentsexchange.ai/ok", cancelUrl: "https://www.agentsexchange.ai/no" });
+    expect(params.mode).toBe("payment");
+    expect(params.payment_method_types).toEqual(["card"]);
+    expect(params.payment_intent_data).toEqual({ capture_method: "manual", metadata: { contractId: CONTRACT } });
+    expect(params.line_items?.map((item) => item.price_data?.unit_amount)).toEqual([18000, 540]);
+    // The saved card agents place off-session holds on is a card too.
+    const setup = setupSessionParams({ customerId: "cus_1", profileId: ORG_OWNER, successUrl: "https://www.agentsexchange.ai/ok", cancelUrl: "https://www.agentsexchange.ai/no" });
+    expect(setup.mode).toBe("setup");
+    expect(setup.payment_method_types).toEqual(["card"]);
+  });
+  it("refuses, before any card is touched, a contract whose organization and agent have the same owner", async () => {
+    // The database lets only an independent organization owner approve the work,
+    // so a hold here could never be released.
+    const f = fakeLedger();
+    f.ledger.operatorProfileForAgent = async () => ORG_OWNER;
+    f.setBilling({ profile_id: ORG_OWNER, stripe_customer_id: "cus_1", default_payment_method_id: "pm_1", card_brand: "visa", card_last4: "4242", agent_daily_cap_cents: 100000 });
+    const s = fakeStripe();
+    await expect(createFunding(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER })).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/same owner/) });
+    await expect(fundWithSavedCard(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER })).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/same owner/) });
+    expect(s.log).toEqual([]);
+    expect(f.payments).toEqual([]);
+    expect(f.contract.payment_status).toBe("unfunded");
+    // Nothing was journaled either: once the agent is someone else's, funding goes through.
+    f.ledger.operatorProfileForAgent = async () => OPERATOR;
+    expect((await fundWithSavedCard(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER })).paymentStatus).toBe("authorized");
+  });
+  it("still lets the owner cancel a hold placed on a same-owner contract before the refusal existed", async () => {
+    const f = fakeLedger({ payment_status: "authorized" });
+    f.ledger.operatorProfileForAgent = async () => ORG_OWNER;
+    f.payments.push({ contract_id: CONTRACT, provider_ref: "pi_1", kind: "charge", amount_cents: 18540, status: "authorized", metadata: {} });
+    const s = fakeStripe();
+    expect((await releaseFunds(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER, action: "cancel" })).paymentStatus).toBe("unfunded");
+    expect(s.log).toEqual(["cancel pi_1"]);
   });
 });
 
