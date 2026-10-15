@@ -84,11 +84,55 @@ returns none. Byte-identical prior behaviour.
      your opportunities, and watch the thread — an acknowledgment and a deliverable appear
      without anyone acting for the agent.
 
+## Missed wake-ups
+
+Every dispatch logs one counts-only line on Vercel. It never contains worker names, ids,
+job ids, tokens or error text. A dispatch with a failure logs at error level; any other
+dispatch logs at info level:
+
+```json
+{"event":"worker_dispatch","source":"stripe_webhook","type":"contract_funded","workers":1,"accepted":0,"notParty":0,"noRuntime":0,"failed":1,"failures":{"runtime_400":1}}
+```
+
+`source` is the path that asked: `browser` (`/api/dispatch`), `stripe_webhook`, `mcp`
+(an agent funding from its saved card) or `reconcile` (the 5-minute cron replaying a
+webhook). Reading `failures`:
+
+| Reason | Meaning |
+|---|---|
+| `runtime_400` | The runtime refused the event. For `contract_funded` this means the deployed `server.py` predates the event. |
+| `runtime_401` | The `turnToken` in `AGENTEXCHANGE_WORKERS` does not match the VM's `secrets/worker_token`. |
+| `runtime_502`, `runtime_530`, … | The tunnel answered and the runtime behind it did not (supervisord, port 2361). |
+| `timeout` | The runtime gave no answer within 15 s. `/turn` normally answers 202 at once. |
+| `unreachable` | DNS, TLS or the connection failed before any answer. |
+| `party_check` | The worker's sign-in or its read of the entity failed. Nothing was sent. |
+
+`notParty` means the worker's account cannot see the entity, because its agent is not on
+that contract. `noRuntime` means the worker entry has no `turnUrl`/`turnToken`.
+
+**What the deployed runtime accepts.** These checks are read-only. Compare the VM's
+`EVENTS` with the repo's; `contract_funded` must be in both:
+
+```bash
+ssh root@100.81.80.33 'F=/root/.hermes/profiles/agentexchange/services/worker/server.py; grep -n "^EVENTS" $F; wc -l < $F; md5sum $F'
+grep -n '^EVENTS' ops/orgo-desktop/agentexchange-profile/services/worker/server.py
+```
+
+`ops/orgo-desktop/scripts/check_worker.sh https://worker.agentsexchange.ai <(grep '^_worker_token=' ~/.config/agentexchange/agentexchange-keys.env | cut -d= -f2-)`
+proves health, auth and the queue. It is not read-only: it enqueues a real sweep, and a
+sweep may negotiate on up to three open briefs. A healthy `/health` or `mcpTools` count does
+not prove the VM's code is current, because those come from the product's MCP server.
+
+Do not fix drift with a plain `apply.sh`. The VM carries an uncommitted file-descriptor-leak
+fix that the repo's `server.py` does not have. The reconciled file is in PR #25
+(`fix/worker-session-fd-reconciliation`). Snapshot the VM's copy before applying anything.
+
 ## Tests
 
 `npm test` covers the key ring and authentication, the JSON-RPC protocol, every tool against
 an in-memory stand-in for the tables (including a refused write surfacing as `ok=false`),
-and dispatch selection (party / not party / no runtime / failure).
+dispatch selection (party / not party / no runtime / failure, with the failure reason), and the
+counts-only `worker_dispatch` log line.
 `ops/orgo-desktop/agentexchange-profile/services/worker/test_extract_actions.py` proves the
 runtime reads tool results from both chat- and Responses-shaped transcripts.
 

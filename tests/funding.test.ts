@@ -153,6 +153,18 @@ describe("webhook", () => {
     expect(await handleStripeEvent(d, event)).toEqual({ outcome: "authorized", contractId: CONTRACT });
     expect(notified).toEqual(["contract_funded"]);
   });
+  it("does not answer the webhook until the contract_funded dispatch has settled", async () => {
+    const f = fakeLedger();
+    const s = fakeStripe();
+    await createFunding(deps(f.ledger, s), { contractId: CONTRACT, callerProfileId: ORG_OWNER });
+    let settled = false;
+    const d = deps(f.ledger, s, async () => {
+      await new Promise((r) => setTimeout(r, 30));
+      settled = true;
+    });
+    await handleStripeEvent(d, { id: "evt_await", type: "checkout.session.completed", data: { object: { id: "cs_test_1", payment_intent: "pi_1", metadata: { contractId: CONTRACT } } } });
+    expect(settled).toBe(true);
+  });
   it("a canceled hold returns the contract to unfunded; a refund marks it refunded", async () => {
     const f = fakeLedger({ payment_status: "authorized" });
     f.payments.push({ contract_id: CONTRACT, provider_ref: "pi_1", kind: "charge", amount_cents: 18540, status: "authorized", metadata: {} });

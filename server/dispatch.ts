@@ -24,6 +24,13 @@ export interface DispatchResult {
   status: "accepted" | "not_party" | "no_runtime" | "failed";
   detail?: string;
   jobId?: string;
+  /**
+   * Why a dispatch failed, coarse enough to log: "party_check" (the worker's
+   * session or its read of the entity failed), "runtime_<http status>" (the
+   * runtime answered and refused; a runtime that predates an event answers 400
+   * to it), "timeout" or "unreachable".
+   */
+  reason?: string;
 }
 
 /** Can the caller (a signed-in browser session) see this entity at all? */
@@ -43,7 +50,9 @@ async function workerIsParty(env: ServerEnv, worker: Worker, event: DispatchEven
   const table = event.event === "hire_request" ? "hire_requests" : "contracts";
   const id = event.event === "hire_request" ? event.hireRequestId : event.contractId;
   const { data, error } = await session.client.from(table).select("id").eq("id", id).maybeSingle();
-  return !error && Boolean(data);
+  // A failed read is not an answer: report it rather than calling the worker a non-party.
+  if (error) throw new Error(`party check failed (${error.code || "error"})`);
+  return Boolean(data);
 }
 
 export interface TurnTransport {
@@ -78,7 +87,7 @@ export async function dispatch(
     try {
       party = await isParty(worker, event);
     } catch (e) {
-      results.push({ worker: worker.name, status: "failed", detail: e instanceof Error ? e.message : String(e) });
+      results.push({ worker: worker.name, status: "failed", reason: "party_check", detail: e instanceof Error ? e.message : String(e) });
       continue;
     }
     if (!party) {
@@ -95,11 +104,68 @@ export async function dispatch(
         const jobId = (r.body as { jobId?: unknown } | null)?.jobId;
         results.push({ worker: worker.name, status: "accepted", jobId: typeof jobId === "string" ? jobId : undefined });
       } else {
-        results.push({ worker: worker.name, status: "failed", detail: `runtime answered ${r.status}` });
+        results.push({ worker: worker.name, status: "failed", reason: `runtime_${r.status}`, detail: `runtime answered ${r.status}` });
       }
     } catch (e) {
-      results.push({ worker: worker.name, status: "failed", detail: e instanceof Error ? e.message : String(e) });
+      const name = (e as { name?: unknown } | null)?.name;
+      const reason = name === "TimeoutError" || name === "AbortError" ? "timeout" : "unreachable";
+      results.push({ worker: worker.name, status: "failed", reason, detail: e instanceof Error ? e.message : String(e) });
     }
   }
   return results;
+}
+
+/** Who asked for a dispatch; logged so a missed wake-up can be traced to its path. */
+export type DispatchSource = "browser" | "stripe_webhook" | "mcp" | "reconcile";
+
+/**
+ * Counts only: no worker names, ids, job ids, tokens or error text, so the line
+ * is safe in shared logs. `failures` groups the coarse reasons; {"runtime_400":1}
+ * is a runtime that does not know the event.
+ */
+export function dispatchSummary(source: DispatchSource, type: DispatchEvent["event"], results: DispatchResult[]) {
+  const count = (status: DispatchResult["status"]) => results.filter((r) => r.status === status).length;
+  const failures: Record<string, number> = {};
+  for (const r of results) {
+    if (r.status !== "failed") continue;
+    const reason = r.reason ?? "unknown";
+    failures[reason] = (failures[reason] ?? 0) + 1;
+  }
+  return {
+    event: "worker_dispatch",
+    source,
+    type,
+    workers: results.length,
+    accepted: count("accepted"),
+    notParty: count("not_party"),
+    noRuntime: count("no_runtime"),
+    failed: count("failed"),
+    failures,
+  };
+}
+
+export function logDispatch(source: DispatchSource, type: DispatchEvent["event"], results: DispatchResult[]): void {
+  const summary = dispatchSummary(source, type, results);
+  const line = JSON.stringify(summary);
+  if (summary.failed > 0) console.error(line);
+  else console.info(line);
+}
+
+/**
+ * dispatch() with its outcome logged once. Server-side callers hand this to
+ * funding and MCP as `notify`, which otherwise drop the results; it is awaited
+ * there, so the function does not return before the runtime answers or the
+ * transport times out.
+ */
+export function loggedDispatch(
+  env: ServerEnv,
+  source: DispatchSource,
+  transport: TurnTransport = fetchTransport,
+  isParty?: (w: Worker, e: DispatchEvent) => Promise<boolean>,
+): (event: DispatchEvent) => Promise<DispatchResult[]> {
+  return async (event) => {
+    const results = await dispatch(env, event, transport, isParty);
+    logDispatch(source, event.event, results);
+    return results;
+  };
 }
