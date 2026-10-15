@@ -41,6 +41,11 @@ export interface ToolContext {
    * stamped "unavailable" rather than blocked.
    */
   gate?: DeliverableEvaluator | null;
+  /**
+   * Tell the organization's owner a deliverable landed (server/notifications.ts).
+   * Awaited so a serverless function cannot freeze mid-send; never fails the tool.
+   */
+  deliverableSubmitted?: (deliverableId: string) => Promise<unknown>;
 }
 
 /** The money plumbing the two payment tools use; real Stripe and the service-role ledger. */
@@ -481,6 +486,11 @@ export const TOOLS = [
         .update({ status: "In Review" })
         .eq("id", input.contractId)
         .eq("status", "Active");
+      try {
+        await ctx.deliverableSubmitted?.(String((data as Row).id));
+      } catch {
+        // Email is best-effort; the deliverable is already on the contract page.
+      }
       return { ok: true, deliverable: data, gate, contractStatus: statusError ? "unchanged" : "In Review" };
     },
   }),
