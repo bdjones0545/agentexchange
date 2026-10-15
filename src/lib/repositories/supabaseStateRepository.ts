@@ -263,6 +263,7 @@ function mapGate(value: unknown): DeliverableGate | undefined {
     attempt: typeof g.attempt === "number" ? g.attempt : 1,
     flags: Array.isArray(g.flags) ? g.flags.filter((f): f is string => typeof f === "string") : [],
     answers: a ? { satisfiesBrief: num(a.satisfiesBrief), complete: num(a.complete), unsupportedClaims: num(a.unsupportedClaims), quality: num(a.quality) } : null,
+    ...(typeof g.unevaluatedAttachments === "number" && g.unevaluatedAttachments > 0 ? { unevaluatedAttachments: g.unevaluatedAttachments } : {}),
   };
 }
 

@@ -1,4 +1,8 @@
 import { isTestListing } from "../../src/lib/publicListings.js";
+import {
+  ATTACHMENT_BUCKET, ATTACHMENT_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_PER_DELIVERABLE, UPLOAD_URL_TTL_SECONDS,
+  attachmentPath, formatBytes, isAllowedContentType, normalizeContentType, parseAttachmentPath, sanitizeFileName,
+} from "../../src/lib/attachmentRules.js";
 import { setupLink, setupStatus } from '../agentSetup.js';
 import { serviceClient } from '../service.js';
 import { sellerGateway } from '../connect.js';
@@ -12,7 +16,7 @@ import { MoneyOperationError, operationStore } from "../moneyOperations.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { FundingError, fundWithSavedCard, releaseFunds } from "../funding.js";
-import { decide, type Brief, type DeliverableEvaluator, type GateResult } from "../gate/deliverableGate.js";
+import { decide, type AttachmentNote, type Brief, type DeliverableEvaluator, type GateResult } from "../gate/deliverableGate.js";
 import { supabaseLedger } from "../ledger.js";
 import { realStripe } from "../stripe.js";
 
@@ -117,8 +121,11 @@ async function gateDeliverable(
   ctx: ToolContext,
   db: SupabaseClient,
   c: Row,
-  input: { title: string; notes: string },
+  input: { title: string; notes: string; attachments: AttachmentNote[] },
 ): Promise<GateResult> {
+  // The gate is told which files came with the work, never what is in them.
+  const files = input.attachments.length;
+  const stamp = (r: GateResult): GateResult => (files ? { ...r, unevaluatedAttachments: files } : r);
   // Returns since the last deliverable that actually landed on this contract.
   const { data: latest } = await db
     .from("contract_deliverables")
@@ -129,7 +136,7 @@ async function gateDeliverable(
   const { data: events } = await db.from("deliverable_gate_events").select("id,verdict,created_at").eq("contract_id", c.id).eq("verdict", "returned");
   const priorReturns = ((events as Row[] | null) ?? []).filter((e) => !since || String(e.created_at) > since).length;
 
-  if (!ctx.gate) return decide(null, priorReturns, ctx.now);
+  if (!ctx.gate) return stamp(decide(null, priorReturns, ctx.now));
   const opp = await opportunityOf(db, c);
   const brief: Brief = {
     contractTitle: String(c.title ?? ""),
@@ -140,12 +147,70 @@ async function gateDeliverable(
     requiredSkills: (opp?.required_skills as string[] | null) ?? null,
   };
   try {
-    const answers = await ctx.gate({ brief, title: input.title, notes: input.notes });
-    return decide(answers, priorReturns, ctx.now);
+    const answers = await ctx.gate({ brief, title: input.title, notes: input.notes, ...(files ? { attachments: input.attachments } : {}) });
+    return stamp(decide(answers, priorReturns, ctx.now));
   } catch (e) {
     console.warn("[gate] evaluator failed; accepting without evaluation:", e instanceof Error ? e.message : e);
-    return decide(null, priorReturns, ctx.now);
+    return stamp(decide(null, priorReturns, ctx.now));
   }
+}
+
+type StagedFile = AttachmentNote & { path: string };
+
+/** A database or Storage refusal that means the attachments migration is not applied yet. */
+function attachmentsUnavailable(error: { message: string }): { message: string } | null {
+  return /submit_deliverable_with_attachments|could not find the function|bucket not found/i.test(error.message)
+    ? { message: "file attachments are not enabled on this server yet; submit without attachments" }
+    : null;
+}
+
+/** Why delivery is frozen, as the database's delivery_hold_reason() words it; null when it is not. */
+async function deliveryHold(db: SupabaseClient, c: Row): Promise<string | null> {
+  const held = "Resolve the contract hold before changing delivery";
+  if (["Paused", "Disputed", "Cancelled"].includes(String(c.status))) return held;
+  const { data: disputes } = await db.from("disputes").select("id,status").eq("contract_id", c.id);
+  if (((disputes ?? []) as Row[]).some((d) => d.status !== "Resolved")) return held;
+  if (Number(c.amount_cents ?? 0) > 0 && !["authorized", "captured", "paid_out"].includes(String(c.payment_status ?? "unfunded"))) {
+    return "Priced work requires funding authorization";
+  }
+  return null;
+}
+
+/**
+ * Confirm each path is an upload for this contract that actually reached
+ * Storage, and read its real type and size. The database re-checks all of it
+ * when the files are attached; this only turns a refusal into a clear message
+ * before the quality gate spends an evaluation.
+ */
+async function stagedFiles(db: SupabaseClient, contractId: string, paths: string[]): Promise<{ files: StagedFile[] } | { error: string }> {
+  if (new Set(paths).size !== paths.length) return { error: "each file can be attached once" };
+  for (const path of paths) {
+    if (parseAttachmentPath(path)?.contractId !== contractId.toLowerCase()) {
+      return { error: `${path} is not an upload for this contract; pass the path request_upload_url returned` };
+    }
+  }
+  const infos = await Promise.all(paths.map((path) => db.storage.from(ATTACHMENT_BUCKET).info(path)));
+  const files: StagedFile[] = [];
+  for (const [i, { data, error }] of infos.entries()) {
+    const path = paths[i];
+    if (error || !data) {
+      const unavailable = error && attachmentsUnavailable(error);
+      return { error: unavailable ? unavailable.message : `${path} has not been uploaded: PUT the file to its upload URL first (URLs expire after 2 hours)` };
+    }
+    const contentType = normalizeContentType(String(data.contentType ?? ""));
+    const sizeBytes = Number(data.size ?? 0);
+    if (!isAllowedContentType(contentType)) return { error: `${path}: file type ${contentType || "unknown"} is not allowed` };
+    if (sizeBytes <= 0 || sizeBytes > MAX_ATTACHMENT_BYTES) return { error: `${path}: files must be between 1 byte and ${formatBytes(MAX_ATTACHMENT_BYTES)}` };
+    files.push({ path, fileName: parseAttachmentPath(path)!.fileName, contentType, sizeBytes });
+  }
+  return { files };
+}
+
+/** The files already on a draft, for the gate's note when a revision leaves them unchanged. */
+async function draftFiles(db: SupabaseClient, deliverableId: string): Promise<AttachmentNote[]> {
+  const { data, error } = await db.from("contract_deliverable_attachments").select("file_name,content_type,size_bytes").eq("deliverable_id", deliverableId);
+  if (error) return [];
+  return ((data ?? []) as Row[]).map((a) => ({ fileName: String(a.file_name), contentType: String(a.content_type), sizeBytes: Number(a.size_bytes) }));
 }
 
 /** Append-only record of every gate decision; best-effort so it can never block a submission. */
@@ -380,7 +445,7 @@ export const TOOLS = [
   tool({
     name: "get_contract",
     description:
-      "Everything about one contract: terms, funding state (funding.workMayStart says whether you may begin), the opportunity it came from (scope, success criteria), milestones, deliverables with the organization's decisions, and the full message thread in order.",
+      "Everything about one contract: terms, funding state (funding.workMayStart says whether you may begin), the opportunity it came from (scope, success criteria), milestones, deliverables with the organization's decisions and attached files, and the full message thread in order.",
     schema: z.object({ contractId: uuid }),
     readOnly: true,
     run: async (input, ctx) => {
@@ -388,19 +453,27 @@ export const TOOLS = [
       const { data: c, error } = await op.db.from("contracts").select("*").eq("id", input.contractId).maybeSingle();
       if (error) return fail("get_contract", error);
       if (!c) return { ok: false, error: "contract not found or not visible to this worker" };
-      const [milestones, deliverables, messages] = await Promise.all([
+      const [milestones, deliverables, messages, attachments] = await Promise.all([
         op.db.from("contract_milestones").select("id,title,notes,completed,completed_at,created_at").eq("contract_id", c.id).order("created_at"),
         op.db.from("contract_deliverables").select("id,title,notes,status,decisions,submitted_at,approved_at,created_at").eq("contract_id", c.id).order("created_at"),
         op.db.from("contract_messages").select("id,sender_type,author,body,created_at").eq("contract_id", c.id).order("created_at"),
+        op.db.from("contract_deliverable_attachments").select("deliverable_id,storage_path,file_name,content_type,size_bytes").eq("contract_id", c.id).order("created_at"),
       ]);
       const opportunity = await opportunityOf(op.db, c as Row);
+      // Before the attachments migration the table does not exist; deliverables simply have no files.
+      const files = ((attachments.error ? [] : attachments.data ?? []) as Row[]);
       return {
         ok: true,
         contract: contractSummary(c as Row),
         funding: fundingOf(ctx, c as Row),
         opportunity,
         milestones: milestones.data ?? [],
-        deliverables: deliverables.data ?? [],
+        deliverables: ((deliverables.data ?? []) as Row[]).map((d) => ({
+          ...d,
+          attachments: files
+            .filter((a) => a.deliverable_id === d.id)
+            .map((a) => ({ path: a.storage_path, fileName: a.file_name, contentType: a.content_type, sizeBytes: a.size_bytes })),
+        })),
         messages: (messages.data ?? []).map((m) => ({ id: m.id, from: m.sender_type, author: m.author, body: m.body, createdAt: m.created_at })),
       };
     },
@@ -425,14 +498,65 @@ export const TOOLS = [
     },
   }),
   tool({
+    name: "request_upload_url",
+    description:
+      `Get a one-time signed URL for a file you will attach to a deliverable: a PDF, spreadsheet, document, image or archive. PUT the file's raw bytes to upload.url with upload.headers within 2 hours, then pass the returned path in submit_deliverable's attachments. Only the agent side of a contract can upload, and only while the contract has no open dispute and, when priced, is funded. At most ${formatBytes(MAX_ATTACHMENT_BYTES)} per file and ${MAX_ATTACHMENTS_PER_DELIVERABLE} files per deliverable; allowed types: ${Object.keys(ATTACHMENT_TYPES).join(", ")}. The name is sanitised and its extension made to match the type. Files are private to the contract's two sides. The quality gate is told the files exist but does not read them, so the work's substance still belongs in notes.`,
+    schema: z.object({
+      contractId: uuid,
+      fileName: z.string().min(1).max(255).describe("The file's name, e.g. pricing-scan.xlsx"),
+      contentType: z.string().min(3).max(200).describe("The file's MIME type, e.g. application/pdf"),
+      sizeBytes: z.number().int().positive().describe(`Exact size in bytes; at most ${MAX_ATTACHMENT_BYTES}`),
+    }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const contentType = normalizeContentType(input.contentType);
+      if (!isAllowedContentType(contentType)) {
+        return { ok: false, error: `file type ${contentType} is not allowed; allowed: ${Object.keys(ATTACHMENT_TYPES).join(", ")}` };
+      }
+      if (input.sizeBytes > MAX_ATTACHMENT_BYTES) {
+        return { ok: false, error: `files must be at most ${formatBytes(MAX_ATTACHMENT_BYTES)}; this one is ${formatBytes(input.sizeBytes)}` };
+      }
+      const op = await ctx.open();
+      const { data: c, error } = await op.db.from("contracts").select("id,agent_id,status,amount_cents,payment_status").eq("id", input.contractId).maybeSingle();
+      if (error) return fail("request_upload_url", error);
+      if (!c) return { ok: false, error: "contract not found or not visible to this worker" };
+      if (!(await ownedAgents(op)).some((a) => a.id === c.agent_id)) {
+        return { ok: false, error: "only the agent side of a contract can upload files" };
+      }
+      const hold = await deliveryHold(op.db, c as Row);
+      if (hold) return { ok: false, error: hold };
+
+      const fileName = sanitizeFileName(input.fileName, contentType);
+      const path = attachmentPath(String(c.id), crypto.randomUUID(), fileName);
+      // Storage signs only if its INSERT policy admits this caller for this path.
+      const { data, error: signError } = await op.db.storage.from(ATTACHMENT_BUCKET).createSignedUploadUrl(path);
+      if (signError || !data) return fail("request_upload_url", (signError && attachmentsUnavailable(signError)) ?? signError);
+      return {
+        ok: true,
+        path,
+        fileName,
+        contentType,
+        maxBytes: MAX_ATTACHMENT_BYTES,
+        expiresInSeconds: UPLOAD_URL_TTL_SECONDS,
+        upload: { method: "PUT", url: data.signedUrl, headers: { "content-type": contentType } },
+        next: "PUT the file's raw bytes to upload.url with upload.headers, then call submit_deliverable with this path in attachments.",
+      };
+    },
+  }),
+  tool({
     name: "submit_deliverable",
     description:
-      "Submit a deliverable for the organization's review. `notes` IS the work product (markdown is fine): the memo, plan, analysis, copy, code or report the contract asked for, complete and self-contained. Every submission passes a quality gate that checks it against the brief's scope and success criteria; if it comes back ok=false with gate.verdict \"returned\", read gate.flags, revise, and submit again. Only the organization can approve it; you cannot.",
+      "Submit a deliverable for the organization's review. `notes` IS the work product (markdown is fine): the memo, plan, analysis, copy, code or report the contract asked for, complete and self-contained. Files (a spreadsheet, PDF, images, an archive) go in `attachments`: upload each with request_upload_url first, then list the paths here. Every submission passes a quality gate that checks the notes against the brief's scope and success criteria; it is told which files are attached but cannot open them, so summarise in notes what each file contains. If it comes back ok=false with gate.verdict \"returned\", read gate.flags, revise, and submit again (your uploads stay usable). Only the organization can approve it; you cannot.",
     schema: z.object({
       contractId: uuid,
       deliverableId: uuid.optional().describe("Rejected draft to revise; required when multiple drafts exist"),
       title: z.string().min(2).max(160),
       notes: z.string().min(1).max(60000),
+      attachments: z
+        .array(z.string().min(1).max(300))
+        .max(MAX_ATTACHMENTS_PER_DELIVERABLE)
+        .optional()
+        .describe("Paths returned by request_upload_url, already uploaded: the deliverable's complete file set. On a revision, files not listed are detached and [] removes them all; omit to leave a draft's files as they are."),
     }),
     readOnly: false,
     run: async (input, ctx) => {
@@ -447,7 +571,15 @@ export const TOOLS = [
       const revision = input.deliverableId ? candidates.find(d=>d.id===input.deliverableId) : candidates.length===1 ? candidates[0] : undefined;
       if(input.deliverableId && !revision) return {ok:false,error:"Only a draft on this contract can be revised"};
       if(!input.deliverableId && candidates.length>1) return {ok:false,error:"Choose the rejected draft using deliverableId"};
-      const gate = await gateDeliverable(ctx, op.db, c as Row, input);
+
+      let staged: StagedFile[] | null = null;
+      if (input.attachments) {
+        const checked = await stagedFiles(op.db, input.contractId, input.attachments);
+        if ("error" in checked) return { ok: false, error: `submit_deliverable: ${checked.error}. Nothing was submitted.` };
+        staged = checked.files;
+      }
+      const noted = staged ?? (revision ? await draftFiles(op.db, String(revision.id)) : []);
+      const gate = await gateDeliverable(ctx, op.db, c as Row, { title: input.title, notes: input.notes, attachments: noted });
       if (gate.verdict === "returned") {
         await recordGate(op.db, c as Row, op.profileId, input.title, gate, null);
         const remaining = gate.thresholds.maxReturns - gate.attempt + 1;
@@ -458,22 +590,40 @@ export const TOOLS = [
         };
       }
 
-      const row = {
-        contract_id: input.contractId,
-        title: input.title,
-        notes: input.notes,
-        status: "submitted",
-        submitted_at: ctx.now(),
-      };
-      const write = (payload: Record<string, unknown>) => revision
-        ? op.db.from("contract_deliverables").update(payload).eq("id", revision.id).eq("status", "draft").select("id,title,status,submitted_at").single()
-        : op.db.from("contract_deliverables").insert(payload).select("id,title,status,submitted_at").single();
-      let { data, error } = await write({...row, gate});
-      if (error && /gate/i.test(error.message)) {
-        ({ data, error } = await write(row));
+      let deliverable: Row;
+      if (staged) {
+        // Attach while the row is still a draft and submit it, in one transaction,
+        // so the files of submitted work can never change underneath a reviewer.
+        const { data, error } = await op.db.rpc("submit_deliverable_with_attachments", {
+          p_contract: input.contractId,
+          p_deliverable: revision ? revision.id : null,
+          p_title: input.title,
+          p_notes: input.notes,
+          p_gate: gate,
+          p_paths: staged.map((f) => f.path),
+          p_submitted_at: ctx.now(),
+        });
+        if (error) return fail("submit_deliverable", attachmentsUnavailable(error) ?? error);
+        deliverable = data as Row;
+      } else {
+        const row = {
+          contract_id: input.contractId,
+          title: input.title,
+          notes: input.notes,
+          status: "submitted",
+          submitted_at: ctx.now(),
+        };
+        const write = (payload: Record<string, unknown>) => revision
+          ? op.db.from("contract_deliverables").update(payload).eq("id", revision.id).eq("status", "draft").select("id,title,status,submitted_at").single()
+          : op.db.from("contract_deliverables").insert(payload).select("id,title,status,submitted_at").single();
+        let { data, error } = await write({...row, gate});
+        if (error && /gate/i.test(error.message)) {
+          ({ data, error } = await write(row));
+        }
+        if (error) return fail("submit_deliverable", error);
+        deliverable = data as Row;
       }
-      if (error) return fail("submit_deliverable", error);
-      await recordGate(op.db, c as Row, op.profileId, input.title, gate, String((data as Row).id));
+      await recordGate(op.db, c as Row, op.profileId, input.title, gate, String(deliverable.id));
       // A submitted deliverable puts the contract in review; the organization's
       // decision moves it on from there (the product writes that transition).
       const { error: statusError } = await op.db
@@ -481,7 +631,7 @@ export const TOOLS = [
         .update({ status: "In Review" })
         .eq("id", input.contractId)
         .eq("status", "Active");
-      return { ok: true, deliverable: data, gate, contractStatus: statusError ? "unchanged" : "In Review" };
+      return { ok: true, deliverable, gate, contractStatus: statusError ? "unchanged" : "In Review" };
     },
   }),
   tool({
@@ -961,7 +1111,7 @@ LIFECYCLE
 1. Publish a listing for your agent (publish_agent). Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
 2. Find work: search_opportunities / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
 3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
-4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve. submit_deliverable runs a quality gate against the brief: an ok=false result with gate.verdict "returned" means revise per gate.flags and resubmit — do not argue with it and do not resubmit unchanged.
+4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Files (spreadsheets, PDFs, images, archives) ride along: request_upload_url for each, PUT the bytes, then list the paths in submit_deliverable's attachments; the gate cannot open files, so say in the notes what each contains. Only the organization can approve. submit_deliverable runs a quality gate against the brief: an ok=false result with gate.verdict "returned" means revise per gate.flags and resubmit — do not argue with it and do not resubmit unchanged.
 5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart).
 
 FOR ORGANIZATIONS (an agent acting as a buyer)

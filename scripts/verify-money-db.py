@@ -34,6 +34,7 @@ create function auth.uid() returns uuid language sql stable as $$select nullif(c
 grant usage on schema public,auth to anon,authenticated,service_role;
 alter default privileges in schema public grant all on tables to anon,authenticated,service_role;
 alter default privileges in schema public grant all on sequences to anon,authenticated,service_role;''')
+        sql((ROOT/'scripts/supabase-storage-stub.sql').read_text())
         sql((ROOT/'supabase/schema.sql').read_text())
         # Reapplication is safe and tests the proposed delta against an existing schema.
         migration=next((ROOT/'supabase/migrations').glob('*_payment_infrastructure.sql'))

@@ -1,9 +1,10 @@
 import { contractPriceLabel } from "../lib/money";
-import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { initialsFor } from "../lib/initials";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { ContractStatusBadge } from "../components/ContractStatusBadge";
+import { DeliverableAttachments } from "../components/DeliverableAttachments";
 import { GlassCard } from "../components/GlassCard";
 import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -12,10 +13,11 @@ import { Markdown } from "../components/Markdown";
 import { WorkerBadge } from "../components/WorkerBadge";
 import { FundingPanel, PaymentStatusBadge } from "../components/FundingPanel";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
+import { listContractAttachments, type DeliverableAttachment } from "../lib/attachments";
+import { gateLabel } from "../lib/gateLabel";
 import type { ContractStatus } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import type {
-  ContractDeliverable,
   ContractDeliverableStatus,
   ContractPaymentStatus,
 } from "../state/marketplaceTypes";
@@ -28,21 +30,6 @@ function formatActivityDate(value: string) {
     minute: "2-digit",
     month: "short",
   });
-}
-
-/** One line the organization can read: did the worker's submission clear the quality gate, and what was flagged. */
-function gateLabel(gate: NonNullable<ContractDeliverable["gate"]>): string {
-  const q = gate.answers ? ` · quality ${gate.answers.quality.toFixed(1)}/3` : "";
-  switch (gate.verdict) {
-    case "passed":
-      return `Quality gate: passed${q}${gate.flags.length ? ` · note: ${gate.flags.join("; ")}` : ""}`;
-    case "accepted_with_flags":
-      return `Quality gate: accepted after ${gate.attempt - 1} returns — review carefully. ${gate.flags.join("; ")}`;
-    case "unavailable":
-      return "Quality gate: not evaluated (gate unavailable at submission)";
-    default:
-      return `Quality gate: ${gate.verdict}`;
-  }
 }
 
 type LifecycleStep = { label: string; state: "done" | "current" | "upcoming"; warn?: boolean };
@@ -190,6 +177,21 @@ export function ContractDetailPage() {
       baseContract ? applyWorkspaceToContract(baseContract, workspace) : undefined,
     [baseContract, workspace],
   );
+
+  // Files come straight from the database (RLS shows them to the contract's two
+  // sides only) and are re-read whenever a deliverable changes state.
+  const [attachments, setAttachments] = useState<DeliverableAttachment[]>([]);
+  const deliverableKey = workspace.deliverables.map((d) => `${d.id}:${d.status}:${d.submittedAt ?? ""}`).join("|");
+  useEffect(() => {
+    if (!isSharedMode || !id) return;
+    let live = true;
+    void listContractAttachments(id).then((rows) => {
+      if (live) setAttachments(rows);
+    });
+    return () => {
+      live = false;
+    };
+  }, [id, isSharedMode, deliverableKey]);
 
   // A cold load of a deep link lands here before the shared state has been
   // read; redirecting then would bounce every shared link back to the list.
@@ -588,6 +590,7 @@ export function ContractDetailPage() {
                       ) : (
                         <p className="text-sm leading-6 text-ae-text-muted">No notes added.</p>
                       )}
+                      <DeliverableAttachments attachments={attachments.filter((a) => a.deliverableId === deliverable.id)} />
                     </div>
 
                     {deliverable.status === "draft" || (deliverable.status !== "approved" && !isOrganizationSide) ? (
