@@ -57,6 +57,15 @@ function integrationId(seed: string) {
 }
 
 type SessionCreateParams = Parameters<Stripe["checkout"]["sessions"]["create"]>[0];
+type PaymentIntentCreateParams = Parameters<Stripe["paymentIntents"]["create"]>[0];
+
+/**
+ * Card-statement suffix on every AgentExchange charge. Payments run on the
+ * Stripe account AgentExchange shares with TrainChat, whose shortened
+ * descriptor is the prefix: "PREFIX* AGENTEXCHANGE". Stripe keeps 22
+ * characters, so a prefix of 7 or fewer shows the whole name.
+ */
+export const STATEMENT_DESCRIPTOR_SUFFIX = "AGENTEXCHANGE";
 
 /** The Checkout session that funds a contract. Pure, so the request is testable. */
 export function checkoutSessionParams(input: CheckoutSessionInput): SessionCreateParams {
@@ -87,7 +96,7 @@ export function checkoutSessionParams(input: CheckoutSessionInput): SessionCreat
     // product describes and reconciles.
     payment_method_types: ["card"],
     // A hold, not a charge: captured when the organization approves the work.
-    payment_intent_data: { capture_method: "manual", metadata: { contractId: input.contractId } },
+    payment_intent_data: { capture_method: "manual", statement_descriptor_suffix: STATEMENT_DESCRIPTOR_SUFFIX, metadata: { contractId: input.contractId } },
     metadata: { contractId: input.contractId },
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
@@ -106,6 +115,22 @@ export function setupSessionParams(input: Parameters<StripeGateway["createSetupS
     metadata: { profileId: input.profileId, purpose: "agent_card", ...(input.agentKeyId ? {agentKeyId:input.agentKeyId,setupToken:input.setupToken!} : {}) },
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
+  };
+}
+
+/** The manual-capture hold an agent places on a saved card. Pure, so the request is testable. */
+export function offSessionHoldParams(input: OffSessionChargeInput): PaymentIntentCreateParams {
+  return {
+    amount: input.amountCents,
+    currency: input.currency.toLowerCase(),
+    customer: input.customerId,
+    payment_method: input.paymentMethodId,
+    off_session: true,
+    confirm: true,
+    capture_method: "manual",
+    description: input.description,
+    statement_descriptor_suffix: STATEMENT_DESCRIPTOR_SUFFIX,
+    metadata: { contractId: input.contractId, authorizedBy: "agent" },
   };
 }
 
@@ -133,17 +158,7 @@ export function realStripe(secretKey: string): StripeGateway {
       return { id: pm.id, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null, expMonth: pm.card?.exp_month ?? null, expYear: pm.card?.exp_year ?? null };
     },
     async createOffSessionHold(input) {
-      const pi = await stripe.paymentIntents.create({
-        amount: input.amountCents,
-        currency: input.currency.toLowerCase(),
-        customer: input.customerId,
-        payment_method: input.paymentMethodId,
-        off_session: true,
-        confirm: true,
-        capture_method: "manual",
-        description: input.description,
-        metadata: { contractId: input.contractId, authorizedBy: "agent" },
-      }, { idempotencyKey: input.idempotencyKey });
+      const pi = await stripe.paymentIntents.create(offSessionHoldParams(input), { idempotencyKey: input.idempotencyKey });
       return { id: pi.id, status: pi.status };
     },
     async capturePaymentIntent(id) {

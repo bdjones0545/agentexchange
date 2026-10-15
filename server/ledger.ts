@@ -163,7 +163,10 @@ export function supabaseLedger(client: SupabaseClient = serviceClient(), reader:
       if (error) throw fail("recordPayout", error);
     },
     async claimEvent(eventId, type, contractId) {
-      const { error } = await client.from("stripe_events").insert({ id: eventId, type, contract_id: contractId ?? null });
+      let { error } = await client.from("stripe_events").insert({ id: eventId, type, contract_id: contractId ?? null });
+      // Another product's event on the shared Stripe account can name an id that
+      // is not one of our contracts; record the event without it.
+      if (error?.code === "23503" && contractId) ({ error } = await client.from("stripe_events").insert({ id: eventId, type, contract_id: null }));
       if (error) {
         if (error.code === "23505") return false; // already claimed: a redelivery
         throw fail("claimEvent", error);

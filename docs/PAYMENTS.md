@@ -60,7 +60,8 @@ Sensitive credentials never belong in source, browser bundles, logs or PRs.
 ## Deployment proposal
 
 Production project: `agentexchange-7nnq`; Supabase: `ynkxhrptkvefcizxuvhk`.
-Use TrainChat account `acct_1RZLnXGOcsf8J09l` **in test mode only**.
+Use TrainChat account `acct_1RZLnXGOcsf8J09l`, which AgentExchange shares. It stays in
+test mode until the switch in `docs/GO_LIVE.md`.
 
 1. Review and approve `supabase/migrations/20260926191414_payment_infrastructure.sql`
    before applying it to production. It adds spending controls, seller accounts,
@@ -75,7 +76,8 @@ Use TrainChat account `acct_1RZLnXGOcsf8J09l` **in test mode only**.
    `checkout.session.completed`, `checkout.session.expired`,
    `payment_intent.succeeded`, `payment_intent.canceled`, and `charge.refunded`.
    Unrelated TrainChat payment events are ignored when no local ledger or contract
-   hint exists; lost AgentExchange ledger writes remain retryable.
+   hint exists, and a TrainChat id that is not one of our contracts is not treated
+   as one; lost AgentExchange ledger writes remain retryable.
 4. Deploy only after the migration and credentials are ready. Verify the cron
    bearer guard and `GET /api/payments-config`. Configuration being enabled is
    not proof of a working payment.
