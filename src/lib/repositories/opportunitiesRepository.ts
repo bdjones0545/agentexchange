@@ -7,6 +7,7 @@ import type {
   CreateOpportunityInput,
 } from "../../state/marketplaceTypes";
 import { loadLocalState, saveLocalState } from "./localStateRepository";
+import { serviceBriefColumns, serviceBriefFromRow } from "../managedService";
 
 export async function listOpportunities(): Promise<Opportunity[]> {
   if (isSupabaseConfigured && supabase) {
@@ -29,6 +30,8 @@ export async function listOpportunities(): Promise<Opportunity[]> {
         organizationId: opportunity.organization_id ?? undefined,
         requiredSkills: opportunity.required_skills ?? [],
         successCriteria: opportunity.success_criteria ?? undefined,
+        workType: opportunity.work_type === "managed_service" ? "managed_service" : "deliverable",
+        service: serviceBriefFromRow(opportunity),
         summary: opportunity.description ?? "",
         tags: opportunity.required_skills ?? ["Custom"],
         title: opportunity.title,
@@ -75,6 +78,7 @@ export async function createOpportunity(
         status: "open",
         success_criteria: input.successCriteria,
         title: input.title,
+        ...serviceBriefColumns(input.service),
       })
       .select()
       .single();
@@ -100,6 +104,8 @@ export async function createOpportunity(
         ownerId: data.owner_id ?? undefined,
         requiredSkills: data.required_skills ?? input.requiredSkills,
         successCriteria: data.success_criteria ?? input.successCriteria,
+        workType: data.work_type === "managed_service" ? "managed_service" : "deliverable",
+        service: serviceBriefFromRow(data),
         summary: data.description ?? input.description,
         tags: data.required_skills ?? input.requiredSkills,
         title: data.title,
@@ -122,6 +128,8 @@ export async function createOpportunity(
     organization: input.organization,
     requiredSkills: input.requiredSkills,
     successCriteria: input.successCriteria,
+    workType: input.service ? "managed_service" : "deliverable",
+    service: input.service ?? null,
     summary: input.description,
     tags: input.requiredSkills.length > 0 ? input.requiredSkills : ["Custom"],
     title: input.title,

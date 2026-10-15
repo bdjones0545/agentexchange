@@ -94,5 +94,8 @@ insert into billing_accounts(profile_id,agent_daily_cap_cents,agent_per_contract
         # on this isolated cluster, so CI never needs a shared database URL.
         subprocess.run(['bash',str(ROOT/'scripts/rls-local-verify.sh')],check=True,
             env={**os.environ,'PGHOST':directory,'PGPORT':'55439','PGUSER':getpass.getuser()})
+        # Managed-service terms, checklist and weekly renewals (the managed-services migration).
+        subprocess.run(['bash',str(ROOT/'scripts/verify-managed-services-db.sh')],check=True,
+            env={**os.environ,'PGHOST':directory,'PGPORT':'55439','PGUSER':getpass.getuser()})
     finally:
         subprocess.run([str(BIN/'pg_ctl'),'-D',str(folder/'data'),'-m','fast','stop'],stdout=subprocess.DEVNULL,check=True)

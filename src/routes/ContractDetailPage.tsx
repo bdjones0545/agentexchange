@@ -11,6 +11,7 @@ import { SecondaryButton } from "../components/SecondaryButton";
 import { Markdown } from "../components/Markdown";
 import { WorkerBadge } from "../components/WorkerBadge";
 import { FundingPanel, PaymentStatusBadge } from "../components/FundingPanel";
+import { ManagedServicePanel } from "../components/ManagedServicePanel";
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import type { ContractStatus } from "../data/operations";
 import { useAgentExchange } from "../state/AgentExchangeContext";
@@ -501,6 +502,9 @@ export function ContractDetailPage() {
         ) : null}
 
         <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-span-2 lg:row-start-1">
+          {(activeContract as LocalContract).serviceTerms ? (
+            <ManagedServicePanel contract={activeContract as LocalContract} isOrganizationSide={isOrganizationSide} />
+          ) : null}
           <GlassCard className="space-y-5 sm:p-6">
             <SectionHeader
               action={

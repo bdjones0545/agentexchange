@@ -1,4 +1,5 @@
 import { isTestListing } from "../../src/lib/publicListings.js";
+import { SERVICE_KINDS, agentRules, serviceBriefColumns, serviceBriefFromRow, serviceSummary, serviceTermsFromJson, validateServiceBrief, weekStages, type ServiceKind } from "../../src/lib/managedService.js";
 import { setupLink, setupStatus } from '../agentSetup.js';
 import { serviceClient } from '../service.js';
 import { sellerGateway } from '../connect.js';
@@ -95,17 +96,37 @@ async function ownedAgents(op: OperatorHandle): Promise<Row[]> {
 
 /** The brief a contract came from, when it came from one. */
 async function opportunityOf(db: SupabaseClient, c: Row): Promise<Row | null> {
-  if (!c.source_type || !c.source_id) return null;
-  const table = c.source_type === "application" ? "applications" : c.source_type === "negotiation" ? "negotiations" : c.source_type === "hire-request" ? "hire_requests" : null;
-  if (!table) return null;
-  const { data: src } = await db.from(table).select("opportunity_id").eq("id", c.source_id).maybeSingle();
-  if (!src?.opportunity_id) return null;
+  // A managed-service week carries its brief in the frozen terms; a renewal's
+  // own source is the previous week's contract, not a brief.
+  let opportunityId = serviceTermsFromJson(c.service_terms)?.opportunityId ?? null;
+  if (!opportunityId) {
+    if (!c.source_type || !c.source_id) return null;
+    const table = c.source_type === "application" ? "applications" : c.source_type === "negotiation" ? "negotiations" : c.source_type === "hire-request" ? "hire_requests" : null;
+    if (!table) return null;
+    const { data: src } = await db.from(table).select("opportunity_id").eq("id", c.source_id).maybeSingle();
+    opportunityId = (src?.opportunity_id as string | undefined) ?? null;
+  }
+  if (!opportunityId) return null;
   const { data: opp } = await db
     .from("opportunities")
-    .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria")
-    .eq("id", src.opportunity_id)
+    .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,work_type,service_kind,service_platforms,ad_spend_cap_cents,service_weeks")
+    .eq("id", opportunityId)
     .maybeSingle();
-  return (opp as Row) ?? null;
+  return opp ? withService(opp as Row) : null;
+}
+
+/** A brief row with its managed-service terms summarised, when it has them. */
+function withService(o: Row): Row {
+  const service = serviceBriefFromRow(o);
+  return { ...o, service: service ? { ...service, summary: serviceSummary(service) } : null };
+}
+
+/** What a managed-service contract asks of the agent this week, or null for a deliverable contract. */
+function serviceOf(c: Row) {
+  const terms = serviceTermsFromJson(c.service_terms);
+  if (!terms) return null;
+  const currency = typeof c.currency === "string" ? c.currency : "USD";
+  return { ...terms, summary: serviceSummary(terms, currency), thisWeek: weekStages(terms), rules: agentRules(terms, currency) };
 }
 
 /**
@@ -138,10 +159,11 @@ async function gateDeliverable(
     description: (opp?.description as string | null) ?? null,
     successCriteria: (opp?.success_criteria as string | null) ?? null,
     requiredSkills: (opp?.required_skills as string[] | null) ?? null,
+    service: serviceTermsFromJson(c.service_terms),
   };
   try {
     const answers = await ctx.gate({ brief, title: input.title, notes: input.notes });
-    return decide(answers, priorReturns, ctx.now);
+    return decide(answers, priorReturns, ctx.now, { service: Boolean(brief.service) });
   } catch (e) {
     console.warn("[gate] evaluator failed; accepting without evaluation:", e instanceof Error ? e.message : e);
     return decide(null, priorReturns, ctx.now);
@@ -182,6 +204,7 @@ function contractSummary(c: Row) {
     amountCents: c.amount_cents,
     currency: c.currency,
     paymentStatus: c.payment_status,
+    service: serviceOf(c),
   };
 }
 
@@ -380,7 +403,7 @@ export const TOOLS = [
   tool({
     name: "get_contract",
     description:
-      "Everything about one contract: terms, funding state (funding.workMayStart says whether you may begin), the opportunity it came from (scope, success criteria), milestones, deliverables with the organization's decisions, and the full message thread in order.",
+      "Everything about one contract: terms, funding state (funding.workMayStart says whether you may begin), the opportunity it came from (scope, success criteria), milestones, deliverables with the organization's decisions, and the full message thread in order. When contract.service is set, this is one week of a managed service in the buyer's own accounts: do contract.service.thisWeek in order and follow every contract.service.rules entry (access only through the platform, plan approved before anything goes live, ad spend within the cap).",
     schema: z.object({ contractId: uuid }),
     readOnly: true,
     run: async (input, ctx) => {
@@ -427,7 +450,7 @@ export const TOOLS = [
   tool({
     name: "submit_deliverable",
     description:
-      "Submit a deliverable for the organization's review. `notes` IS the work product (markdown is fine): the memo, plan, analysis, copy, code or report the contract asked for, complete and self-contained. Every submission passes a quality gate that checks it against the brief's scope and success criteria; if it comes back ok=false with gate.verdict \"returned\", read gate.flags, revise, and submit again. Only the organization can approve it; you cannot.",
+      "Submit a deliverable for the organization's review. `notes` IS the work product (markdown is fine): the memo, plan, analysis, copy, code or report the contract asked for, complete and self-contained. On a managed-service week (contract.service in get_contract) it is that week's stage: the plan to approve, the launch record with IDs and live links, or the weekly report with spend, results and evidence. Every submission passes a quality gate that checks it against the brief's scope and success criteria; if it comes back ok=false with gate.verdict \"returned\", read gate.flags, revise, and submit again. Only the organization can approve it; you cannot.",
     schema: z.object({
       contractId: uuid,
       deliverableId: uuid.optional().describe("Rejected draft to revise; required when multiple drafts exist"),
@@ -506,7 +529,7 @@ export const TOOLS = [
   tool({
     name: "search_opportunities",
     description:
-      "Find open briefs organizations have posted: title, category, budget, required skills, scope and success criteria. This is where work comes from — search here, then apply_to_opportunity with one of your agents.",
+      "Find open briefs organizations have posted: title, category, budget, required skills, scope and success criteria. A brief with `service` set is a managed service: weekly work in the buyer's own accounts on the listed platforms, for service.weeks weeks, with any ad spend capped and paid by the buyer to the platform. This is where work comes from — search here, then apply_to_opportunity with one of your agents.",
     schema: z.object({
       query: z.string().max(120).optional().describe("Free text matched against title, description, category and skills"),
       category: z.string().max(60).optional(),
@@ -517,7 +540,7 @@ export const TOOLS = [
       const op = await ctx.open();
       let q = op.db
         .from("opportunities")
-        .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at")
+        .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at,work_type,service_kind,service_platforms,ad_spend_cap_cents,service_weeks")
         .eq("status", "open")
         .order("created_at", { ascending: false })
         .limit(200);
@@ -531,7 +554,7 @@ export const TOOLS = [
         const hay = [o.title, o.description, o.category, o.success_criteria, ...(((o.required_skills as string[]) ?? []))].filter(Boolean).join(" ").toLowerCase();
         return hay.includes(needle);
       });
-      return { ok: true, count: rows.length, opportunities: rows.slice(0, input.limit) };
+      return { ok: true, count: rows.length, opportunities: rows.slice(0, input.limit).map(withService) };
     },
   }),
   tool({
@@ -543,7 +566,7 @@ export const TOOLS = [
       const op = await ctx.open();
       const { data: o, error } = await op.db
         .from("opportunities")
-        .select("id,title,organization_name,organization_id,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at")
+        .select("id,title,organization_name,organization_id,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at,work_type,service_kind,service_platforms,ad_spend_cap_cents,service_weeks")
         .eq("id", input.opportunityId)
         .maybeSingle();
       if (error) return fail("get_opportunity", error);
@@ -553,7 +576,7 @@ export const TOOLS = [
         mine.length ? op.db.from("applications").select("id,agent_id,agent_name,status,created_at").eq("opportunity_id", o.id).in("agent_id", mine) : Promise.resolve({ data: [] }),
         mine.length ? op.db.from("negotiations").select("id,agent_id,agent_name,rate,timeline,amount_cents,counter_rate,counter_timeline,counter_note,counter_amount_cents,accepted_by,status,created_at").eq("opportunity_id", o.id).in("agent_id", mine) : Promise.resolve({ data: [] }),
       ]);
-      return { ok: true, opportunity: o, myApplications: apps.data ?? [], myNegotiations: negs.data ?? [] };
+      return { ok: true, opportunity: withService(o as Row), myApplications: apps.data ?? [], myNegotiations: negs.data ?? [] };
     },
   }),
   tool({
@@ -666,7 +689,7 @@ export const TOOLS = [
   tool({
     name: "post_opportunity",
     description:
-      "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it.",
+      "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it. Set `service` for a managed service (paid ads, SEO, social, email): weekly work in your own accounts, where the budget is the agent's fee per week and any ad spend is capped and paid by you to the platform.",
     schema: z.object({
       organization: z.string().min(2).max(120),
       title: z.string().min(4).max(160),
@@ -677,11 +700,22 @@ export const TOOLS = [
       requiredSkills: z.array(z.string().min(1).max(40)).max(12).default([]),
       description: z.string().min(20).max(6000),
       successCriteria: z.string().min(10).max(3000),
+      service: z
+        .object({
+          kind: z.enum(Object.keys(SERVICE_KINDS) as [ServiceKind, ...ServiceKind[]]),
+          platforms: z.array(z.string().min(1).max(48)).max(8).describe("Platforms you will share access to, e.g. \"Meta Ads\""),
+          adSpendCapCents: z.number().int().min(0).nullable().describe("Weekly ad spend you pay the platform directly; null when there is none"),
+          weeks: z.number().int().min(1).max(52),
+        })
+        .optional()
+        .describe("Present only for a managed service"),
     }),
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
       if (input.budgetMaxCents < input.budgetMinCents) return { ok: false, error: "budgetMaxCents must be >= budgetMinCents" };
+      const serviceProblems = input.service ? validateServiceBrief(input.service) : [];
+      if (serviceProblems.length) return { ok: false, error: serviceProblems.join(" ") };
       const { data: existingOrg } = await op.db.from("organizations").select("id,name").eq("owner_id", op.profileId).eq("name", input.organization).limit(1).maybeSingle();
       let organizationId = existingOrg?.id as string | undefined;
       if (!organizationId) {
@@ -707,6 +741,7 @@ export const TOOLS = [
           description: input.description,
           success_criteria: input.successCriteria,
           status: "open",
+          ...serviceBriefColumns(input.service),
         })
         .select("id,title,organization_id,budget_range,status,created_at")
         .single();
