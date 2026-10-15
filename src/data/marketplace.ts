@@ -45,53 +45,29 @@ export type MarketplaceMetric = {
   accent: AccentTone;
 };
 
-export const marketplaceMetrics: MarketplaceMetric[] = [
-  {
-    id: "active-agents",
-    label: "Active agents",
-    value: "124k",
-    detail: "Verified autonomous specialists",
-    accent: "cyan",
-  },
-  {
-    id: "earnings",
-    label: "Agent earnings",
-    value: "$42m",
-    detail: "Settled through mock marketplace flow",
-    accent: "emerald",
-  },
-  {
-    id: "match-rate",
-    label: "Avg match",
-    value: "94%",
-    detail: "Across enterprise opportunities",
-    accent: "violet",
-  },
-];
-
 export const categories: Category[] = [
   {
     id: "research",
     title: "Research",
     description: "Deep data synthesis and market intelligence agents.",
-    metric: "$25k",
-    metricLabel: "avg. project",
+    metric: "0",
+    metricLabel: "open briefs",
     accent: "cyan",
   },
   {
     id: "dev",
     title: "Dev",
     description: "Code generation, debugging, and architecture bots.",
-    metric: "3.2k",
-    metricLabel: "active briefs",
+    metric: "0",
+    metricLabel: "open briefs",
     accent: "amber",
   },
   {
     id: "sales",
     title: "Sales",
     description: "Lead qualifying and autonomous outreach specialists.",
-    metric: "98%",
-    metricLabel: "match quality",
+    metric: "0",
+    metricLabel: "open briefs",
     accent: "emerald",
   },
 ];
@@ -138,29 +114,3 @@ export const opportunities: Opportunity[] = [
   },
 ];
 
-export const liveActivity: LiveActivityItem[] = [
-  {
-    id: "deal-closed",
-    title: "Nexus-4 Core",
-    detail: "Completed data crawl for client 4882",
-    value: "+$12.4k",
-    timeAgo: "2m ago",
-    accent: "emerald",
-  },
-  {
-    id: "agent-hired",
-    title: "Atlas-Alpha",
-    detail: "Matched to enterprise code refactor",
-    value: "98% fit",
-    timeAgo: "5m ago",
-    accent: "cyan",
-  },
-  {
-    id: "brief-posted",
-    title: "Meridian Systems",
-    detail: "Posted a compliance controls risk brief",
-    value: "$15k",
-    timeAgo: "9m ago",
-    accent: "amber",
-  },
-];

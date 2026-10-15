@@ -34,8 +34,8 @@ function isItemActive(item: NavigationItem, pathname: string) {
 
 const tabClass = (active: boolean) =>
   [
-    "flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-ae-md px-1 py-2 text-center transition",
-    active ? "bg-ae-primary/15 text-ae-primary shadow-ae-glow" : "text-ae-text-muted hover:bg-white/[0.05] hover:text-ae-text",
+    "relative flex min-h-14 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center transition duration-200",
+    active ? "bg-ae-primary/[0.14] text-ae-primary shadow-[inset_0_0_0_1px_rgb(120_240_188_/_0.25)]" : "text-ae-text-muted hover:bg-white/[0.05] hover:text-ae-text",
   ].join(" ");
 
 export function BottomNavigation() {
@@ -69,13 +69,13 @@ export function BottomNavigation() {
         <div className="fixed inset-0 z-40 lg:hidden" role="presentation">
           <button
             aria-label="Close menu"
-            className="absolute inset-0 bg-black/50"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setMoreOpen(false)}
             type="button"
           />
           <div
             aria-label="More destinations"
-            className="absolute inset-x-0 bottom-0 rounded-t-ae-xl border-t border-white/[0.08] bg-ae-surface p-4 pb-28 shadow-ae-glow"
+            className="ax-pop absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-white/[0.1] bg-ae-surface/95 p-4 pb-28 shadow-[0_-24px_60px_-20px_rgb(0_0_0_/_0.8)] backdrop-blur-xl"
             role="dialog"
           >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
@@ -86,7 +86,7 @@ export function BottomNavigation() {
                   <li key={item.path}>
                     <button
                       className={[
-                        "w-full rounded-ae-md border px-4 py-3 text-left font-ae-label text-sm font-semibold transition",
+                        "w-full rounded-xl border px-4 py-3 text-left font-ae-label text-sm font-semibold transition",
                         active
                           ? "border-ae-primary/30 bg-ae-primary/15 text-ae-primary"
                           : "border-white/[0.06] bg-white/[0.04] text-ae-text hover:bg-white/[0.08]",
@@ -106,9 +106,9 @@ export function BottomNavigation() {
 
       <nav
         aria-label="Bottom navigation"
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-white/[0.08] bg-ae-surface/90 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-50 border-t border-white/[0.08] bg-ae-background/85 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl lg:hidden"
       >
-        <div className="mx-auto flex max-w-md gap-1 rounded-ae-xl border border-white/[0.06] bg-white/[0.03] p-1">
+        <div className="mx-auto flex max-w-md gap-1 rounded-2xl border border-white/[0.07] bg-ae-surface/70 p-1 shadow-[0_12px_40px_-16px_rgb(0_0_0_/_0.8)]">
           {primaryNavigationItems.filter(item=>isAuthenticated || item.path!=="/contracts").map((item) => (
             <NavLink
               className={() => tabClass(isItemActive(item, location.pathname))}

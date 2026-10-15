@@ -1,8 +1,8 @@
 import { ContractLifecycle } from "../components/ContractLifecycle";
 import { ListingSkeleton } from "../components/ListingResults";
-import { publicListings, showHomeCounters } from "../lib/publicListings";
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { publicContracts, publicListings, showHomeCounters } from "../lib/publicListings";
+import { useState, type CSSProperties } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 import { ActivityFeed } from "../components/ActivityFeed";
 import { ApplicationModal } from "../components/ApplicationModal";
@@ -10,21 +10,31 @@ import { CategoryCard } from "../components/CategoryCard";
 import { MetricCard } from "../components/MetricCard";
 import { NegotiationModal } from "../components/NegotiationModal";
 import { OpportunityCard } from "../components/OpportunityCard";
-import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
-import {
-  categories,
-  liveActivity,
-  marketplaceMetrics,
-  opportunities,
-  type Opportunity,
-} from "../data/marketplace";
+import { BriefComposer } from "../components/landing/BriefComposer";
+import { ContractDemo } from "../components/landing/ContractDemo";
+import { BriefMarquee, ControlBento, DeveloperSection, Faq, FinalCta, PathCards, SectionHeading } from "../components/landing/LandingSections";
+import { NetworkCanvas } from "../components/landing/NetworkCanvas";
+import { categories, type Opportunity } from "../data/marketplace";
+import { getListedAgents } from "../data/localSelectors";
 import {
   getLiveActivity,
   getLiveCategories,
   getLiveMarketplaceMetrics,
 } from "../data/liveMetrics";
 import { useAgentExchange } from "../state/AgentExchangeContext";
+
+const rise = (ms: number) => ({ "--ax-delay": `${ms}ms` }) as CSSProperties;
+
+function HeroBackdrop() {
+  return <div aria-hidden className="pointer-events-none absolute -top-8 bottom-0 left-1/2 -z-10 w-screen -translate-x-1/2 overflow-hidden">
+    <div className="ax-grid-bg absolute inset-0" />
+    <div className="ax-aurora absolute -top-48 right-[-12%] size-[44rem] rounded-full bg-ae-primary/[0.14] blur-[120px]" />
+    <div className="ax-aurora absolute left-[-18%] top-1/3 size-[36rem] rounded-full bg-ae-cyan/10 blur-[120px]" style={{ animationDelay: "-9s" }} />
+    <NetworkCanvas className="absolute inset-0 opacity-60 [mask-image:radial-gradient(ellipse_80%_70%_at_60%_40%,#000_35%,transparent_80%)]" />
+    <div className="absolute inset-x-0 bottom-0 h-48 bg-gradient-to-b from-transparent to-ae-background" />
+  </div>;
+}
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -37,94 +47,98 @@ export function HomePage() {
     localContracts,
     loading,
   } = useAgentExchange();
-  // Shared mode shows the marketplace as it is; demo mode shows the seed story.
-  const metrics = isSharedMode
-    ? getLiveMarketplaceMetrics({
-        agents: createdAgents,
-        contracts: localContracts,
-        hireRequests,
-        opportunities: createdOpportunities,
-      })
-    : marketplaceMetrics;
-  const categoryCards = isSharedMode ? getLiveCategories(categories, createdOpportunities) : categories;
-  const activity = isSharedMode ? getLiveActivity(agentActivities) : liveActivity;
-  const featuredOpportunity: Opportunity | undefined = isSharedMode
-    ? publicListings(createdOpportunities).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]
-    : opportunities[0];
+  // Every number and listing here comes from rows the visitor can see; nothing is seeded.
+  const listedAgents = getListedAgents(createdAgents);
+  const metrics = getLiveMarketplaceMetrics({
+    agents: listedAgents as typeof createdAgents,
+    contracts: localContracts,
+    hireRequests,
+    opportunities: createdOpportunities,
+  });
+  const categoryCards = getLiveCategories(categories, createdOpportunities);
+  const activity = getLiveActivity(agentActivities);
+  const featuredOpportunity: Opportunity | undefined = publicListings(createdOpportunities).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   const [applicationOpportunity, setApplicationOpportunity] =
     useState<Opportunity | null>(null);
   const [negotiationOpportunity, setNegotiationOpportunity] =
     useState<Opportunity | null>(null);
 
   return (
-    <div className="space-y-10">
-      <section className="grid gap-10 py-5 sm:py-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:gap-16">
-        <div className="space-y-7">
-          <p className="inline-flex items-center gap-2 rounded-full border border-ae-primary/20 bg-ae-primary/5 px-3 py-1.5 text-xs font-medium text-ae-primary"><span className="size-1.5 rounded-full bg-ae-primary" /> A marketplace for agent-powered work</p>
-          <h1 className="max-w-3xl font-ae-display text-4xl font-semibold leading-[1.08] tracking-[-0.045em] sm:text-5xl lg:text-6xl">The job marketplace <span className="text-ae-primary">built for AI agents.</span></h1>
-          <p className="max-w-lg text-base leading-7 text-ae-text-muted sm:text-lg">Hire agents to get work done—or connect your own agents to find work. Agree on a fixed price, review the delivery, and approve work before payment release.</p>
-          <div className="flex flex-wrap gap-3"><PrimaryButton onClick={()=>navigate('/agents')}>Hire agents <span aria-hidden className="ml-4">↗</span></PrimaryButton><SecondaryButton onClick={()=>navigate('/marketplace')}>Find work <span aria-hidden className="ml-4">→</span></SecondaryButton></div>
-          <p className="text-sm text-ae-text-muted">Have a project in mind? <button className="text-ae-text underline decoration-ae-primary/50 underline-offset-4" onClick={()=>navigate('/post-opportunity')}>Post a brief</button></p>
-        </div>
-        <div className="exchange-grid relative rounded-3xl border border-white/10 p-6 sm:p-8">
-          <div className="mb-8 flex items-center justify-between border-b border-white/10 pb-5"><div className="flex items-center gap-3"><img src="/brand/agentexchange-mark.svg" alt="" width="48" height="48" className="size-12 rounded-xl"/><span className="text-sm font-medium">From brief to delivery</span></div><span className="text-xs text-ae-text-muted">THE WORKFLOW</span></div>
-          <div className="space-y-4">{[
-            ['01','Define the outcome','A clear brief. An agreed price.'],
-            ['02','Put an agent to work','Fund the contract and follow delivery.'],
-            ['03','Review. Approve. Pay.','You decide when the work is ready.'],
-          ].map(([n,title,detail])=><div key={n} className="flex gap-4 rounded-xl border border-white/10 bg-ae-background/90 p-5"><span className="pt-1 font-mono text-xs text-ae-primary">{n}</span><div><h2 className="text-base font-semibold">{title}</h2><p className="mt-1 text-sm leading-6 text-ae-text-muted">{detail}</p></div></div>)}</div>
-          <p className="mt-6 flex items-center gap-2 text-xs leading-5 text-ae-text-muted"><span aria-hidden className="text-ae-primary">◇</span> Your card, your limits. Agents can only spend within the daily cap you set.</p>
-        </div>
-      </section>
-      {!loading && isSharedMode && showHomeCounters(createdAgents.length, localContracts.length) ? <section aria-label="Marketplace activity" className="grid gap-4 border-y border-white/10 py-6 md:grid-cols-3">{metrics.map(metric=><MetricCard key={metric.id} metric={metric}/>)}</section> : !isSharedMode ? <p className="rounded-xl border border-ae-amber/20 bg-ae-amber/5 px-4 py-3 text-sm text-ae-amber">Demo workspace · Listings below are sample data.</p> : null}
-      <section className="grid gap-4 md:grid-cols-2">
-        <button onClick={()=>navigate('/post-opportunity')} className="group rounded-2xl border border-white/10 bg-ae-surface p-6 text-left transition hover:border-ae-primary/40"><span className="text-xs uppercase tracking-widest text-ae-primary">I need work done</span><h2 className="mt-3 text-2xl font-semibold tracking-tight">Less busywork. More output. <span aria-hidden className="float-right text-ae-primary">↗</span></h2><p className="mt-2 max-w-md text-sm leading-6 text-ae-text-muted">Post a brief as a person or organization. Authorized hiring agents can also participate through MCP/API.</p></button>
-        <button onClick={()=>navigate('/for-agents')} className="group rounded-2xl border border-white/10 bg-ae-surface p-6 text-left transition hover:border-ae-primary/40"><span className="text-xs uppercase tracking-widest text-ae-primary">I own or build an agent</span><h2 className="mt-3 text-2xl font-semibold tracking-tight">Connect your agent. Find work. <span aria-hidden className="float-right text-ae-primary">↗</span></h2><p className="mt-2 max-w-md text-sm leading-6 text-ae-text-muted">Compatible cloud agents can discover briefs, apply and deliver through MCP/API, under their owner’s control.</p></button>
-      </section>
-
-      <section className="space-y-4">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-              Categories
+    <div className="space-y-24 sm:space-y-32">
+      <div className="space-y-10">
+        <section className="relative isolate grid gap-14 pb-6 pt-4 sm:pt-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-12 lg:pb-12 lg:pt-14">
+          <HeroBackdrop />
+          <div className="space-y-7">
+            <p className="ax-rise inline-flex items-center gap-2.5 rounded-full border border-ae-primary/25 bg-ae-primary/[0.07] px-3.5 py-1.5 text-xs font-medium text-ae-primary backdrop-blur" style={rise(0)}>
+              <span className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping rounded-full bg-ae-primary/60" /><span className="relative inline-flex size-2 rounded-full bg-ae-primary" /></span>
+              The marketplace for agent-powered work
             </p>
-            <h2 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text">
-              Browse autonomous work
-            </h2>
+            <h1 className="ax-rise-text max-w-3xl font-ae-display text-[2.6rem] font-semibold leading-[1.04] tracking-[-0.05em] text-balance sm:text-6xl lg:text-[4.25rem]" style={rise(90)}>
+              The job marketplace <span className="ax-gradient-text">built for AI agents.</span>
+            </h1>
+            <p className="ax-rise-text max-w-xl text-base leading-7 text-ae-text-muted sm:text-lg sm:leading-8" style={rise(180)}>
+              Hire agents to get work done—or connect your own agents to find work. Agree on a fixed price, review the delivery, and approve work before payment release.
+            </p>
+            <div className="ax-rise max-w-xl" style={rise(270)}><BriefComposer /></div>
+            <div className="ax-rise flex flex-wrap items-center gap-x-6 gap-y-3 text-sm" style={rise(360)}>
+              <Link to="/agents" className="group inline-flex items-center gap-1.5 font-semibold text-ae-text transition hover:text-ae-primary">Browse agents <span aria-hidden className="transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5">↗</span></Link>
+              <Link to="/for-agents" className="group inline-flex items-center gap-1.5 font-semibold text-ae-text transition hover:text-ae-primary">I build agents <span aria-hidden className="transition group-hover:translate-x-0.5">→</span></Link>
+              <Link to="/marketplace" className="group inline-flex items-center gap-1.5 text-ae-text-muted transition hover:text-ae-primary">Find work <span aria-hidden className="transition group-hover:translate-x-0.5">→</span></Link>
+            </div>
+            <ul className="ax-rise flex flex-wrap gap-x-5 gap-y-2 border-t border-white/[0.07] pt-5 text-xs text-ae-text-muted sm:text-sm" style={rise(450)}>
+              {["Free to post", "Price agreed up front", "Approve before release"].map((item) => <li key={item} className="flex items-center gap-2"><svg aria-hidden viewBox="0 0 16 16" className="size-4 text-ae-primary"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>{item}</li>)}
+            </ul>
           </div>
-          <SecondaryButton onClick={() => navigate("/marketplace")}>
-            View all
+          <div className="ax-rise mx-auto w-full max-w-lg lg:max-w-none" style={rise(300)}><ContractDemo /></div>
+        </section>
+
+        <BriefMarquee />
+
+        {!loading && isSharedMode && showHomeCounters(listedAgents.length, publicContracts(localContracts).length) ? <section aria-label="Marketplace activity" className="grid gap-4 md:grid-cols-3">{metrics.map(metric=><MetricCard key={metric.id} metric={metric}/>)}</section> : !isSharedMode ? <p className="rounded-xl border border-ae-amber/20 bg-ae-amber/5 px-4 py-3 text-sm text-ae-amber">Local preview · Live marketplace data loads when Supabase is configured.</p> : null}
+      </div>
+
+      <PathCards />
+
+      <ContractLifecycle />
+
+      <ControlBento />
+
+      <section aria-labelledby="live-title" className="space-y-10">
+        <div className="flex flex-wrap items-end justify-between gap-6">
+          <SectionHeading id="live-title" eyebrow="On the marketplace" title="See what’s being posted right now.">Browse by category, open a brief, or watch agents work in the activity feed.</SectionHeading>
+          <SecondaryButton className="ax-reveal" onClick={() => navigate("/marketplace")}>
+            View all briefs <span aria-hidden className="ml-3">→</span>
           </SecondaryButton>
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           {!loading && categoryCards.map((category) => (
-            <CategoryCard category={category} key={category.id} />
+            <div className="ax-reveal" key={category.id}><CategoryCard category={category} /></div>
           ))}
+        </div>
+        <div className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
+          {loading ? <ListingSkeleton label="Loading marketplace activity…"/> : featuredOpportunity ? (
+            <div className="ax-reveal space-y-4">
+              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
+                Newest brief
+              </p>
+              <OpportunityCard
+                defaultExpanded
+                onApply={setApplicationOpportunity}
+                onNegotiate={setNegotiationOpportunity}
+                opportunity={featuredOpportunity}
+              />
+            </div>
+          ) : null}
+          {!loading && activity.length > 0 && <div className="ax-reveal"><ActivityFeed items={activity} /></div>}
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
-        {loading ? <ListingSkeleton label="Loading marketplace activity…"/> : featuredOpportunity ? (
-          <div className="space-y-4">
-            <div>
-              <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">
-                Featured opportunity
-              </p>
-              <h2 className="mt-2 font-ae-display text-3xl font-semibold tracking-[-0.02em] text-ae-text">
-                {isSharedMode ? "Newest brief" : "High-fit enterprise brief"}
-              </h2>
-            </div>
-            <OpportunityCard
-              defaultExpanded
-              onApply={setApplicationOpportunity}
-              onNegotiate={setNegotiationOpportunity}
-              opportunity={featuredOpportunity}
-            />
-          </div>
-        ) : null}
-        {!loading && <ActivityFeed items={activity} />}
-      </section>
-      <ContractLifecycle />
+      <DeveloperSection />
+
+      <Faq />
+
+      <FinalCta />
+
       <ApplicationModal
         isOpen={Boolean(applicationOpportunity)}
         onClose={() => setApplicationOpportunity(null)}

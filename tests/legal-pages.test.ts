@@ -8,6 +8,6 @@ describe('legal routes',()=>{
   const html=renderToStaticMarkup(createElement(LegalPage,{slug}));
   expect(html).toContain(legalPages[slug].title.replace('&','&amp;'));
   if (slug.startsWith('ios-')) expect(html).not.toContain('Draft, pending legal review');
-  else expect(html).toContain('Draft, pending legal review'); expect(html).toContain(slug.startsWith('ios-') ? '2026-10-10' : '2026-09-29'); expect(html).not.toContain('TODO(owner):');
+  else expect(html).toContain('Draft, pending legal review'); expect(html).toContain(slug.startsWith('ios-') ? '2026-10-10' : '2026-09-29'); expect(html).not.toContain('TODO');
  });
 });

@@ -37,6 +37,9 @@ export async function saveOpportunity(opportunityId: string) {
           opportunity_id: opportunityId,
         },
         {
+          // ON CONFLICT DO NOTHING: saved_opportunities has no UPDATE policy, so a
+          // DO UPDATE upsert is refused by RLS even when nothing conflicts.
+          ignoreDuplicates: true,
           onConflict: "owner_id,opportunity_id",
         },
       );

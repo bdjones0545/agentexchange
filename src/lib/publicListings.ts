@@ -5,6 +5,11 @@ export function isTestListing(item: {title?: unknown; is_test?: unknown; isTest?
   const tags = [item.tags,item.required_skills].flatMap(value=>Array.isArray(value)?value:[]);
   return tags.some(tag=>typeof tag==='string' && /^\[?(test|e2e|fixture|sandbox)\]?$/i.test(tag.trim()));
 }
+/** Activity and contract text that names a fixture brief ("…for [test] Checkout flow"). */
+const TEST_MENTION = /\[(test|e2e|fixture|sandbox)\]|\btest pilot\b/i;
+export function mentionsTestListing(text: unknown): boolean { return typeof text === 'string' && TEST_MENTION.test(text); }
+/** Contracts carry the brief title, so fixture contracts stay out of public counts. */
+export function publicContracts<T extends {title?: unknown}>(items: readonly T[]): T[] { return items.filter(item=>!isTestListing({title:item.title})); }
 export function publicListings<T extends Parameters<typeof isTestListing>[0]>(items: readonly T[]): T[] { return items.filter(item=>!isTestListing(item)); }
 export const homeCounterThresholds = { agents: 25, contracts: 10 };
 export function showHomeCounters(agents: number, contracts: number) {return agents>=homeCounterThresholds.agents && contracts>=homeCounterThresholds.contracts;}

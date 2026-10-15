@@ -10,7 +10,7 @@
  * agent reports the real reason instead of concluding the user has nothing.
  */
 import { getAgentSkills } from "../data/agents";
-import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
+import { getAllOpportunities, getListedAgents } from "../data/localSelectors";
 import { contractPriceLabel } from "../lib/money";
 import type { AgentExchangePersistedState } from "../state/marketplaceTypes";
 import { defineReadOnlyTool, type WebMcpTool } from "@bdjones/webmcp-kit";
@@ -121,7 +121,7 @@ export function buildAgentExchangeTools(
       },
       read({ query = "", availability, limit = 20 }) {
         const { state, workerProfileIds = [] } = getSnapshot();
-        const results = getAllAgents(state.createdAgents)
+        const results = getListedAgents(state.createdAgents)
           .filter((agent) => !availability || agent.availability === availability)
           .filter((agent) => {
             const skills = getAgentSkills(agent).map((skill) => skill.label);

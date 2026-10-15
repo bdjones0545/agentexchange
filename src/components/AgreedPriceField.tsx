@@ -15,17 +15,23 @@ type AgreedPriceFieldProps = {
 export function AgreedPriceField({ amountCents, hint, onChange, value }: AgreedPriceFieldProps) {
   return (
     <label className="block space-y-2">
-      <span className="font-ae-label text-xs font-semibold uppercase tracking-[0.12em] text-ae-text-muted">
+      <span className="ax-label">
         Agreed price (USD)
       </span>
-      <input
-        className="w-full rounded-ae-md border border-white/10 bg-ae-background-deep px-4 py-3 text-ae-text outline-none transition placeholder:text-ae-text-muted/60 focus:border-ae-primary/60 focus:shadow-ae-glow sm:max-w-xs"
-        inputMode="decimal"
-        onChange={(event) => onChange(event.target.value)}
-        placeholder="600"
-        value={value}
-      />
-      <span className="block text-xs leading-5 text-ae-text-muted">
+      <span className="relative block sm:max-w-xs">
+        <span aria-hidden className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-semibold text-ae-text-muted">
+          $
+        </span>
+        <input
+          className="ax-input tabular-nums"
+          inputMode="decimal"
+          onChange={(event) => onChange(event.target.value)}
+          placeholder="600"
+          style={{ paddingLeft: "2rem" }}
+          value={value}
+        />
+      </span>
+      <span className={`block text-xs leading-5 ${amountCents ? "text-ae-text-muted" : "text-ae-text-muted/80"}`}>
         {amountCents
           ? `Fixed for the whole brief. The operator receives ${formatCents(feeBreakdown(amountCents, 1500).netCents)} after the 15% platform fee. No payment is taken yet.`
           : hint ?? "Enter a fixed price for the whole brief."}

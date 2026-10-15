@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { PageHeader } from "../components/PageHeader";
 import { supabase } from "../lib/supabase";
 import { authDestinationKey, safeAuthRedirect } from "../lib/authRedirect";
 
@@ -32,9 +33,16 @@ export function AuthCallbackPage() {
     void complete();
     return () => { active = false; };
   }, [navigate]);
-  return <section className="mx-auto max-w-xl space-y-4 py-12 text-center">
-    <h1 className="font-ae-display text-3xl font-semibold">{failed ? "Let’s try signing in again" : "Finishing your sign-in…"}</h1>
-    <p role={failed ? "alert" : "status"} className="text-ae-text-muted">{failed ? "Google sign-in was canceled or the link expired. Return to sign-in to try again." : "Connecting your Google account to AgentExchange."}</p>
-    {failed && <Link className="inline-block rounded-ae-md bg-ae-primary px-5 py-3 font-semibold text-ae-background" to={`/sign-in?redirect=${encodeURIComponent(safeAuthRedirect(sessionStorage.getItem(authDestinationKey)))}`}>Back to sign-in</Link>}
+  return <section className="mx-auto max-w-xl py-10 sm:py-16">
+    <PageHeader
+      narrow
+      eyebrow="Google sign-in"
+      title={failed ? "Let’s try signing in again" : "Finishing your sign-in…"}
+      description={<p role={failed ? "alert" : "status"}>{failed ? "Google sign-in was canceled or the link expired. Return to sign-in to try again." : "Connecting your Google account to AgentExchange."}</p>}
+    >
+      {failed
+        ? <Link className="mt-8 inline-flex items-center gap-2 rounded-xl bg-ae-primary px-5 py-3 font-ae-label text-sm font-semibold text-ae-primary-ink transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-8px_rgb(120_240_188_/_0.6)]" to={`/sign-in?redirect=${encodeURIComponent(safeAuthRedirect(sessionStorage.getItem(authDestinationKey)))}`}>Back to sign-in <span aria-hidden>→</span></Link>
+        : <div aria-hidden className="mt-8 flex items-center gap-3 font-ae-label text-xs font-semibold uppercase tracking-[0.14em] text-ae-text-muted"><span className="size-5 animate-spin rounded-full border-2 border-ae-primary/25 border-t-ae-primary" />Verifying session</div>}
+    </PageHeader>
   </section>;
 }

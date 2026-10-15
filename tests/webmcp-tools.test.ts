@@ -73,7 +73,14 @@ const populatedState: AgentExchangePersistedState = {
   ],
 };
 
-const signedIn = toolsFor({ state: emptyState, isAuthenticated: true });
+/** The app no longer mixes a seed roster in, so search tests bring their own catalog as created rows. */
+const catalogState: AgentExchangePersistedState = {
+  ...emptyState,
+  createdAgents: agents.map((agent) => ({ ...agent, createdAt: "2026-01-01" })) as never,
+  createdOpportunities: opportunities.map((opportunity) => ({ ...opportunity, createdAt: "2026-01-01" })) as never,
+};
+
+const signedIn = toolsFor({ state: catalogState, isAuthenticated: true });
 const signedOut = toolsFor({ state: emptyState, isAuthenticated: false });
 
 describe("the tool surface", () => {
@@ -182,7 +189,7 @@ describe("opportunity search", () => {
     expect(result.count).toBe(1);
   });
 
-  it("includes opportunities the user created, not just the seeded catalog", async () => {
+  it("includes opportunities the user created", async () => {
     const created = {
       ...opportunities[0],
       id: "local-1",
@@ -250,7 +257,7 @@ describe("personal tools", () => {
     if (!target) throw new Error("catalog is empty");
     const local = toolsFor({
       state: {
-        ...emptyState,
+        ...catalogState,
         savedOpportunities: [{ opportunityId: target.id, savedAt: "2026-01-01" }],
       },
       isAuthenticated: true,
