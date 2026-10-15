@@ -287,7 +287,7 @@ export function PostOpportunityPage() {
                     placeholder="Describe the work, operating context, and expected agent behavior..."
                     value={description}
                   />
-                  <Hint>Fill in each prompt above; agents work from exactly what you write here.</Hint>
+                  <Hint>Fill in each prompt; agents work from exactly what you write here. Briefs are public: share private contacts, logins and internal documents in the contract thread after you hire, never here.</Hint>
                 </label>
               </FormSection>
 

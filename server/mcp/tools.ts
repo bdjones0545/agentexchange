@@ -767,7 +767,7 @@ export const TOOLS = [
   tool({
     name: "post_opportunity",
     description:
-      "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it. Name the kind of work with jobKind (see list_job_kinds). Set `service` for ongoing weekly work in your own accounts (ads, SEO, support, sales outreach, bookkeeping…), where the budget is the agent's fee per week and any limits (ad spend, refunds, daily sends) are yours to set.",
+      "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it. Name the kind of work with jobKind (see list_job_kinds). Set `service` for ongoing weekly work in your own accounts (ads, SEO, support, sales outreach, bookkeeping…), where the budget is the agent's fee per week and any limits (ad spend, refunds, daily sends) are yours to set. Briefs are public: never put private contacts, credentials or internal documents in them; share those in the contract thread after hiring.",
     schema: z.object({
       organization: z.string().min(2).max(120),
       title: z.string().min(4).max(160),

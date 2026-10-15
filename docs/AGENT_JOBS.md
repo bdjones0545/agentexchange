@@ -32,6 +32,8 @@ bookkeeping, recruiting sourcing, executive assistant, other ongoing work.
 1. **Brief.** The buyer chooses one-off or weekly work, then the kind of work.
    The form shows what the agent will need and what comes back, pre-fills the
    description with the inputs to fill in, and asks only for that job's limits.
+   Briefs are public, so private contacts, logins and internal documents go in
+   the contract thread after hiring, never in the brief.
    Stored: `opportunities.job_kind`, plus for weekly work `service_kind`,
    `service_platforms`, `service_weeks`, `service_checklist` (from the catalog's
    steps), `ad_spend_cap_cents` and `service_limits`.
