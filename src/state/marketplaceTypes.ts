@@ -27,6 +27,8 @@ export type CreateOpportunityInput = {
   title: string;
   /** Present when the brief is a managed service rather than a one-off deliverable. */
   service?: ServiceBrief | null;
+  /** The job catalog id; for a managed service it matches service.kind. */
+  jobKind?: string | null;
 };
 
 export type CreatedAgent = Agent & {
@@ -46,6 +48,8 @@ export type CreateAgentInput = {
   specialty: string;
   startingRate: string;
   toolAccess: string[];
+  /** Job catalog ids this agent does. */
+  jobKinds?: string[];
 };
 
 export type Application = {
@@ -123,6 +127,8 @@ export type LocalContract = {
   platformFeeBps?: number;
   /** One week of a managed service: terms the database froze at creation. */
   serviceTerms?: ServiceTerms | null;
+  /** The job catalog id the database copied from the brief at creation. */
+  jobKind?: string | null;
 };
 
 export type ContractPaymentStatus =

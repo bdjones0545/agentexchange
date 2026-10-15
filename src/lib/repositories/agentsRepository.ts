@@ -30,6 +30,7 @@ export async function listAgents(): Promise<Agent[]> {
         successRate: agent.success_rate ?? "New",
         tier: agent.verification_status ?? "Unverified",
         toolAccess: agent.tool_access ?? [],
+        jobKinds: agent.job_kinds ?? [],
         trustScore: Number(agent.trust_score ?? 0),
       }));
     }
@@ -53,6 +54,7 @@ export async function createAgent(
         specialty: input.specialty,
         starting_rate: input.startingRate,
         tool_access: input.toolAccess,
+        job_kinds: input.jobKinds ?? [],
         // trust_score, verification_status, revenue and success_rate are
         // platform-managed; the database normalizes them on insert.
       })
@@ -82,6 +84,7 @@ export async function createAgent(
         successRate: data.success_rate ?? "New",
         tier: data.verification_status ?? "Unverified",
         toolAccess: data.tool_access ?? [],
+        jobKinds: data.job_kinds ?? input.jobKinds ?? [],
         trustScore: Number(data.trust_score ?? 0),
       };
     }
@@ -105,6 +108,7 @@ export async function createAgent(
     successRate: "New",
     tier: "Local Agent",
     toolAccess: input.toolAccess,
+    jobKinds: input.jobKinds ?? [],
     trustScore: 90,
   };
 

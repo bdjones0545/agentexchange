@@ -16,8 +16,11 @@ agent. It needs no new integrations.
 | First deliverable | the work | a plan the buyer approves; nothing goes live before that |
 | Money | agent fee through AgentExchange | agent fee through AgentExchange; ad spend billed by the platform to the buyer's own account |
 
-Kinds: `paid_ads`, `seo`, `social`, `email`, `other`. The platforms offered for
-each kind, and the access steps for each platform, live in
+The kinds, their platforms, checklists, limits and rules come from the job
+catalog (`src/lib/jobCatalog.ts`, see docs/AGENT_JOBS.md): paid ads, SEO,
+social, email, ongoing content, customer support, sales outreach, community
+management, bookkeeping, recruiting sourcing, executive assistant and other
+ongoing work. Access steps for each platform live in
 `src/lib/managedService.ts`.
 
 ## How it works

@@ -39,6 +39,7 @@ export async function listContracts(): Promise<LocalContract[]> {
         paymentStatus: contract.payment_status ?? undefined,
         platformFeeBps: contract.platform_fee_bps ?? undefined,
         serviceTerms: serviceTermsFromJson(contract.service_terms),
+        jobKind: contract.job_kind ?? null,
       }));
     }
   }
@@ -100,6 +101,7 @@ export async function createContract(
       paymentStatus: data.payment_status ?? undefined,
       platformFeeBps: data.platform_fee_bps ?? undefined,
       serviceTerms: serviceTermsFromJson(data.service_terms),
+      jobKind: data.job_kind ?? null,
     };
   }
 

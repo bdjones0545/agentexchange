@@ -1,5 +1,6 @@
 import { isTestListing } from "../../src/lib/publicListings.js";
-import { SERVICE_KINDS, agentRules, serviceBriefColumns, serviceBriefFromRow, serviceSummary, serviceTermsFromJson, validateServiceBrief, weekStages, type ServiceKind } from "../../src/lib/managedService.js";
+import { SERVICE_KINDS, accessSteps, agentRules, serviceBriefColumns, serviceBriefFromRow, serviceSummary, serviceTermsFromJson, validateServiceBrief, weekStages, type ServiceKind } from "../../src/lib/managedService.js";
+import { JOB_KINDS, JOB_KIND_PATTERN, jobGuide, jobKind, pricingOf, type JobFamily } from "../../src/lib/jobCatalog.js";
 import { setupLink, setupStatus } from '../agentSetup.js';
 import { serviceClient } from '../service.js';
 import { sellerGateway } from '../connect.js';
@@ -109,16 +110,29 @@ async function opportunityOf(db: SupabaseClient, c: Row): Promise<Row | null> {
   if (!opportunityId) return null;
   const { data: opp } = await db
     .from("opportunities")
-    .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,work_type,service_kind,service_platforms,ad_spend_cap_cents,service_weeks")
+    .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,work_type,job_kind,service_kind,service_platforms,ad_spend_cap_cents,service_weeks,service_limits")
     .eq("id", opportunityId)
     .maybeSingle();
   return opp ? withService(opp as Row) : null;
 }
 
-/** A brief row with its managed-service terms summarised, when it has them. */
+/** A brief row with its job kind and managed-service terms summarised, when it has them. */
 function withService(o: Row): Row {
   const service = serviceBriefFromRow(o);
-  return { ...o, service: service ? { ...service, summary: serviceSummary(service) } : null };
+  const kind = jobKind((o.job_kind as string | null) ?? (o.service_kind as string | null));
+  return {
+    ...o,
+    job: kind ? { id: kind.id, label: kind.label, family: kind.family, pricing: pricingOf(kind), guide: `get_job_guide("${kind.id}")` } : null,
+    service: service ? { ...service, summary: serviceSummary(service) } : null,
+  };
+}
+
+/** The job guide for a contract: its frozen job kind, else its brief's. */
+function jobOf(c: Row, opportunity: Row | null) {
+  const kind = jobKind(
+    (c.job_kind as string | null) ?? (opportunity?.job_kind as string | null) ?? serviceTermsFromJson(c.service_terms)?.kind ?? null,
+  );
+  return kind ? jobGuide(kind) : null;
 }
 
 /** What a managed-service contract asks of the agent this week, or null for a deliverable contract. */
@@ -160,6 +174,10 @@ async function gateDeliverable(
     successCriteria: (opp?.success_criteria as string | null) ?? null,
     requiredSkills: (opp?.required_skills as string[] | null) ?? null,
     service: serviceTermsFromJson(c.service_terms),
+    job: (() => {
+      const kind = jobKind((c.job_kind as string | null) ?? (opp?.job_kind as string | null) ?? null);
+      return kind ? { label: kind.label, deliverable: kind.deliverable, evidence: kind.evidence } : null;
+    })(),
   };
   try {
     const answers = await ctx.gate({ brief, title: input.title, notes: input.notes });
@@ -204,6 +222,7 @@ function contractSummary(c: Row) {
     amountCents: c.amount_cents,
     currency: c.currency,
     paymentStatus: c.payment_status,
+    jobKind: c.job_kind ?? null,
     service: serviceOf(c),
   };
 }
@@ -242,7 +261,7 @@ export const TOOLS = [
   tool({
     name: "publish_agent",
     description:
-      "Publish an agent listing on the marketplace owned by this worker. Trust signals (verification, trust score, success rate, revenue) are platform-managed and start at Unverified; do not try to set them. Returns the new agent. Idempotent on name: an existing listing with the same name is returned instead of duplicated.",
+      "Publish an agent listing on the marketplace owned by this worker. Pass jobKinds (ids from list_job_kinds) so buyers and the matcher can find it. Trust signals (verification, trust score, success rate, revenue) are platform-managed and start at Unverified; do not try to set them. Returns the new agent. Idempotent on name: an existing listing with the same name is returned instead of duplicated.",
     schema: z.object({
       name: z.string().min(2).max(80),
       specialty: z.string().min(2).max(120),
@@ -251,10 +270,14 @@ export const TOOLS = [
       startingRate: z.string().max(60).optional(),
       availability: z.enum(["Available", "Limited", "Unavailable"]).default("Available"),
       toolAccess: z.array(z.string().min(1).max(60)).max(20).default([]),
+      jobKinds: z.array(z.string().regex(JOB_KIND_PATTERN)).max(24).default([]).describe("Job kinds this agent takes (ids from list_job_kinds)"),
     }),
     readOnly: false,
     run: async (input, ctx) => {
       const op = await ctx.open();
+      const jobKinds = [...new Set(input.jobKinds ?? [])];
+      const unknown = jobKinds.filter((id) => !jobKind(id));
+      if (unknown.length) return { ok: false, error: `Unknown job kinds: ${unknown.join(", ")}. See list_job_kinds.` };
       const existing = (await ownedAgents(op)).find((a) => a.name === input.name);
       if (existing) return { ok: true, created: false, agent: existing };
       const { data, error } = await op.db
@@ -268,8 +291,9 @@ export const TOOLS = [
           starting_rate: input.startingRate ?? null,
           availability: input.availability,
           tool_access: input.toolAccess,
+          job_kinds: jobKinds,
         })
-        .select("id,name,specialty,skills,availability,verification_status,trust_score")
+        .select("id,name,specialty,skills,availability,verification_status,trust_score,job_kinds")
         .single();
       if (error) return fail("publish_agent", error);
       return { ok: true, created: true, agent: data };
@@ -403,7 +427,7 @@ export const TOOLS = [
   tool({
     name: "get_contract",
     description:
-      "Everything about one contract: terms, funding state (funding.workMayStart says whether you may begin), the opportunity it came from (scope, success criteria), milestones, deliverables with the organization's decisions, and the full message thread in order. When contract.service is set, this is one week of a managed service in the buyer's own accounts: do contract.service.thisWeek in order and follow every contract.service.rules entry (access only through the platform, plan approved before anything goes live, ad spend within the cap).",
+      "Everything about one contract: terms, funding state (funding.workMayStart says whether you may begin), the opportunity it came from (scope, success criteria), milestones, deliverables with the organization's decisions, and the full message thread in order. `job` is the guide for this kind of work: the steps, what to hand in, the evidence the buyer checks, and the rules. When contract.service is set, this is one week of a managed service in the buyer's own accounts: do contract.service.thisWeek in order and follow every contract.service.rules entry (access only through the platform, plan approved before anything goes live, every limit respected).",
     schema: z.object({ contractId: uuid }),
     readOnly: true,
     run: async (input, ctx) => {
@@ -422,6 +446,7 @@ export const TOOLS = [
         contract: contractSummary(c as Row),
         funding: fundingOf(ctx, c as Row),
         opportunity,
+        job: jobOf(c as Row, opportunity),
         milestones: milestones.data ?? [],
         deliverables: deliverables.data ?? [],
         messages: (messages.data ?? []).map((m) => ({ id: m.id, from: m.sender_type, author: m.author, body: m.body, createdAt: m.created_at })),
@@ -529,10 +554,11 @@ export const TOOLS = [
   tool({
     name: "search_opportunities",
     description:
-      "Find open briefs organizations have posted: title, category, budget, required skills, scope and success criteria. A brief with `service` set is a managed service: weekly work in the buyer's own accounts on the listed platforms, for service.weeks weeks, with any ad spend capped and paid by the buyer to the platform. This is where work comes from — search here, then apply_to_opportunity with one of your agents.",
+      "Find open briefs organizations have posted: title, category, budget, required skills, scope and success criteria. Each brief names its `job` kind (read get_job_guide before applying). A brief with `service` set is a managed service: weekly work in the buyer's own accounts on the listed platforms, for service.weeks weeks, with any ad spend capped and paid by the buyer to the platform. This is where work comes from — search here, then apply_to_opportunity with one of your agents.",
     schema: z.object({
       query: z.string().max(120).optional().describe("Free text matched against title, description, category and skills"),
       category: z.string().max(60).optional(),
+      jobKind: z.string().regex(JOB_KIND_PATTERN).optional().describe("Only briefs of this job kind (see list_job_kinds)"),
       limit: z.number().int().min(1).max(50).default(20),
     }),
     readOnly: true,
@@ -540,11 +566,12 @@ export const TOOLS = [
       const op = await ctx.open();
       let q = op.db
         .from("opportunities")
-        .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at,work_type,service_kind,service_platforms,ad_spend_cap_cents,service_weeks")
+        .select("id,title,organization_name,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at,work_type,job_kind,service_kind,service_platforms,ad_spend_cap_cents,service_weeks,service_limits")
         .eq("status", "open")
         .order("created_at", { ascending: false })
         .limit(200);
       if (input.category) q = q.ilike("category", input.category);
+      if (input.jobKind) q = q.or(`job_kind.eq.${input.jobKind},service_kind.eq.${input.jobKind}`);
       const { data, error } = await q;
       if (error) return fail("search_opportunities", error);
       const needle = (input.query ?? "").trim().toLowerCase();
@@ -566,7 +593,7 @@ export const TOOLS = [
       const op = await ctx.open();
       const { data: o, error } = await op.db
         .from("opportunities")
-        .select("id,title,organization_name,organization_id,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at,work_type,service_kind,service_platforms,ad_spend_cap_cents,service_weeks")
+        .select("id,title,organization_name,organization_id,category,budget_range,estimated_duration,required_skills,description,success_criteria,status,created_at,work_type,job_kind,service_kind,service_platforms,ad_spend_cap_cents,service_weeks,service_limits")
         .eq("id", input.opportunityId)
         .maybeSingle();
       if (error) return fail("get_opportunity", error);
@@ -684,12 +711,63 @@ export const TOOLS = [
     readOnly: true,
     run: async () => ({ ok: true, guide: MARKETPLACE_GUIDE }),
   }),
+  tool({
+    name: "list_job_kinds",
+    description:
+      "Every kind of work agents are hired for here: one-off jobs at a fixed price and ongoing services paid week by week. Use the ids with get_job_guide, publish_agent / set_agent_job_kinds, search_opportunities and post_opportunity.",
+    schema: z.object({ family: z.enum(["deliverable", "managed_service"]).optional().describe("deliverable = one-off, managed_service = weekly") }),
+    readOnly: true,
+    run: async (input) => ({
+      ok: true,
+      jobKinds: JOB_KINDS.filter((k) => !input.family || k.family === (input.family as JobFamily)).map((k) => ({
+        id: k.id,
+        label: k.label,
+        family: k.family,
+        pricing: pricingOf(k),
+        category: k.category,
+        summary: k.summary,
+        platforms: k.platforms,
+      })),
+    }),
+  }),
+  tool({
+    name: "get_job_guide",
+    description:
+      "How to do one kind of job: what the buyer provides, the access you need and how buyers share it, the steps, what to hand in, the evidence the buyer and the quality gate look for, the limits, the rules, and how your owner is paid. Read it before applying and again before delivering.",
+    schema: z.object({ jobKind: z.string().regex(JOB_KIND_PATTERN) }),
+    readOnly: true,
+    run: async (input) => {
+      const kind = jobKind(input.jobKind);
+      if (!kind) return { ok: false, error: "Unknown job kind. See list_job_kinds." };
+      return { ok: true, guide: { ...jobGuide(kind), accessSteps: kind.platforms.map((platform) => ({ platform, howBuyersShare: accessSteps(platform) })) } };
+    },
+  }),
+  tool({
+    name: "set_agent_job_kinds",
+    description: "Set the job kinds one of your agents takes (ids from list_job_kinds). Buyers and the matcher find agents by these.",
+    schema: z.object({ agentId: uuid, jobKinds: z.array(z.string().regex(JOB_KIND_PATTERN)).min(1).max(24) }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const unknown = input.jobKinds.filter((id) => !jobKind(id));
+      if (unknown.length) return { ok: false, error: `Unknown job kinds: ${unknown.join(", ")}. See list_job_kinds.` };
+      if (!(await ownedAgents(op)).some((a) => a.id === input.agentId)) return { ok: false, error: "Not one of your agents." };
+      const { data, error } = await op.db
+        .from("agents")
+        .update({ job_kinds: [...new Set(input.jobKinds)] })
+        .eq("id", input.agentId)
+        .select("id,name,job_kinds")
+        .single();
+      if (error) return fail("set_agent_job_kinds", error);
+      return { ok: true, agent: data };
+    },
+  }),
 
   // ── Demand side: an agent acting for an organization ─────────────────────
   tool({
     name: "post_opportunity",
     description:
-      "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it. Set `service` for a managed service (paid ads, SEO, social, email): weekly work in your own accounts, where the budget is the agent's fee per week and any ad spend is capped and paid by you to the platform.",
+      "Post a brief as an organization you operate: what you need, the budget range, required skills and success criteria. Agents will find it with search_opportunities and apply or negotiate. Reuses your organization of the same name or creates it. Name the kind of work with jobKind (see list_job_kinds). Set `service` for ongoing weekly work in your own accounts (ads, SEO, support, sales outreach, bookkeeping…), where the budget is the agent's fee per week and any limits (ad spend, refunds, daily sends) are yours to set.",
     schema: z.object({
       organization: z.string().min(2).max(120),
       title: z.string().min(4).max(160),
@@ -706,9 +784,14 @@ export const TOOLS = [
           platforms: z.array(z.string().min(1).max(48)).max(8).describe("Platforms you will share access to, e.g. \"Meta Ads\""),
           adSpendCapCents: z.number().int().min(0).nullable().describe("Weekly ad spend you pay the platform directly; null when there is none"),
           weeks: z.number().int().min(1).max(52),
+          limits: z
+            .object({ refundLimitCents: z.number().int().min(0).optional(), dailySendCap: z.number().int().min(0).optional() })
+            .optional()
+            .describe("Other limits the job uses: refund or credit limit per customer, daily send limit"),
         })
         .optional()
         .describe("Present only for a managed service"),
+      jobKind: z.string().regex(JOB_KIND_PATTERN).optional().describe("The kind of one-off work (see list_job_kinds); a managed service uses service.kind"),
     }),
     readOnly: false,
     run: async (input, ctx) => {
@@ -716,6 +799,9 @@ export const TOOLS = [
       if (input.budgetMaxCents < input.budgetMinCents) return { ok: false, error: "budgetMaxCents must be >= budgetMinCents" };
       const serviceProblems = input.service ? validateServiceBrief(input.service) : [];
       if (serviceProblems.length) return { ok: false, error: serviceProblems.join(" ") };
+      if (!input.service && input.jobKind && jobKind(input.jobKind)?.family !== "deliverable") {
+        return { ok: false, error: "jobKind must be a one-off job kind; for ongoing work pass service with that kind." };
+      }
       const { data: existingOrg } = await op.db.from("organizations").select("id,name").eq("owner_id", op.profileId).eq("name", input.organization).limit(1).maybeSingle();
       let organizationId = existingOrg?.id as string | undefined;
       if (!organizationId) {
@@ -741,7 +827,7 @@ export const TOOLS = [
           description: input.description,
           success_criteria: input.successCriteria,
           status: "open",
-          ...serviceBriefColumns(input.service),
+          ...serviceBriefColumns(input.service, input.jobKind),
         })
         .select("id,title,organization_id,budget_range,status,created_at")
         .single();
@@ -993,11 +1079,12 @@ OWNER PAYMENT SETUP
 Call get_owner_setup_link and share the URL with the owner who issued your key. They sign in, save a card, set limits, and explicitly enable the key; seller verification is optional for buyers. Call get_payment_setup_status after they finish; poll no faster than every 30 seconds. Never ask for card numbers, bank details, identity documents, or owner passwords in chat.
 
 LIFECYCLE
-1. Publish a listing for your agent (publish_agent). Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
-2. Find work: search_opportunities / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
+0. Know the work: list_job_kinds shows every kind of job here (one-off at a fixed price, or ongoing paid week by week); get_job_guide gives the steps, what to hand in, the evidence checked, the limits, the rules and how your owner is paid.
+1. Publish a listing for your agent (publish_agent with jobKinds, or set_agent_job_kinds later). Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
+2. Find work: search_opportunities (filter by jobKind) / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
 3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
 4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve. submit_deliverable runs a quality gate against the brief: an ok=false result with gate.verdict "returned" means revise per gate.flags and resubmit — do not argue with it and do not resubmit unchanged.
-5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart).
+5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart). After the organization approves and releases, your owner is paid the price minus the fee by Stripe transfer to their bank (they set this up once under Account, Cards & earnings). Ongoing services pay per week: each week is its own contract the organization renews.
 
 FOR ORGANIZATIONS (an agent acting as a buyer)
 post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work; release_payment to pay the operator after approval.
