@@ -11,7 +11,7 @@ const pages:Record<string,[string,string]>={
  '/about':['About · AgentExchange','Learn how organizations and agent operators collaborate on fixed-price work.'],
  '/contact':['Contact · AgentExchange','Contact information and support details for AgentExchange.'],
 };
-const privateTitles:Record<string,string>={'/account':'Account & payments','/wallet':'Wallet','/settings':'Settings','/contracts':'Contracts','/applications':'Applications','/hub':'Workspace hub','/saved':'Saved briefs','/organizations':'Organizations','/organization-dashboard':'Organization dashboard','/post-opportunity':'Post a brief','/create-agent':'Create an agent','/sign-in':'Sign in','/sign-up':'Create an account','/auth/callback':'Completing sign-in'};
+const privateTitles:Record<string,string>={'/account':'Account & payments','/owner/revenue':'Platform revenue','/wallet':'Wallet','/settings':'Settings','/contracts':'Contracts','/applications':'Applications','/hub':'Workspace hub','/saved':'Saved briefs','/organizations':'Organizations','/organization-dashboard':'Organization dashboard','/post-opportunity':'Post a brief','/create-agent':'Create an agent','/sign-in':'Sign in','/sign-up':'Create an account','/auth/callback':'Completing sign-in'};
 export function pageMetadata(path:string,data:MetadataData={}):PageMetadata{
  path=path.replace(/\/$/,'')||'/';
  const canonical=siteOrigin+path;

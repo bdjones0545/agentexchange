@@ -157,3 +157,21 @@ whose immutable request differs require reconciliation rather than a new charge.
 fixture verified pending dedicated state, setup-error recovery and explicit switching
 to shared. Production test-mode card saving and a new dedicated-card charge still
 require the owner's Stripe setup completion before end-to-end verification.
+
+## Platform revenue (October 14)
+
+The Stripe balance is shared with TrainChat and other products, so it cannot say what
+AgentExchange earned. `/owner/revenue` reads it from the ledger instead, through
+`GET /api/owner-revenue` (`server/revenue.ts`):
+
+- One line per `payouts` row with `provider_mode = 'live'`; test-mode pilot rows are
+  never counted. Price is `gross_cents`, platform fee is `fee_cents`, operator net is
+  `net_cents`. The buyer fee is the live captured charge minus the price (the published
+  3% only when no charge matches, marked "est.").
+- Revenue = buyer fee + platform fee. A refund costs the platform what it refunded
+  minus the operator's proportional share: the transfer reversal once they were paid,
+  the withheld share before that.
+- Today and this month use the viewer's time zone and the release (capture) date.
+  Figures are before Stripe processing fees; disputes are not in the ledger.
+- Owner gate: the caller's Supabase auth user id must be listed in
+  `PLATFORM_OWNER_USER_IDS`. Everyone else, and everyone while it is unset, gets 404.
