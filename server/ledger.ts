@@ -1,4 +1,5 @@
 import {readAgentCard, type AgentCard} from './agentCards.js';
+import { currentStripeMode } from "./stripeMode.js";
 // The only writer of money state.
 //
 // payment_status on contracts, and every row in payments / payouts /
@@ -129,6 +130,7 @@ export function supabaseLedger(client: SupabaseClient = serviceClient(), reader:
         status: input.status,
         metadata: input.metadata ?? {},
         authorized_by: input.authorizedBy ?? null,
+        provider_mode: currentStripeMode(),
       }, { onConflict: "provider_ref", ignoreDuplicates: input.kind !== "refund" });
       if (error) throw fail("recordPayment", error);
     },
@@ -156,6 +158,7 @@ export function supabaseLedger(client: SupabaseClient = serviceClient(), reader:
         currency: input.currency,
         status: "pending",
         payment_intent_id: input.paymentIntentId,
+        provider_mode: currentStripeMode(),
       }, {onConflict: "contract_id", ignoreDuplicates: true});
       if (error) throw fail("recordPayout", error);
     },

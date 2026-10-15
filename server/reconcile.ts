@@ -2,9 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createFunding, fundWithSavedCard, handleStripeEvent, releaseFunds, type FundingDeps } from './funding.js';
 import { transferPayout, type PayoutRow, type SellerGateway } from './connect.js';
 import { quoteContract } from './pricing.js';
+import { currentStripeMode, type StripeMode } from './stripeMode.js';
 
 /** Bounded runner over the durable journal. Failed work remains visible and retryable. */
-export async function reconcileMoney(client: SupabaseClient, deps: FundingDeps, sellers: SellerGateway, now = () => Date.now()) {
+export async function reconcileMoney(client: SupabaseClient, deps: FundingDeps, sellers: SellerGateway, now = () => Date.now(), mode: StripeMode = currentStripeMode()) {
   const deadline=now()+20_000;
   const report={replayed:0,transfers:0,checked:0,failed:0,needsReview:0};
   const {data: jobs,error} = await client.from('money_operations').select('*').is('completed_at',null)
@@ -31,7 +32,7 @@ export async function reconcileMoney(client: SupabaseClient, deps: FundingDeps, 
   // Poll current provider state, including authorization expiry and a capture
   // whose HTTP response or webhook was lost. No fabricated Stripe events.
   const {data: payments,error: readError}=await client.from('payments').select('provider_ref,contract_id,status')
-    .eq('kind','charge').in('status',['authorized','captured']).order('checked_at',{nullsFirst:true}).limit(8);
+    .eq('kind','charge').eq('provider_mode',mode).in('status',['authorized','captured']).order('checked_at',{nullsFirst:true}).limit(8);
   if(readError) throw new Error('Could not read unsettled payments');
   for(const row of payments ?? []) {
     if(now()>=deadline) break;
@@ -62,7 +63,8 @@ export async function reconcileMoney(client: SupabaseClient, deps: FundingDeps, 
     } catch { report.failed++; }
     finally { await client.from('payments').update({checked_at:new Date().toISOString()}).eq('provider_ref',row.provider_ref); }
   }
-  const {data: payouts,error:payoutError}=await client.from('payouts').select('*').in('status',['pending','transferred','reversed'])
+  // Only objects in the current Stripe mode: test-mode ids do not exist in the live account.
+  const {data: payouts,error:payoutError}=await client.from('payouts').select('*').eq('provider_mode',mode).in('status',['pending','transferred','reversed'])
     .order('checked_at',{nullsFirst:true}).limit(8);
   if(payoutError) throw new Error('Could not read seller payouts');
   for(const payout of (payouts ?? []) as PayoutRow[]) {
