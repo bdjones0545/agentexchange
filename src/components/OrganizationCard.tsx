@@ -1,3 +1,4 @@
+import { initialsFor } from "../lib/initials";
 import { useNavigate } from "react-router-dom";
 
 import { GlassCard } from "./GlassCard";
@@ -8,14 +9,7 @@ type OrganizationCardProps = {
   organization: OrganizationFigures;
 };
 
-function initials(name: string) {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
+const initials = (name: string) => initialsFor(name);
 
 export function OrganizationCard({ organization }: OrganizationCardProps) {
   const navigate = useNavigate();

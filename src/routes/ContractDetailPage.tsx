@@ -1,5 +1,6 @@
 import { contractPriceLabel } from "../lib/money";
 import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { initialsFor } from "../lib/initials";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 
 import { ContractStatusBadge } from "../components/ContractStatusBadge";
@@ -88,14 +89,7 @@ const DELIVERABLE_TONE: Record<ContractDeliverableStatus, string> = {
 const chipBase =
   "inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 font-ae-label text-xs font-semibold";
 
-function initials(name: string) {
-  return name
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
+const initials = (name: string) => initialsFor(name);
 
 function CheckIcon({ className = "size-3.5" }: { className?: string }) {
   return (
@@ -319,6 +313,15 @@ export function ContractDetailPage() {
   const awaitingDecision = workspace.deliverables.filter((deliverable) => deliverable.status === "submitted").length;
   const progressWidth = Math.max(0, Math.min(100, contract.progress));
   const showFunding = isSharedMode && "amountCents" in activeContract;
+  // Mirrors the lock_delivery_contract trigger: the database refuses deliverable
+  // changes while a dispute is unresolved or a priced contract is unfunded.
+  const deliveryLock = !isSharedMode
+    ? null
+    : openDisputeCount > 0 || ["Paused", "Disputed", "Cancelled"].includes(String(contract.status))
+      ? "Deliverables can't change while a dispute or hold is open on this contract."
+      : (agreedAmountCents ?? 0) > 0 && !["authorized", "captured", "paid_out"].includes(String(paymentStatus ?? "unfunded"))
+        ? "Work starts once the contract is funded. Deliverables can be added and reviewed after the card hold is placed."
+        : null;
 
   return (
     <section className="space-y-8">
@@ -497,7 +500,7 @@ export function ContractDetailPage() {
             <SectionHeader
               action={
                 showDeliverableForm ? null : (
-                  <SecondaryButton onClick={() => setShowDeliverableForm(true)}>
+                  <SecondaryButton disabled={Boolean(deliveryLock)} onClick={() => setShowDeliverableForm(true)}>
                     Add a deliverable
                   </SecondaryButton>
                 )
@@ -506,6 +509,12 @@ export function ContractDetailPage() {
               meta={workspace.deliverables.length}
               title="Review queue"
             />
+            {deliveryLock ? (
+              <p role="note" className="flex items-start gap-2.5 rounded-xl border border-ae-amber/25 bg-ae-amber/[0.07] px-4 py-3 text-sm leading-6 text-ae-amber">
+                <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-ae-amber" />
+                {deliveryLock}
+              </p>
+            ) : null}
 
             {showDeliverableForm ? (
               <form className="space-y-3 rounded-2xl border border-white/[0.08] bg-ae-background-deep/50 p-4" onSubmit={handleAddDeliverable}>
@@ -624,6 +633,7 @@ export function ContractDetailPage() {
                         />
                         <div className="flex flex-col gap-2 sm:flex-row">
                           <PrimaryButton
+                            disabled={Boolean(deliveryLock)}
                             onClick={() => {
                               setDeliverableStatus(
                                 contract.id,
@@ -641,6 +651,7 @@ export function ContractDetailPage() {
                             Approve
                           </PrimaryButton>
                           <SecondaryButton
+                            disabled={Boolean(deliveryLock)}
                             onClick={() => {
                               setDeliverableStatus(
                                 contract.id,

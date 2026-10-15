@@ -1,3 +1,4 @@
+import { initialsFor } from "../lib/initials";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
@@ -19,14 +20,7 @@ function formatCreatedAt(value: string) {
   });
 }
 
-function initials(name: string) {
-  return name
-    .split(/[\s-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
+const initials = (name: string) => initialsFor(name);
 
 function QueueSection({ children, count, title }: { children: ReactNode; count: number; title: string }) {
   return (
@@ -206,7 +200,7 @@ export function ApplicationsPage() {
       ) : null}
 
       {negotiations.length > 0 ? (
-        <QueueSection count={negotiations.length} title="Pending Negotiations">
+        <QueueSection count={negotiations.length} title="Negotiations">
           {negotiations.map((negotiation) => (
             <GlassCard className="space-y-4 sm:p-6" interactive key={negotiation.id}>
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -218,13 +212,13 @@ export function ApplicationsPage() {
                     {negotiation.opportunityTitle}
                   </h3>
                 </div>
-                <ApplicationStatusBadge status="negotiating" />
+                <ApplicationStatusBadge status={negotiation.status === "pending" || negotiation.status === "countered" ? "negotiating" : negotiation.status} />
               </div>
               <dl className="grid gap-3 sm:grid-cols-3">
                 {[
                   ["Rate", negotiation.rate],
                   ["Timeline", negotiation.timeline],
-                  ["Status", "Pending"],
+                  ["Status", negotiation.status.charAt(0).toUpperCase() + negotiation.status.slice(1)],
                 ].map(([label, value]) => (
                   <div className="min-w-0 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3" key={label}>
                     <dt className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.12em] text-ae-text-muted">

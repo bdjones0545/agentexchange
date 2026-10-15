@@ -171,8 +171,11 @@ export function NegotiationModal({
             className="ax-input min-h-28 resize-y leading-6"
             onChange={(event) => setMilestoneNotes(event.target.value)}
             placeholder="Describe proposed milestones and acceptance points..."
+            required
+            minLength={8}
             value={milestoneNotes}
           />
+          <span className="block text-xs text-ae-text-muted">Required, at least 8 characters. Rate and timeline are required too.</span>
         </label>
 
         <div className="flex flex-col-reverse gap-3 border-t border-white/[0.06] pt-5 sm:flex-row sm:justify-end">
