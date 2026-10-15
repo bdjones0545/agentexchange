@@ -10,6 +10,8 @@ export interface FakeDbOptions {
   tables: Record<string, Row[]>;
   refuseInsert?: (table: string, row: Row) => string | null;
   refuseUpdate?: (table: string, row: Row, patch: Row) => string | null;
+  /** Like an RLS `using` clause: an update skips rows this rejects, without an error. */
+  canUpdate?: (table: string, row: Row) => boolean;
   rpc?: (name: string, args: Row) => Result;
 }
 
@@ -58,6 +60,7 @@ class Builder implements PromiseLike<Result> {
       out = [];
       for (const r of rows) {
         if (!this.filters.every((f) => f(r))) continue;
+        if (this.opts.canUpdate && !this.opts.canUpdate(this.table, r)) continue;
         const reason = this.opts.refuseUpdate?.(this.table, r, this.payload!);
         if (reason) return { data: null, error: { message: reason } };
         Object.assign(r, this.payload!);
