@@ -31,6 +31,7 @@ export async function listOpportunities(): Promise<Opportunity[]> {
         requiredSkills: opportunity.required_skills ?? [],
         successCriteria: opportunity.success_criteria ?? undefined,
         workType: opportunity.work_type === "managed_service" ? "managed_service" : "deliverable",
+        jobKind: opportunity.job_kind ?? opportunity.service_kind ?? null,
         service: serviceBriefFromRow(opportunity),
         summary: opportunity.description ?? "",
         tags: opportunity.required_skills ?? ["Custom"],
@@ -78,7 +79,7 @@ export async function createOpportunity(
         status: "open",
         success_criteria: input.successCriteria,
         title: input.title,
-        ...serviceBriefColumns(input.service),
+        ...serviceBriefColumns(input.service, input.jobKind),
       })
       .select()
       .single();
@@ -105,6 +106,7 @@ export async function createOpportunity(
         requiredSkills: data.required_skills ?? input.requiredSkills,
         successCriteria: data.success_criteria ?? input.successCriteria,
         workType: data.work_type === "managed_service" ? "managed_service" : "deliverable",
+        jobKind: data.job_kind ?? data.service_kind ?? null,
         service: serviceBriefFromRow(data),
         summary: data.description ?? input.description,
         tags: data.required_skills ?? input.requiredSkills,
@@ -129,6 +131,7 @@ export async function createOpportunity(
     requiredSkills: input.requiredSkills,
     successCriteria: input.successCriteria,
     workType: input.service ? "managed_service" : "deliverable",
+    jobKind: input.service?.kind ?? input.jobKind ?? null,
     service: input.service ?? null,
     summary: input.description,
     tags: input.requiredSkills.length > 0 ? input.requiredSkills : ["Custom"],

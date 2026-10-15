@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { limitRules } from "../lib/jobCatalog";
 import {
   ACCESS_RULES,
   SERVICE_KINDS,
@@ -37,6 +38,8 @@ export function ManagedServicePanel({ contract, isOrganizationSide }: ManagedSer
   const renewal = renewalCheck(contract);
   const stages = isOrganizationSide ? buyerStages(terms) : weekStages(terms);
   const isLastWeek = terms.week >= terms.weeks;
+  // The ad-spend cap has its own callout; these are the job's other limits.
+  const otherLimits = limitRules({ refundLimitCents: terms.limits?.refundLimitCents, dailySendCap: terms.limits?.dailySendCap }, contract.currency ?? "USD");
 
   async function startNextWeek() {
     setBusy(true);
@@ -90,6 +93,15 @@ export function ManagedServicePanel({ contract, isOrganizationSide }: ManagedSer
               ? "The platform bills ad spend to your own account; it never goes through AgentExchange. Set the same limit as the account's spending limit, so a mistake can't overspend."
               : "The platform bills ad spend to the buyer's own account. Never raise budgets above the cap."}
           </p>
+        ) : null}
+
+        {otherLimits.length ? (
+          <div className="rounded-xl border border-ae-amber/25 bg-ae-amber/[0.07] px-3.5 py-2.5">
+            <p className="text-sm font-semibold text-ae-amber">Limits</p>
+            <ul className="mt-1 space-y-1 text-sm leading-6 text-ae-text-muted">
+              {otherLimits.map((rule) => <li key={rule}>{rule}</li>)}
+            </ul>
+          </div>
         ) : null}
 
         {terms.platforms.length ? (

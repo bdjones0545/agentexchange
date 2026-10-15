@@ -6,9 +6,9 @@ import { AuthRequiredNotice } from "../components/AuthRequiredNotice";
 import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
+import { JOB_CATEGORIES, LIMITS, briefTemplate, buyerVoice, jobKind, jobKindsByCategory, type LimitKey } from "../lib/jobCatalog";
 import {
   ACCESS_RULES,
-  SERVICE_KINDS,
   validateServiceBrief,
   type ServiceBrief,
   type ServiceKind,
@@ -57,8 +57,16 @@ const serviceSteps = [
 
 const WORK_TYPES: Array<{ value: WorkType; title: string; body: string }> = [
   { value: "deliverable", title: "One-off deliverable", body: "A report, plan, design, code or other finished work, paid when you approve it." },
-  { value: "managed_service", title: "Managed service", body: "An agent works in your own accounts (ads, SEO, social, email) week by week." },
+  { value: "managed_service", title: "Ongoing weekly work", body: "An agent works in your own tools week by week: ads, SEO, support, sales outreach, bookkeeping and more." },
 ];
+
+const CATEGORY_OPTIONS = [...JOB_CATEGORIES, "Enterprise automation", "Financial ops", "Creative tech"];
+
+/** Whole number typed in the form, or null when blank or invalid. */
+function parseCount(value: string): number | null {
+  const n = Number(value.replace(/[,\s]/g, ""));
+  return value.trim() !== "" && Number.isInteger(n) && n >= 0 ? n : null;
+}
 
 /** Dollars typed in the form to cents, or null when blank or invalid. */
 function dollarsToCents(value: string): number | null {
@@ -71,8 +79,8 @@ export function PostOpportunityPage() {
   const { isAuthenticated, isSupabaseEnabled } = useAuth();
   const { createOpportunity } = useAgentExchange();
   const [budget, setBudget] = useState("");
-  const [category, setCategory] = useState("Enterprise automation");
-  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("Operations");
+  const [description, setDescription] = useState(() => briefTemplate(jobKind("other_deliverable")!));
   const [duration, setDuration] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [organization, setOrganization] = useState("");
@@ -81,21 +89,27 @@ export function PostOpportunityPage() {
   const [successCriteria, setSuccessCriteria] = useState("");
   const [workType, setWorkType] = useState<WorkType>("deliverable");
   const [serviceKind, setServiceKind] = useState<ServiceKind>("paid_ads");
+  const [deliverableKind, setDeliverableKind] = useState("other_deliverable");
   const [platforms, setPlatforms] = useState<string[]>([]);
-  const [spendCap, setSpendCap] = useState("");
+  const [limitInputs, setLimitInputs] = useState<Partial<Record<LimitKey, string>>>({});
   const [weeks, setWeeks] = useState("4");
   // The home page brief box hands its text over as ?title=.
   const [searchParams] = useSearchParams();
   const [title, setTitle] = useState(() => (searchParams.get("title") ?? "").slice(0, 160));
 
   const isService = workType === "managed_service";
-  const kindInfo = SERVICE_KINDS[serviceKind];
+  const selectedKindId = isService ? serviceKind : deliverableKind;
+  const kind = jobKind(selectedKindId)!;
+  const limitValue = (key: LimitKey) => (LIMITS[key].unit === "cents" ? dollarsToCents(limitInputs[key] ?? "") : parseCount(limitInputs[key] ?? ""));
   const service: ServiceBrief | null = isService
     ? {
         kind: serviceKind,
         platforms,
-        adSpendCapCents: kindInfo.adSpend ? dollarsToCents(spendCap) : null,
+        adSpendCapCents: kind.limits.includes("adSpendCapCents") ? limitValue("adSpendCapCents") : null,
         weeks: Number.parseInt(weeks, 10) || 0,
+        limits: Object.fromEntries(
+          kind.limits.filter((key) => key !== "adSpendCapCents").map((key) => [key, limitValue(key)]).filter(([, v]) => v !== null),
+        ),
       }
     : null;
   const serviceProblems = service ? validateServiceBrief(service) : [];
@@ -106,12 +120,26 @@ export function PostOpportunityPage() {
     budget.trim().length > 0 &&
     (isService || duration.trim().length > 0) &&
     description.trim().length >= 12 &&
+    description.trim() !== briefTemplate(kind).trim() &&
     successCriteria.trim().length >= 8 &&
     serviceProblems.length === 0;
 
-  function chooseKind(kind: ServiceKind) {
-    setServiceKind(kind);
+  /** Pick a job kind: set its category and seed the description with what the agent will need. */
+  function chooseKind(id: string) {
+    const previous = jobKind(selectedKindId);
+    const next = jobKind(id);
+    if (!next) return;
+    if (next.family === "managed_service") setServiceKind(id);
+    else setDeliverableKind(id);
     setPlatforms([]);
+    setLimitInputs({});
+    if (CATEGORY_OPTIONS.includes(next.category)) setCategory(next.category);
+    if (!description.trim() || (previous && description === briefTemplate(previous))) setDescription(briefTemplate(next));
+  }
+
+  function chooseWorkType(value: WorkType) {
+    setWorkType(value);
+    chooseKind(value === "managed_service" ? serviceKind : deliverableKind);
   }
 
   function togglePlatform(platform: string) {
@@ -139,6 +167,7 @@ export function PostOpportunityPage() {
         successCriteria: successCriteria.trim(),
         title: title.trim(),
         service,
+        jobKind: selectedKindId,
       });
       navigate("/marketplace");
     } catch (caughtError) {
@@ -183,7 +212,7 @@ export function PostOpportunityPage() {
                         checked={workType === option.value}
                         className="mt-1 accent-[#78F0BC]"
                         name="work-type"
-                        onChange={() => setWorkType(option.value)}
+                        onChange={() => chooseWorkType(option.value)}
                         type="radio"
                         value={option.value}
                       />
@@ -194,6 +223,32 @@ export function PostOpportunityPage() {
                     </label>
                   ))}
                 </fieldset>
+                <label className="block space-y-2">
+                  <span className="ax-label">Kind of work</span>
+                  <select className="ax-input" onChange={(event) => chooseKind(event.target.value)} value={selectedKindId}>
+                    {jobKindsByCategory(workType).map((group) => (
+                      <optgroup key={group.category} label={group.category}>
+                        {group.kinds.map((option) => (
+                          <option key={option.id} value={option.id}>{option.label}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <Hint>{buyerVoice(kind.summary)}</Hint>
+                </label>
+                <div className="grid gap-4 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-sm font-semibold text-ae-text">The agent will need from you</p>
+                    <ul className="mt-2 space-y-1 text-sm leading-6 text-ae-text-muted">
+                      {kind.inputs.map((input) => <li key={input}>• {input}</li>)}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-ae-text">What you get back</p>
+                    <p className="mt-2 text-sm leading-6 text-ae-text-muted">{buyerVoice(kind.deliverable)}</p>
+                    <p className="mt-2 text-xs leading-5 text-ae-text-muted">Checked for: {buyerVoice(kind.evidence.join("; "))}.</p>
+                  </div>
+                </div>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <label className="block space-y-2">
                     <span className="ax-label">Title</span>
@@ -221,13 +276,7 @@ export function PostOpportunityPage() {
                     onChange={(event) => setCategory(event.target.value)}
                     value={category}
                   >
-                    <option>Enterprise automation</option>
-                    <option>Marketing</option>
-                    <option>Financial ops</option>
-                    <option>Creative tech</option>
-                    <option>Research</option>
-                    <option>Dev</option>
-                    <option>Sales</option>
+                    {CATEGORY_OPTIONS.map((option) => <option key={option}>{option}</option>)}
                   </select>
                 </label>
                 <label className="block space-y-2">
@@ -238,26 +287,17 @@ export function PostOpportunityPage() {
                     placeholder="Describe the work, operating context, and expected agent behavior..."
                     value={description}
                   />
-                  <Hint>At least 12 characters.</Hint>
+                  <Hint>Fill in each prompt; agents work from exactly what you write here. Briefs are public: share private contacts, logins and internal documents in the contract thread after you hire, never here.</Hint>
                 </label>
               </FormSection>
 
               {isService ? (
-                <FormSection step="02" title="The service" description="What the agent will run, where, and for how long.">
-                  <label className="block space-y-2">
-                    <span className="ax-label">Service</span>
-                    <select className="ax-input" onChange={(event) => chooseKind(event.target.value as ServiceKind)} value={serviceKind}>
-                      {(Object.keys(SERVICE_KINDS) as ServiceKind[]).map((kind) => (
-                        <option key={kind} value={kind}>{SERVICE_KINDS[kind].label}</option>
-                      ))}
-                    </select>
-                    <Hint>{kindInfo.summary}</Hint>
-                  </label>
-                  {kindInfo.platforms.length ? (
+                <FormSection step="02" title="The service" description="Where the agent works, its limits, and for how long.">
+                  {kind.platforms.length ? (
                     <fieldset className="space-y-2">
                       <legend className="ax-label">Platforms you will share access to</legend>
                       <div className="flex flex-wrap gap-2">
-                        {kindInfo.platforms.map((platform) => {
+                        {kind.platforms.map((platform) => {
                           const on = platforms.includes(platform);
                           return (
                             <button
@@ -276,19 +316,19 @@ export function PostOpportunityPage() {
                     </fieldset>
                   ) : null}
                   <div className="grid gap-5 sm:grid-cols-2">
-                    {kindInfo.adSpend ? (
-                      <label className="block space-y-2">
-                        <span className="ax-label">Weekly ad-spend cap</span>
+                    {kind.limits.map((key) => (
+                      <label key={key} className="block space-y-2">
+                        <span className="ax-label">{LIMITS[key].label}</span>
                         <input
                           className="ax-input"
-                          inputMode="decimal"
-                          onChange={(event) => setSpendCap(event.target.value)}
-                          placeholder="$500"
-                          value={spendCap}
+                          inputMode={LIMITS[key].unit === "cents" ? "decimal" : "numeric"}
+                          onChange={(event) => setLimitInputs((current) => ({ ...current, [key]: event.target.value }))}
+                          placeholder={key === "adSpendCapCents" ? "$500" : key === "refundLimitCents" ? "$50" : "50"}
+                          value={limitInputs[key] ?? ""}
                         />
-                        <Hint>Billed by the ad platform to your own account, never through AgentExchange. Set the same limit in the ad account too.</Hint>
+                        <Hint>{LIMITS[key].hint}</Hint>
                       </label>
-                    ) : null}
+                    ))}
                     <label className="block space-y-2">
                       <span className="ax-label">Number of weeks</span>
                       <input
@@ -303,7 +343,7 @@ export function PostOpportunityPage() {
                       <Hint>Each week is its own contract you fund and approve. The agent agrees to this many weeks.</Hint>
                     </label>
                   </div>
-                  {serviceProblems.length && (platforms.length || spendCap) ? (
+                  {serviceProblems.length && (platforms.length || Object.values(limitInputs).some(Boolean)) ? (
                     <ul className="space-y-1 text-sm text-ae-amber">
                       {serviceProblems.map((problem) => <li key={problem}>{problem}</li>)}
                     </ul>

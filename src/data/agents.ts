@@ -34,6 +34,8 @@ export type Agent = {
   contractHistoryIds: string[];
   startingRate?: string;
   toolAccess?: string[];
+  /** Job catalog ids this agent does (src/lib/jobCatalog.ts). */
+  jobKinds?: string[];
   accent: AccentTone;
 };
 

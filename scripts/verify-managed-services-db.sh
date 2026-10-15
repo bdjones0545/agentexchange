@@ -33,9 +33,12 @@ SQL
 
 psql -d "$DB" -v ON_ERROR_STOP=1 -q -f supabase/schema.sql
 MIGRATION=$(ls supabase/migrations/*_managed_services.sql)
+CATALOG=$(ls supabase/migrations/*_job_catalog.sql)
 psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$MIGRATION"
+psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$CATALOG"
 # Reapplying must be safe.
 psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$MIGRATION"
+psql -d "$DB" -v ON_ERROR_STOP=1 -q -f "$CATALOG"
 
 psql -d "$DB" -v ON_ERROR_STOP=1 -q <<'SQL'
 grant all on all tables in schema public to anon, authenticated, service_role;
@@ -95,9 +98,9 @@ run_check "S1 a managed-service brief needs a kind and a number of weeks" attack
 run_check "L1 the contract freezes the brief's service terms, ignoring client-sent terms" legit \
   "select act_as('$A'); insert into contracts (id, organization_id, agent_id, organization_name, agent_name, title, source_id, source_type, amount_cents, service_terms) values ('$W1','$ORG','$AGENT','Acme','Maria','Run our Meta ads','$APP_ADS','application',20000,'{\"weeks\":52,\"adSpendCapCents\":99999999}');" \
   "select service_terms->>'kind' || ':' || (service_terms->>'weeks') || ':' || (service_terms->>'week') || ':' || (service_terms->>'adSpendCapCents') || ':' || (service_terms->'platforms'->>1) from contracts where id='$W1'" "paid_ads:3:1:50000:Google Ads"
-run_check "L2 week 1 starts with access per platform, plan, launch and report milestones" legit "select 1" \
-  "select string_agg(title, ' | ' order by created_at, title) from contract_milestones where contract_id='$W1'" \
-  "Access shared: Google Ads | Access shared: Meta Ads | Campaigns live | Plan approved | Week 1 of 3 report"
+run_check "L2 week 1 starts with access per platform, plan, launch and report milestones, in that order" legit "select 1" \
+  "select string_agg(title, ' | ' order by created_at) from contract_milestones where contract_id='$W1'" \
+  "Access shared: Meta Ads | Access shared: Google Ads | Plan approved | Campaigns live | Week 1 of 3 report"
 run_check "L3 a plain deliverable contract has no service terms or seeded milestones" legit \
   "select act_as('$A'); insert into contracts (id, organization_id, agent_id, organization_name, agent_name, title, source_id, source_type, amount_cents) values ('$MEMO_C','$ORG','$AGENT','Acme','Maria','Market memo','$APP_MEMO','application',9000);" \
   "select coalesce(service_terms::text,'none') || ':' || (select count(*) from contract_milestones where contract_id='$MEMO_C') from contracts where id='$MEMO_C'" "none:0"
@@ -149,6 +152,55 @@ run_check "A9 a disputed week cannot be renewed" attack \
 run_check "L7 the agent side still cannot tick a seeded milestone (organization only)" attack \
   "select act_as('$B'); update contract_milestones set completed=true where contract_id='$W1' and title='Plan approved';" \
   "select completed from contract_milestones where contract_id='$W1' and title='Plan approved'" "f"
+
+# --- The job catalog: kinds, checklists and limits as data.
+SUPPORT=60606060-6060-4060-8060-606060606060; REPORT=61616161-6161-4161-8161-616161616161
+APP_SUPPORT=62626262-6262-4262-8262-626262626262; APP_REPORT=63636363-6363-4363-8363-636363636363
+S1=64646464-6464-4464-8464-646464646464; S2=65656565-6565-4565-8565-656565656565; R1=66666666-6666-4666-8666-666666666666
+psql -d "$DB" -v ON_ERROR_STOP=1 -qAt <<SQL >/dev/null
+select act_as('$A');
+insert into opportunities (id, organization_id, organization_name, title, category, work_type, job_kind, service_kind, service_platforms, service_weeks, service_checklist, service_limits)
+  values ('$SUPPORT', '$ORG', 'Acme', 'Answer our support tickets', 'Support', 'managed_service', 'customer_support', 'customer_support', array['Zendesk'], 4,
+    '[{"title":"Playbook approved","notes":"Nothing goes to customers until you approve it."},{"title":"Go-live reviewed","notes":"Review test conversations first."}]', '{"refundLimitCents":2500}');
+insert into opportunities (id, organization_id, organization_name, title, category, job_kind)
+  values ('$REPORT', '$ORG', 'Acme', 'Competitor report', 'Research', 'research_report');
+select act_as('$B');
+insert into applications (id, opportunity_id, agent_id, agent_name, proposal) values ('$APP_SUPPORT', '$SUPPORT', '$AGENT', 'Maria', 'I run support');
+insert into applications (id, opportunity_id, agent_id, agent_name, proposal) values ('$APP_REPORT', '$REPORT', '$AGENT', 'Maria', 'I research');
+SQL
+
+run_check "C1 a brief's job kind must be a catalog-style id" attack \
+  "select act_as('$A'); insert into opportunities (organization_id, organization_name, title, category, job_kind) values ('$ORG','Acme','Bad kind','Sales','Bad Kind!');" \
+  "select count(*) from opportunities where title='Bad kind'" "0"
+run_check "C2 a checklist longer than ten items is refused" attack \
+  "select act_as('$A'); insert into opportunities (organization_id, organization_name, title, category, work_type, service_kind, service_weeks, service_checklist) values ('$ORG','Acme','Long list','Ops','managed_service','other_managed',2,(select jsonb_agg(jsonb_build_object('title','Step '||i)) from generate_series(1,11) i));" \
+  "select count(*) from opportunities where title='Long list'" "0"
+run_check "L8 a support contract freezes the kind, checklist and refund limit" legit \
+  "select act_as('$A'); insert into contracts (id, organization_id, agent_id, organization_name, agent_name, title, source_id, source_type, amount_cents, job_kind) values ('$S1','$ORG','$AGENT','Acme','Maria','Answer our support tickets','$APP_SUPPORT','application',30000,'paid_ads');" \
+  "select job_kind || ':' || (service_terms->>'kind') || ':' || jsonb_array_length(service_terms->'checklist') || ':' || (service_terms->'limits'->>'refundLimitCents') from contracts where id='$S1'" "customer_support:customer_support:2:2500"
+run_check "L9 its milestones come from the brief's checklist, in order" legit "select 1" \
+  "select string_agg(title, ' | ' order by created_at) from contract_milestones where contract_id='$S1'" \
+  "Access shared: Zendesk | Playbook approved | Go-live reviewed | Week 1 of 4 report"
+run_check "L10 a one-off contract records its job kind but has no service terms" legit \
+  "select act_as('$A'); insert into contracts (id, organization_id, agent_id, organization_name, agent_name, title, source_id, source_type, amount_cents, job_kind) values ('$R1','$ORG','$AGENT','Acme','Maria','Competitor report','$APP_REPORT','application',9000,'paid_ads');" \
+  "select job_kind || ':' || coalesce(service_terms::text,'none') || ':' || (select count(*) from contract_milestones where contract_id='$R1') from contracts where id='$R1'" "research_report:none:0"
+run_check "A10 neither side can change a contract's job kind" attack \
+  "select act_as('$A'); update contracts set job_kind='paid_ads' where id='$R1'; select act_as('$B'); update contracts set job_kind='paid_ads' where id='$R1';" \
+  "select job_kind from contracts where id='$R1'" "research_report"
+psql -d "$DB" -qAt -c "update contracts set payment_status='authorized' where id='$S1';" >/dev/null
+run_check "L11 a renewed support week keeps its job kind and limits" legit \
+  "select act_as('$A'); insert into contracts (id, organization_id, agent_id, organization_name, agent_name, title, source_id, source_type) values ('$S2','$ORG','$AGENT','Acme','Maria','x','$S1','renewal');" \
+  "select job_kind || ':' || (service_terms->>'week') || ':' || (service_terms->'limits'->>'refundLimitCents') || ':' || (select string_agg(title, ' | ') from contract_milestones where contract_id='$S2') from contracts where id='$S2'" \
+  "customer_support:2:2500:Week 2 of 4 report"
+run_check "L12 an operator lists the job kinds its agent does" legit \
+  "select act_as('$B'); update agents set job_kinds=array['customer_support','paid_ads'] where id='$AGENT';" \
+  "select array_to_string(job_kinds, ',') from agents where id='$AGENT'" "customer_support,paid_ads"
+run_check "A11 an agent's job kinds must be catalog-style ids" attack \
+  "select act_as('$B'); update agents set job_kinds=array['Not A Kind'] where id='$AGENT';" \
+  "select array_to_string(job_kinds, ',') from agents where id='$AGENT'" "customer_support,paid_ads"
+run_check "A12 an unrelated user cannot change another operator's job kinds" attack \
+  "select act_as('$C'); update agents set job_kinds=array['bookkeeping'] where id='$AGENT';" \
+  "select array_to_string(job_kinds, ',') from agents where id='$AGENT'" "customer_support,paid_ads"
 
 if [ "$FAILED" -ne 0 ]; then
   echo "Managed-service database verification FAILED"

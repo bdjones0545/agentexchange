@@ -9,7 +9,8 @@
 // worker gets a bounded number of returns before the work is accepted with
 // flags the organization can see.
 
-import { SERVICE_KINDS, formatSpendCap, type ServiceTerms } from "../../src/lib/managedService.js";
+import { formatCents } from "../../src/lib/money.js";
+import { SERVICE_KINDS, formatSpendCap, termsLimits, type ServiceTerms } from "../../src/lib/managedService.js";
 
 export type GateAnswers = {
   /** P(the deliverable delivers the brief's scope, outputs and success criteria). */
@@ -20,8 +21,10 @@ export type GateAnswers = {
   unsupportedClaims: number;
   /** Probability-weighted quality level in [0, 3]: unusable, weak, solid, excellent. */
   quality: number;
-  /** Managed services with an ad-spend cap only: P(it proposes, authorizes or reports spend above the weekly cap). */
-  exceedsSpendCap?: number;
+  /** Managed services with limits only: P(it proposes, authorizes or reports anything over a limit: ad spend, refunds, sends). */
+  exceedsLimits?: number;
+  /** Briefs with a job kind only: P(it includes the evidence the job lists). Below evidenceFlag is a soft flag. */
+  evidencePresent?: number;
 };
 
 export type GateVerdict = "passed" | "returned" | "accepted_with_flags" | "unavailable";
@@ -47,6 +50,8 @@ export type Brief = {
   requiredSkills?: string[] | null;
   /** Set when the contract is one week of a managed service. */
   service?: ServiceTerms | null;
+  /** The job kind's definition of finished work, from the job catalog. */
+  job?: { label: string; deliverable: string; evidence: string[] } | null;
 };
 
 export type DeliverableEvaluator = (input: { brief: Brief; title: string; notes: string }) => Promise<GateAnswers>;
@@ -72,8 +77,10 @@ export const GATE_THRESHOLDS = {
   unsupportedBlock: 0.85,
   /** After this many returns the next submission is accepted with flags instead of returned again. */
   maxReturns: 2,
-  /** exceedsSpendCap at or above this returns the work: spend over the buyer's weekly cap. Uncalibrated; mirrors unsupportedBlock. */
-  spendCapBlock: 0.85,
+  /** exceedsLimits at or above this returns the work: over a limit the buyer set. Uncalibrated; mirrors unsupportedBlock. */
+  limitBlock: 0.85,
+  /** evidencePresent below this is surfaced to the organization as a flag; it never returns work on its own. */
+  evidenceFlag: 0.5,
 } as const;
 
 export const JEV_MODEL_ID = "typesafe-ai/jev";
@@ -98,21 +105,37 @@ export function decide(answers: GateAnswers | null, priorReturns: number, now: (
         : `complete, self-contained work: ${pct(answers.complete)} (needs ${pct(GATE_THRESHOLDS.pass)}) — hand in the finished product, not a plan, outline or status update`,
     );
   }
-  if (answers.exceedsSpendCap !== undefined && answers.exceedsSpendCap >= GATE_THRESHOLDS.spendCapBlock) {
-    flags.push(`over the ad-spend cap: ${pct(answers.exceedsSpendCap)} — keep this week's proposed and reported spend at or under the buyer's cap`);
+  if (answers.exceedsLimits !== undefined && answers.exceedsLimits >= GATE_THRESHOLDS.limitBlock) {
+    flags.push(`over a limit: ${pct(answers.exceedsLimits)} — keep spend, refunds and sends within the limits on the contract`);
   }
   const unsupported = answers.unsupportedClaims >= GATE_THRESHOLDS.unsupportedFlag
     ? `unsupported specifics: ${pct(answers.unsupportedClaims)} — figures, prices or facts are asserted without a source or caveat`
     : null;
-  if (answers.unsupportedClaims >= GATE_THRESHOLDS.unsupportedBlock) {
+  const blocksUnsupported = answers.unsupportedClaims >= GATE_THRESHOLDS.unsupportedBlock;
+  if (blocksUnsupported) {
     flags.push(`${unsupported} (needs below ${pct(GATE_THRESHOLDS.unsupportedBlock)}) — cite the source, mark it "not public"/"estimate", or remove the figure`);
-  } else if (flags.length === 0) {
-    return { ...base, verdict: "passed", flags: unsupported ? [unsupported] : [] };
-  } else if (unsupported) {
-    flags.push(unsupported);
   }
+  // Soft flags inform the organization but never return work on their own.
+  const soft = [
+    ...(unsupported && !blocksUnsupported ? [unsupported] : []),
+    ...(answers.evidencePresent !== undefined && answers.evidencePresent < GATE_THRESHOLDS.evidenceFlag
+      ? [`missing evidence: ${pct(answers.evidencePresent)} — include what this kind of job is checked for (get_job_guide lists it)`]
+      : []),
+  ];
+  if (flags.length === 0) return { ...base, verdict: "passed", flags: soft };
+  flags.push(...soft);
   if (priorReturns >= GATE_THRESHOLDS.maxReturns) return { ...base, verdict: "accepted_with_flags", flags };
   return { ...base, verdict: "returned", flags };
+}
+
+/** The contract's limits in words, for the gate. */
+function serviceLimitsForGate(terms: ServiceTerms) {
+  const limits = termsLimits(terms);
+  return {
+    ...(limits.adSpendCapCents !== undefined ? { weeklyAdSpendCap: formatCents(limits.adSpendCapCents) } : {}),
+    ...(limits.refundLimitCents !== undefined ? { refundOrCreditPerCustomer: formatCents(limits.refundLimitCents) } : {}),
+    ...(limits.dailySendCap !== undefined ? { messagesPerDay: limits.dailySendCap } : {}),
+  };
 }
 
 /** The shared state Jev sees. Facts only; the questions carry the judgment. */
@@ -125,6 +148,7 @@ export function gateState(input: { brief: Brief; title: string; notes: string })
         week: b.service.week,
         weeks: b.service.weeks,
         weeklyAdSpendCap: formatSpendCap(b.service.adSpendCapCents),
+        limits: serviceLimitsForGate(b.service),
         stagesThisWeek: b.service.week === 1 ? ["plan to approve", "launch record", "weekly report"] : ["weekly report"],
       }
     : undefined;
@@ -137,6 +161,7 @@ export function gateState(input: { brief: Brief; title: string; notes: string })
       successCriteria: b.successCriteria ?? null,
       requiredSkills: b.requiredSkills ?? [],
       ...(service ? { service } : {}),
+      ...(b.job ? { job: b.job } : {}),
     },
     deliverable: { title: input.title, body: input.notes },
   };
@@ -193,18 +218,33 @@ export const SERVICE_GATE_QUESTIONS = {
   quality: GATE_QUESTIONS.quality,
 } as const;
 
-const SPEND_CAP_QUESTION = {
+const LIMITS_QUESTION = {
   type: "boolean",
   instructions:
-    "Does the deliverable propose, authorize or report ad spend for this week above `brief.service.weeklyAdSpendCap`? Spend at or under the cap, or no spend at all, is false.",
+    "Does the deliverable propose, authorize or report anything over `brief.service.limits`: ad spend over the weekly cap, a refund or credit over the per-customer limit, or more messages a day than the send limit? Within every limit, or no limited activity at all, is false.",
 } as const;
 
-/** The questions for this brief: managed-service weeks get SERVICE_GATE_QUESTIONS, plus the spend check when there is a cap. */
+const EVIDENCE_QUESTION = {
+  type: "boolean",
+  instructions:
+    "Does the deliverable include the evidence `brief.job.evidence` lists, so the organization can check the work without taking the agent's word for it?",
+} as const;
+
+/**
+ * The questions for this brief: managed-service weeks get SERVICE_GATE_QUESTIONS,
+ * plus the limits check when the contract has limits and the evidence check
+ * when the brief has a job kind. Document briefs keep GATE_QUESTIONS.
+ */
 export function gateQuestions(brief: Brief) {
-  if (!brief.service) return GATE_QUESTIONS;
-  return brief.service.adSpendCapCents === null
-    ? SERVICE_GATE_QUESTIONS
-    : { ...SERVICE_GATE_QUESTIONS, exceeds_spend_cap: SPEND_CAP_QUESTION };
+  const base = brief.service ? SERVICE_GATE_QUESTIONS : GATE_QUESTIONS;
+  const hasLimits = brief.service ? Object.keys(termsLimits(brief.service)).length > 0 : false;
+  const hasEvidence = Boolean(brief.job?.evidence.length);
+  if (!hasLimits && !hasEvidence) return base;
+  return {
+    ...base,
+    ...(hasLimits ? { exceeds_limits: LIMITS_QUESTION } : {}),
+    ...(hasEvidence ? { evidence_present: EVIDENCE_QUESTION } : {}),
+  };
 }
 
 type JevResponse = {
@@ -244,13 +284,15 @@ export function jevEvaluator(apiKey: string | undefined, fetchImpl: typeof fetch
         return v;
       };
       const q = a.quality?.score;
-      const spend = a.exceeds_spend_cap?.probability;
+      const overLimit = a.exceeds_limits?.probability;
+      const evidence = a.evidence_present?.probability;
       return {
         satisfiesBrief: p("satisfies_brief"),
         complete: p("complete"),
         unsupportedClaims: p("unsupported_claims"),
         quality: typeof q === "number" ? q : 0,
-        ...(typeof spend === "number" ? { exceedsSpendCap: spend } : {}),
+        ...(typeof overLimit === "number" ? { exceedsLimits: overLimit } : {}),
+        ...(typeof evidence === "number" ? { evidencePresent: evidence } : {}),
       };
     } finally {
       clearTimeout(timer);

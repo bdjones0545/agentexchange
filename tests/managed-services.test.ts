@@ -33,6 +33,8 @@ const ads: ServiceTerms = {
   week: 1,
   opportunityId: "66666666-6666-4666-8666-666666666666",
   renewedFrom: null,
+  checklist: [],
+  limits: { adSpendCapCents: 50000 },
 };
 const now = () => "2026-10-15T00:00:00.000Z";
 
@@ -40,7 +42,7 @@ describe("managed-service terms", () => {
   it("reads a brief row and ignores deliverable or malformed rows", () => {
     expect(
       serviceBriefFromRow({ work_type: "managed_service", service_kind: "seo", service_platforms: ["WordPress", 3], ad_spend_cap_cents: null, service_weeks: 6 }),
-    ).toEqual({ kind: "seo", platforms: ["WordPress"], adSpendCapCents: null, weeks: 6 });
+    ).toEqual({ kind: "seo", platforms: ["WordPress"], adSpendCapCents: null, weeks: 6, limits: {} });
     expect(serviceBriefFromRow({ work_type: "deliverable", service_kind: "seo", service_weeks: 6 })).toBeNull();
     expect(serviceBriefFromRow({ work_type: "managed_service", service_kind: "crypto", service_weeks: 6 })).toBeNull();
     expect(serviceBriefFromRow({ work_type: "managed_service", service_kind: "seo" })).toBeNull();
@@ -49,7 +51,11 @@ describe("managed-service terms", () => {
   it("reads the terms the database froze on a contract", () => {
     expect(serviceTermsFromJson({ kind: "paid_ads", platforms: ["Meta Ads"], adSpendCapCents: 50000, weeks: 4, week: 2, opportunityId: "o1", renewedFrom: "c1" })).toEqual({
       kind: "paid_ads", platforms: ["Meta Ads"], adSpendCapCents: 50000, weeks: 4, week: 2, opportunityId: "o1", renewedFrom: "c1",
+      checklist: [], limits: { adSpendCapCents: 50000 },
     });
+    expect(
+      serviceTermsFromJson({ kind: "customer_support", platforms: ["Zendesk"], weeks: 4, week: 1, limits: { refundLimitCents: 2500, junk: 1 }, checklist: [{ title: "Playbook approved", notes: "n" }, { notes: "untitled" }] }),
+    ).toMatchObject({ adSpendCapCents: null, limits: { refundLimitCents: 2500 }, checklist: [{ title: "Playbook approved", notes: "n" }] });
     expect(serviceTermsFromJson(null)).toBeNull();
     expect(serviceTermsFromJson([1, 2])).toBeNull();
     expect(serviceTermsFromJson({ kind: "paid_ads" })).toBeNull();
@@ -57,9 +63,13 @@ describe("managed-service terms", () => {
 
   it("writes brief columns, dropping a spend cap the kind cannot have", () => {
     expect(serviceBriefColumns(null)).toEqual({ work_type: "deliverable" });
-    expect(serviceBriefColumns({ kind: "seo", platforms: ["Shopify"], adSpendCapCents: 9000, weeks: 3 })).toEqual({
-      work_type: "managed_service", service_kind: "seo", service_platforms: ["Shopify"], ad_spend_cap_cents: null, service_weeks: 3,
+    expect(serviceBriefColumns({ kind: "seo", platforms: ["Shopify"], adSpendCapCents: 9000, weeks: 3 })).toMatchObject({
+      work_type: "managed_service", job_kind: "seo", service_kind: "seo", service_platforms: ["Shopify"], ad_spend_cap_cents: null, service_weeks: 3, service_limits: {},
     });
+    expect(serviceBriefColumns(null, "research_report")).toEqual({ work_type: "deliverable", job_kind: "research_report" });
+    const support = serviceBriefColumns({ kind: "customer_support", platforms: ["Zendesk"], adSpendCapCents: 5000, weeks: 4, limits: { refundLimitCents: 2500, dailySendCap: 9 } });
+    expect(support).toMatchObject({ ad_spend_cap_cents: null, service_limits: { refundLimitCents: 2500 } });
+    expect((support as { service_checklist: Array<{ title: string }> }).service_checklist.map((s) => s.title)).toEqual(["Playbook approved", "Go-live reviewed"]);
   });
 
   it("validates the brief form", () => {
@@ -113,21 +123,22 @@ describe("the quality gate on a managed service", () => {
     expect(gateState({ brief: { contractTitle: "Memo" }, title: "t", notes: "n" }).brief).not.toHaveProperty("service");
   });
 
-  it("asks stage-aware questions, plus the spend check only when there is a cap", () => {
+  it("asks stage-aware questions, plus the limits check only when there are limits", () => {
     const withCap = gateQuestions(brief);
-    expect(withCap).toHaveProperty("exceeds_spend_cap");
+    expect(withCap).toHaveProperty("exceeds_limits");
     expect(withCap.complete).toBe(SERVICE_GATE_QUESTIONS.complete);
-    expect(gateQuestions({ ...brief, service: { ...ads, adSpendCapCents: null } })).toBe(SERVICE_GATE_QUESTIONS);
+    expect(gateQuestions({ ...brief, service: { ...ads, adSpendCapCents: null, limits: {} } })).toBe(SERVICE_GATE_QUESTIONS);
+    expect(gateQuestions({ ...brief, service: { ...ads, kind: "customer_support", adSpendCapCents: null, limits: { refundLimitCents: 2500 } } })).toHaveProperty("exceeds_limits");
     expect(gateState({ brief, title: "Plan", notes: "..." }).brief).toMatchObject({
       service: { kind: "Paid ads", weeklyAdSpendCap: "$500 a week", week: 1, stagesThisWeek: ["plan to approve", "launch record", "weekly report"] },
     });
   });
 
-  it("returns work that goes over the weekly ad-spend cap", () => {
-    const r = decide({ ...good, exceedsSpendCap: 0.9 }, 0, now, { service: true });
+  it("returns work that goes over a limit", () => {
+    const r = decide({ ...good, exceedsLimits: 0.9 }, 0, now, { service: true });
     expect(r.verdict).toBe("returned");
-    expect(r.flags.join(" ")).toMatch(/over the ad-spend cap/);
-    expect(decide({ ...good, exceedsSpendCap: 0.2 }, 0, now, { service: true }).verdict).toBe("passed");
+    expect(r.flags.join(" ")).toMatch(/over a limit/);
+    expect(decide({ ...good, exceedsLimits: 0.2 }, 0, now, { service: true }).verdict).toBe("passed");
   });
 
   it("does not tell a managed-service agent that a plan is not work", () => {

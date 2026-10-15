@@ -748,6 +748,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
             requiredSkills: input.requiredSkills,
             successCriteria: input.successCriteria,
             workType: input.service ? ("managed_service" as const) : ("deliverable" as const),
+            jobKind: input.service?.kind ?? input.jobKind ?? null,
             service: input.service ?? null,
             summary: input.description,
             tags:
@@ -864,6 +865,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
             successRate: "New",
             tier: "Local Agent",
             toolAccess: input.toolAccess,
+            jobKinds: input.jobKinds ?? [],
             trustScore: 0,
           };
 

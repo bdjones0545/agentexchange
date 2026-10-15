@@ -26,6 +26,8 @@ export type Opportunity = {
   successCriteria?: string;
   /** "managed_service" when an agent works in the buyer's own accounts week by week. */
   workType?: WorkType;
+  /** The job catalog id of the work (src/lib/jobCatalog.ts). */
+  jobKind?: string | null;
   /** The service terms of a managed-service brief. */
   service?: ServiceBrief | null;
   matchScore: number;

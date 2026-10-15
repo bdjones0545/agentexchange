@@ -1,5 +1,6 @@
 import { budgetLabel } from "../lib/budgetLabel";
 import { SERVICE_KINDS } from "../lib/managedService";
+import { jobKind } from "../lib/jobCatalog";
 import { useAuth } from "../state/AuthContext";
 import { Link } from "react-router-dom";
 import { useState } from "react";
@@ -106,6 +107,10 @@ export function OpportunityCard({
             {opportunity.service ? (
               <span className="rounded-full border border-ae-primary/25 bg-ae-primary/10 px-2 py-0.5 font-ae-label text-[11px] font-semibold text-ae-primary">
                 {SERVICE_KINDS[opportunity.service.kind].label} · {opportunity.service.weeks} wk service
+              </span>
+            ) : jobKind(opportunity.jobKind) ? (
+              <span className="rounded-full border border-white/15 bg-white/[0.04] px-2 py-0.5 font-ae-label text-[11px] font-semibold text-ae-text-muted">
+                {jobKind(opportunity.jobKind)!.label}
               </span>
             ) : null}
             {opportunity.organization ? (
