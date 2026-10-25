@@ -51,6 +51,7 @@ import {
   updateNegotiation as updateNegotiationRecord,
 } from "../lib/repositories/negotiationsRepository";
 import { isTestListing } from "../lib/publicListings";
+import { renewalCheck } from "../lib/managedService";
 import { createOpportunity as createOpportunityRecord } from "../lib/repositories/opportunitiesRepository";
 import { createReview as createReviewRecord } from "../lib/repositories/reviewsRepository";
 import {
@@ -137,6 +138,8 @@ type AgentExchangeContextValue = PersistedState & {
   clearToast: () => void;
   createAgent: (input: CreateAgentInput) => Promise<CreatedAgent>;
   createOpportunity: (input: CreateOpportunityInput) => Promise<CreatedOpportunity>;
+  /** Start the next week of a managed service; resolves to the new week's contract. */
+  renewContract: (contractId: string) => Promise<LocalContract>;
   getApplicationForOpportunity: (opportunityId: string) => Application | undefined;
   getContractWorkspace: (contractId: string) => ContractWorkspace;
   getNegotiationForOpportunity: (opportunityId: string) => Negotiation | undefined;
@@ -745,6 +748,9 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
             organization: input.organization,
             requiredSkills: input.requiredSkills,
             successCriteria: input.successCriteria,
+            workType: input.service ? ("managed_service" as const) : ("deliverable" as const),
+            jobKind: input.service?.kind ?? input.jobKind ?? null,
+            service: input.service ?? null,
             summary: input.description,
             tags:
               input.requiredSkills.length > 0 ? input.requiredSkills : ["Custom"],
@@ -764,6 +770,55 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       return createdOpportunity;
     },
     [requireAuthForPersistentWrite, showToast],
+  );
+
+  const renewContract = useCallback(
+    async (contractId: string): Promise<LocalContract> => {
+      if (!requireAuthForPersistentWrite("start the next week")) {
+        throw new Error("Sign in to start the next week.");
+      }
+      const previous = state.localContracts.find((contract) => contract.id === contractId);
+      if (!previous) throw new Error("Contract not found.");
+      const check = renewalCheck(previous);
+      if (!check.ok) throw new Error(check.reason);
+      const draftContract: LocalContract = {
+        id: createId("contract"),
+        sourceId: previous.id,
+        sourceType: "renewal",
+        // The database copies the price, title and service terms from the
+        // previous week and refuses a renewal the agent did not agree to.
+        amountCents: previous.amountCents,
+        currency: previous.currency,
+        organizationId: previous.organizationId,
+        organization: previous.organization,
+        agentId: previous.agentId,
+        agent: previous.agent,
+        title: previous.title,
+        value: previous.value,
+        status: "Active",
+        startDate: formatLocalDate(),
+        dueDate: formatLocalDate(CONTRACT_DUE_DAYS),
+        progress: 0,
+        accent: previous.accent,
+        serviceTerms: previous.serviceTerms
+          ? { ...previous.serviceTerms, week: check.nextWeek, renewedFrom: previous.id }
+          : null,
+      };
+      const localContract = isSupabaseConfigured
+        ? await createContractRecord(draftContract)
+        : draftContract;
+      if (isSupabaseConfigured) {
+        void notifyWorkers({ event: "contract_created", contractId: localContract.id });
+      }
+      setState((current) =>
+        current.localContracts.some((contract) => contract.id === localContract.id)
+          ? current
+          : { ...current, localContracts: [...current.localContracts, localContract] },
+      );
+      showToast(`Week ${check.nextWeek} started. Fund it so the agent can carry on.`);
+      return localContract;
+    },
+    [requireAuthForPersistentWrite, showToast, state.localContracts],
   );
 
   const createAgent = useCallback(
@@ -811,6 +866,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
             successRate: "New",
             tier: "Local Agent",
             toolAccess: input.toolAccess,
+            jobKinds: input.jobKinds ?? [],
             trustScore: 0,
           };
 
@@ -2282,6 +2338,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       counterNegotiation: safe(counterNegotiation),
       createAgent,
       createOpportunity,
+      renewContract,
       getApplicationForOpportunity: (opportunityId) =>
         state.applications.find(
           (application) => application.opportunityId === opportunityId,
@@ -2334,6 +2391,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       counterNegotiation,
       createAgent,
       createOpportunity,
+      renewContract,
       error,
       loading,
       openContractDispute,

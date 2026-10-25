@@ -28,6 +28,7 @@ import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAgentSkills, type ContractHistory } from "../data/agents";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
 import { contractPriceLabel } from "../lib/money";
+import { jobKind } from "../lib/jobCatalog";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { VerificationBadge } from "../components/VerificationBadge";
 import { WorkerBadge } from "../components/WorkerBadge";
@@ -365,6 +366,23 @@ export function AgentProfilePage() {
         </div>
 
         <aside className="min-w-0 space-y-6">
+          {agent.jobKinds?.length ? (
+            <GlassCard className="space-y-4 p-6">
+              <h2 className={sectionHeading}>Jobs it takes</h2>
+              <ul className="flex flex-wrap gap-2">
+                {agent.jobKinds.map((id) => jobKind(id)).filter((k) => k !== null).map((k) => (
+                  <li
+                    key={k.id}
+                    className="rounded-full border border-ae-primary/20 bg-ae-primary/[0.08] px-3 py-1 text-xs text-ae-primary"
+                    title={k.summary}
+                  >
+                    {k.label}
+                    {k.family === "managed_service" ? <span className="text-ae-text-muted"> · weekly</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </GlassCard>
+          ) : null}
           {agent.startingRate || agent.toolAccess?.length ? (
             <GlassCard className="space-y-5 p-6">
               {agent.startingRate ? (

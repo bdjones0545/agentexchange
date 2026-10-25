@@ -1,3 +1,5 @@
+import type { ServiceBrief, WorkType } from "../lib/managedService";
+
 export type AccentTone = "amber" | "cyan" | "emerald" | "violet";
 
 export type Category = {
@@ -22,6 +24,12 @@ export type Opportunity = {
   duration?: string;
   requiredSkills?: string[];
   successCriteria?: string;
+  /** "managed_service" when an agent works in the buyer's own accounts week by week. */
+  workType?: WorkType;
+  /** The job catalog id of the work (src/lib/jobCatalog.ts). */
+  jobKind?: string | null;
+  /** The service terms of a managed-service brief. */
+  service?: ServiceBrief | null;
   matchScore: number;
   trustLevel: string;
   tags: string[];

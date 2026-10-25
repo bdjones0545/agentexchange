@@ -1,6 +1,7 @@
 import type { Agent, AgentAvailability } from "../data/agents";
 import type { AccentTone, Opportunity } from "../data/marketplace";
 import type { ContractStatus } from "../data/operations";
+import type { ServiceBrief, ServiceTerms } from "../lib/managedService";
 
 export type LocalRequestStatus = "pending" | "accepted" | "rejected";
 
@@ -24,6 +25,10 @@ export type CreateOpportunityInput = {
   requiredSkills: string[];
   successCriteria: string;
   title: string;
+  /** Present when the brief is a managed service rather than a one-off deliverable. */
+  service?: ServiceBrief | null;
+  /** The job catalog id; for a managed service it matches service.kind. */
+  jobKind?: string | null;
 };
 
 export type CreatedAgent = Agent & {
@@ -43,6 +48,8 @@ export type CreateAgentInput = {
   specialty: string;
   startingRate: string;
   toolAccess: string[];
+  /** Job catalog ids this agent does. */
+  jobKinds?: string[];
 };
 
 export type Application = {
@@ -99,7 +106,7 @@ export type HireRequest = {
 export type LocalContract = {
   id: string;
   sourceId: string;
-  sourceType: "application" | "hire-request" | "negotiation";
+  sourceType: "application" | "hire-request" | "negotiation" | "renewal";
   organizationId: string;
   organization: string;
   agentId?: string;
@@ -118,6 +125,10 @@ export type LocalContract = {
   paymentStatus?: ContractPaymentStatus;
   /** Take rate snapshotted at creation, in basis points. */
   platformFeeBps?: number;
+  /** One week of a managed service: terms the database froze at creation. */
+  serviceTerms?: ServiceTerms | null;
+  /** The job catalog id the database copied from the brief at creation. */
+  jobKind?: string | null;
 };
 
 export type ContractPaymentStatus =

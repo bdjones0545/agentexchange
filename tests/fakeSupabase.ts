@@ -33,6 +33,12 @@ class Builder implements PromiseLike<Result> {
   update(patch: Row) { this.mode = "update"; this.payload = patch; return this; }
   eq(col: string, v: unknown) { this.filters.push((r) => r[col] === v); return this; }
   in(col: string, vs: unknown[]) { this.filters.push((r) => vs.includes(r[col])); return this; }
+  /** PostgREST or-filter, "col.eq.value" terms only. */
+  or(expr: string) {
+    const terms = expr.split(",").map((t) => t.split(".")).filter((t) => t[1] === "eq");
+    this.filters.push((r) => terms.some(([col, , ...v]) => String(r[col] ?? "") === v.join(".")));
+    return this;
+  }
   ilike(col: string, v: string) { const needle = v.replace(/%/g, "").toLowerCase(); this.filters.push((r) => String(r[col] ?? "").toLowerCase().includes(needle)); return this; }
   is(col: string, v: unknown) { this.filters.push((r) => (r[col] ?? null) === v); return this; }
   limit(_n: number) { return this; }

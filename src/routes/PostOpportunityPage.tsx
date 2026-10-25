@@ -6,6 +6,14 @@ import { AuthRequiredNotice } from "../components/AuthRequiredNotice";
 import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
+import { JOB_CATEGORIES, LIMITS, briefTemplate, buyerVoice, jobKind, jobKindsByCategory, type LimitKey } from "../lib/jobCatalog";
+import {
+  ACCESS_RULES,
+  validateServiceBrief,
+  type ServiceBrief,
+  type ServiceKind,
+  type WorkType,
+} from "../lib/managedService";
 import { useAuth } from "../state/AuthContext";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
@@ -41,30 +49,102 @@ const steps = [
   ["Approve before release", "Funding places a card hold, not a charge. Payment is captured only after you approve the delivery."],
 ];
 
+const serviceSteps = [
+  ["Share access, never passwords", "You add the agent's operator through each platform's own partner or user settings, and can remove them at any time."],
+  ["Approve the plan first", "The agent's first deliverable is the plan. Nothing goes live, publishes or sends until you approve it."],
+  ["Pay week by week", "Each week is its own fixed-price contract you fund and approve. Ad spend is billed by the platform to your own account."],
+];
+
+const WORK_TYPES: Array<{ value: WorkType; title: string; body: string }> = [
+  { value: "deliverable", title: "One-off deliverable", body: "A report, plan, design, code or other finished work, paid when you approve it." },
+  { value: "managed_service", title: "Ongoing weekly work", body: "An agent works in your own tools week by week: ads, SEO, support, sales outreach, bookkeeping and more." },
+];
+
+const CATEGORY_OPTIONS = [...JOB_CATEGORIES, "Enterprise automation", "Financial ops", "Creative tech"];
+
+/** Whole number typed in the form, or null when blank or invalid. */
+function parseCount(value: string): number | null {
+  const n = Number(value.replace(/[,\s]/g, ""));
+  return value.trim() !== "" && Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+/** Dollars typed in the form to cents, or null when blank or invalid. */
+function dollarsToCents(value: string): number | null {
+  const n = Number(value.replace(/[$,\s]/g, ""));
+  return value.trim() !== "" && Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null;
+}
+
 export function PostOpportunityPage() {
   const navigate = useNavigate();
   const { isAuthenticated, isSupabaseEnabled } = useAuth();
   const { createOpportunity } = useAgentExchange();
   const [budget, setBudget] = useState("");
-  const [category, setCategory] = useState("Enterprise automation");
-  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("Operations");
+  const [description, setDescription] = useState(() => briefTemplate(jobKind("other_deliverable")!));
   const [duration, setDuration] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [organization, setOrganization] = useState("");
   const [requiredSkills, setRequiredSkills] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [successCriteria, setSuccessCriteria] = useState("");
+  const [workType, setWorkType] = useState<WorkType>("deliverable");
+  const [serviceKind, setServiceKind] = useState<ServiceKind>("paid_ads");
+  const [deliverableKind, setDeliverableKind] = useState("other_deliverable");
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  const [limitInputs, setLimitInputs] = useState<Partial<Record<LimitKey, string>>>({});
+  const [weeks, setWeeks] = useState("4");
   // The home page brief box hands its text over as ?title=.
   const [searchParams] = useSearchParams();
   const [title, setTitle] = useState(() => (searchParams.get("title") ?? "").slice(0, 160));
+
+  const isService = workType === "managed_service";
+  const selectedKindId = isService ? serviceKind : deliverableKind;
+  const kind = jobKind(selectedKindId)!;
+  const limitValue = (key: LimitKey) => (LIMITS[key].unit === "cents" ? dollarsToCents(limitInputs[key] ?? "") : parseCount(limitInputs[key] ?? ""));
+  const service: ServiceBrief | null = isService
+    ? {
+        kind: serviceKind,
+        platforms,
+        adSpendCapCents: kind.limits.includes("adSpendCapCents") ? limitValue("adSpendCapCents") : null,
+        weeks: Number.parseInt(weeks, 10) || 0,
+        limits: Object.fromEntries(
+          kind.limits.filter((key) => key !== "adSpendCapCents").map((key) => [key, limitValue(key)]).filter(([, v]) => v !== null),
+        ),
+      }
+    : null;
+  const serviceProblems = service ? validateServiceBrief(service) : [];
 
   const canSubmit =
     title.trim().length > 3 &&
     organization.trim().length > 1 &&
     budget.trim().length > 0 &&
-    duration.trim().length > 0 &&
+    (isService || duration.trim().length > 0) &&
     description.trim().length >= 12 &&
-    successCriteria.trim().length >= 8;
+    description.trim() !== briefTemplate(kind).trim() &&
+    successCriteria.trim().length >= 8 &&
+    serviceProblems.length === 0;
+
+  /** Pick a job kind: set its category and seed the description with what the agent will need. */
+  function chooseKind(id: string) {
+    const previous = jobKind(selectedKindId);
+    const next = jobKind(id);
+    if (!next) return;
+    if (next.family === "managed_service") setServiceKind(id);
+    else setDeliverableKind(id);
+    setPlatforms([]);
+    setLimitInputs({});
+    if (CATEGORY_OPTIONS.includes(next.category)) setCategory(next.category);
+    if (!description.trim() || (previous && description === briefTemplate(previous))) setDescription(briefTemplate(next));
+  }
+
+  function chooseWorkType(value: WorkType) {
+    setWorkType(value);
+    chooseKind(value === "managed_service" ? serviceKind : deliverableKind);
+  }
+
+  function togglePlatform(platform: string) {
+    setPlatforms((current) => (current.includes(platform) ? current.filter((p) => p !== platform) : [...current, platform]));
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -81,11 +161,13 @@ export function PostOpportunityPage() {
         budget: budget.trim(),
         category,
         description: description.trim(),
-        duration: duration.trim(),
+        duration: service ? (service.weeks === 1 ? "1 week" : `${service.weeks} weeks`) : duration.trim(),
         organization: organization.trim(),
         requiredSkills: parseList(requiredSkills),
         successCriteria: successCriteria.trim(),
         title: title.trim(),
+        service,
+        jobKind: selectedKindId,
       });
       navigate("/marketplace");
     } catch (caughtError) {
@@ -119,6 +201,54 @@ export function PostOpportunityPage() {
 
             <div className="divide-y divide-white/[0.06]">
               <FormSection step="01" title="The brief" description="What you need done, and who it is for.">
+                <fieldset className="grid gap-3 sm:grid-cols-2">
+                  <legend className="ax-label mb-2">Type of work</legend>
+                  {WORK_TYPES.map((option) => (
+                    <label
+                      key={option.value}
+                      className={`flex cursor-pointer gap-3 rounded-xl border p-4 transition ${workType === option.value ? "border-ae-primary/50 bg-ae-primary/[0.07]" : "border-white/10 bg-white/[0.02] hover:border-white/20"}`}
+                    >
+                      <input
+                        checked={workType === option.value}
+                        className="mt-1 accent-[#78F0BC]"
+                        name="work-type"
+                        onChange={() => chooseWorkType(option.value)}
+                        type="radio"
+                        value={option.value}
+                      />
+                      <span>
+                        <span className="block font-semibold text-ae-text">{option.title}</span>
+                        <span className="mt-1 block text-sm leading-6 text-ae-text-muted">{option.body}</span>
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+                <label className="block space-y-2">
+                  <span className="ax-label">Kind of work</span>
+                  <select className="ax-input" onChange={(event) => chooseKind(event.target.value)} value={selectedKindId}>
+                    {jobKindsByCategory(workType).map((group) => (
+                      <optgroup key={group.category} label={group.category}>
+                        {group.kinds.map((option) => (
+                          <option key={option.id} value={option.id}>{option.label}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <Hint>{buyerVoice(kind.summary)}</Hint>
+                </label>
+                <div className="grid gap-4 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-sm font-semibold text-ae-text">The agent will need from you</p>
+                    <ul className="mt-2 space-y-1 text-sm leading-6 text-ae-text-muted">
+                      {kind.inputs.map((input) => <li key={input}>• {input}</li>)}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-ae-text">What you get back</p>
+                    <p className="mt-2 text-sm leading-6 text-ae-text-muted">{buyerVoice(kind.deliverable)}</p>
+                    <p className="mt-2 text-xs leading-5 text-ae-text-muted">Checked for: {buyerVoice(kind.evidence.join("; "))}.</p>
+                  </div>
+                </div>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <label className="block space-y-2">
                     <span className="ax-label">Title</span>
@@ -146,12 +276,7 @@ export function PostOpportunityPage() {
                     onChange={(event) => setCategory(event.target.value)}
                     value={category}
                   >
-                    <option>Enterprise automation</option>
-                    <option>Financial ops</option>
-                    <option>Creative tech</option>
-                    <option>Research</option>
-                    <option>Dev</option>
-                    <option>Sales</option>
+                    {CATEGORY_OPTIONS.map((option) => <option key={option}>{option}</option>)}
                   </select>
                 </label>
                 <label className="block space-y-2">
@@ -162,11 +287,71 @@ export function PostOpportunityPage() {
                     placeholder="Describe the work, operating context, and expected agent behavior..."
                     value={description}
                   />
-                  <Hint>At least 12 characters.</Hint>
+                  <Hint>Fill in each prompt; agents work from exactly what you write here. Briefs are public: share private contacts, logins and internal documents in the contract thread after you hire, never here.</Hint>
                 </label>
               </FormSection>
 
-              <FormSection step="02" title="Scope & acceptance" description="The skills it takes and how you will judge the delivery.">
+              {isService ? (
+                <FormSection step="02" title="The service" description="Where the agent works, its limits, and for how long.">
+                  {kind.platforms.length ? (
+                    <fieldset className="space-y-2">
+                      <legend className="ax-label">Platforms you will share access to</legend>
+                      <div className="flex flex-wrap gap-2">
+                        {kind.platforms.map((platform) => {
+                          const on = platforms.includes(platform);
+                          return (
+                            <button
+                              key={platform}
+                              aria-pressed={on}
+                              className={`rounded-full border px-3.5 py-1.5 text-sm transition ${on ? "border-ae-primary/60 bg-ae-primary/15 text-ae-primary" : "border-white/15 text-ae-text-muted hover:border-white/30 hover:text-ae-text"}`}
+                              onClick={() => togglePlatform(platform)}
+                              type="button"
+                            >
+                              {platform}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <Hint>{ACCESS_RULES}</Hint>
+                    </fieldset>
+                  ) : null}
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    {kind.limits.map((key) => (
+                      <label key={key} className="block space-y-2">
+                        <span className="ax-label">{LIMITS[key].label}</span>
+                        <input
+                          className="ax-input"
+                          inputMode={LIMITS[key].unit === "cents" ? "decimal" : "numeric"}
+                          onChange={(event) => setLimitInputs((current) => ({ ...current, [key]: event.target.value }))}
+                          placeholder={key === "adSpendCapCents" ? "$500" : key === "refundLimitCents" ? "$50" : "50"}
+                          value={limitInputs[key] ?? ""}
+                        />
+                        <Hint>{LIMITS[key].hint}</Hint>
+                      </label>
+                    ))}
+                    <label className="block space-y-2">
+                      <span className="ax-label">Number of weeks</span>
+                      <input
+                        className="ax-input"
+                        inputMode="numeric"
+                        max={52}
+                        min={1}
+                        onChange={(event) => setWeeks(event.target.value)}
+                        type="number"
+                        value={weeks}
+                      />
+                      <Hint>Each week is its own contract you fund and approve. The agent agrees to this many weeks.</Hint>
+                    </label>
+                  </div>
+                  {serviceProblems.length && (platforms.length || Object.values(limitInputs).some(Boolean)) ? (
+                    <ul className="space-y-1 text-sm text-ae-amber">
+                      {serviceProblems.map((problem) => <li key={problem}>{problem}</li>)}
+                    </ul>
+                  ) : null}
+                </FormSection>
+              ) : null}
+
+              <FormSection step={isService ? "03" : "02"} title="Scope & acceptance" description="The skills it takes and how you will judge the delivery.">
                 <label className="block space-y-2">
                   <span className="ax-label">Required skills</span>
                   <input
@@ -189,26 +374,32 @@ export function PostOpportunityPage() {
                 </label>
               </FormSection>
 
-              <FormSection step="03" title="Budget & timing" description="A guide for proposals. The contract price is agreed before work starts.">
+              <FormSection
+                step={isService ? "04" : "03"}
+                title={isService ? "Weekly fee" : "Budget & timing"}
+                description={isService ? "A guide for proposals. The weekly price is agreed before work starts, and ad spend is separate." : "A guide for proposals. The contract price is agreed before work starts."}
+              >
                 <div className="grid gap-5 sm:grid-cols-2">
                   <label className="block space-y-2">
-                    <span className="ax-label">Budget range</span>
+                    <span className="ax-label">{isService ? "Agent fee per week" : "Budget range"}</span>
                     <input
                       className="ax-input"
                       onChange={(event) => setBudget(event.target.value)}
-                      placeholder="$6k - $14k"
+                      placeholder={isService ? "$300 - $600 a week" : "$6k - $14k"}
                       value={budget}
                     />
                   </label>
-                  <label className="block space-y-2">
-                    <span className="ax-label">Estimated duration</span>
-                    <input
-                      className="ax-input"
-                      onChange={(event) => setDuration(event.target.value)}
-                      placeholder="4 weeks"
-                      value={duration}
-                    />
-                  </label>
+                  {isService ? null : (
+                    <label className="block space-y-2">
+                      <span className="ax-label">Estimated duration</span>
+                      <input
+                        className="ax-input"
+                        onChange={(event) => setDuration(event.target.value)}
+                        placeholder="4 weeks"
+                        value={duration}
+                      />
+                    </label>
+                  )}
                 </div>
               </FormSection>
             </div>
@@ -235,7 +426,7 @@ export function PostOpportunityPage() {
           <GlassCard className="p-6">
             <h2 id="post-steps-title" className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">How it works</h2>
             <ol className="mt-5 space-y-5">
-              {steps.map(([heading, body], index) => (
+              {(isService ? serviceSteps : steps).map(([heading, body], index) => (
                 <li key={heading} className="flex gap-3.5">
                   <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-full bg-ae-primary/15 font-mono text-xs font-semibold text-ae-primary">{index + 1}</span>
                   <div>
