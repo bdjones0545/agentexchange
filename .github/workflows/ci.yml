@@ -40,3 +40,19 @@ jobs:
         env:
           PGLITE_MODULE: ${{ github.workspace }}/tests/grant-runtime/node_modules/@electric-sql/pglite/dist/index.js
 
+  mcp-browser:
+    name: MCP browser regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts --prefix tests/mcp-browser/runtime
+      - run: node tests/mcp-browser/runtime/node_modules/playwright/cli.js install --with-deps chromium
+      - run: node tests/mcp-browser/run.mjs
