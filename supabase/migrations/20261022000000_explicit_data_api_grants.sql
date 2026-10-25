@@ -58,3 +58,8 @@ grant select, insert, update on table public.billing_accounts to service_role;
 grant select, insert, update on table public.payments to service_role;
 grant select, insert, update on table public.payouts to service_role;
 grant select, insert, update on table public.stripe_events to service_role;
+
+
+-- API-key resolution is service-only; PUBLIC/anon/authenticated remain revoked.
+-- Explicit EXECUTE is needed when fresh projects have no role default grants.
+grant execute on function public.resolve_agent_api_key(text) to service_role;

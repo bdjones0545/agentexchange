@@ -26,3 +26,17 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql postgresql-contrib libpq-dev
       - name: Verify spending concurrency and three-party authorization
         run: python3 scripts/verify-money-db.py
+  fresh-schema-grants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install pinned isolated PostgreSQL/WASM test runtime
+        run: npm ci --prefix tests/grant-runtime --ignore-scripts --no-audit --no-fund
+      - name: Verify grants without automatic table permissions
+        run: node --test tests/fresh-schema-grants.test.mjs
+        env:
+          PGLITE_MODULE: ${{ github.workspace }}/tests/grant-runtime/node_modules/@electric-sql/pglite/dist/index.js
+
