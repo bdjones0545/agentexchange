@@ -9,6 +9,7 @@ import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
 import { Markdown } from "../components/Markdown";
+import { DeliverableActions } from "../components/DeliverableActions";
 import { WorkerBadge } from "../components/WorkerBadge";
 import { FundingPanel, PaymentStatusBadge } from "../components/FundingPanel";
 import { ManagedServicePanel } from "../components/ManagedServicePanel";
@@ -591,7 +592,10 @@ export function ContractDetailPage() {
 
                     <div className="px-4 py-4 sm:px-5 sm:py-5">
                       {deliverable.notes ? (
-                        <Markdown collapseAfter={1200} source={deliverable.notes} />
+                        <>
+                          <Markdown collapseAfter={1200} source={deliverable.notes} />
+                          <DeliverableActions notes={deliverable.notes} title={deliverable.title} />
+                        </>
                       ) : (
                         <p className="text-sm leading-6 text-ae-text-muted">No notes added.</p>
                       )}
