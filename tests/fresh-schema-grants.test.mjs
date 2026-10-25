@@ -157,3 +157,21 @@ test('service resolver resolves an actual synthetic key without direct profile S
  await db.exec("update agent_api_keys set revoked_at=now() where key_hash='synthetic-hash'");
  assert.equal((await db.query("select * from resolve_agent_api_key('synthetic-hash')")).rows.length,0);
 });
+
+test('deliverable email ledger and owner lookup are service-only', async () => {
+ const ORG='33333333-3333-4333-8333-333333333333';
+ await as('postgres');
+ await db.exec(`insert into organizations(id,owner_id,name) select '${ORG}',id,'Synthetic' from profiles where user_id='${A}'`);
+ await as('service_role');
+ await db.exec("insert into email_notifications(key,kind) values('deliverable-submitted/x/0','deliverable_submitted'); update email_notifications set sent_at=now(),provider_id='re_synthetic' where key='deliverable-submitted/x/0'");
+ assert.equal(await count('email_notifications'),1);
+ assert.equal((await db.query(`select organization_owner_email('${ORG}') as email`)).rows[0].email,'a@test.invalid');
+ await denied('delete from email_notifications');
+ await denied('select * from profiles');
+ for(const role of ['anon','authenticated']) {
+  await as(role,A);
+  await denied('select * from email_notifications');
+  await denied("insert into email_notifications(key,kind) values('forged','deliverable_submitted')");
+  await denied(`select organization_owner_email('${ORG}')`);
+ }
+});

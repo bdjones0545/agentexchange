@@ -11,7 +11,7 @@ const BODY = "CONFIDENTIAL-WORK-PRODUCT: the full memo the organization is payin
 
 type Row = Record<string, unknown>;
 
-function world(opts: { status?: string; decisions?: unknown[]; withLedger?: boolean } = {}) {
+function world(opts: { status?: string; decisions?: unknown[]; withLedger?: boolean; withOwnerFn?: boolean } = {}) {
   const tables: Record<string, Row[]> = {
     profiles: [{ id: OWNER, email: "owner@acme.test", user_id: "u-1" }],
     organizations: [{ id: ORG, owner_id: OWNER, name: "Acme" }],
@@ -23,6 +23,15 @@ function world(opts: { status?: string; decisions?: unknown[]; withLedger?: bool
   if (opts.withLedger !== false) tables.email_notifications = [];
   const db = fakeDb({
     tables,
+    // organization_owner_email(): the service-only recipient lookup from the migration.
+    rpc: (name, args) => {
+      if (name !== "organization_owner_email" || opts.withOwnerFn === false) {
+        return { data: null, error: { message: `Could not find the function public.${name}`, code: "PGRST202" } };
+      }
+      const org = tables.organizations.find((o) => o.id === args.org_id);
+      const owner = tables.profiles.find((p) => p.id === org?.owner_id);
+      return { data: (owner?.email as string | undefined) ?? null, error: null };
+    },
     refuseInsert: (table, row) => {
       if (table !== "email_notifications") return null;
       if (opts.withLedger === false) return { message: 'relation "email_notifications" does not exist', code: "42P01" };
@@ -159,6 +168,22 @@ describe("deliverable submitted email", () => {
     // Both requests carry the same key, so Resend delivers one email.
     expect(new Set(requests.map((r) => r.headers["idempotency-key"])).size).toBe(1);
     expect(log.mock.calls.filter(([line]) => /email_notifications is missing/.test(String(line)))).toHaveLength(1);
+  });
+
+  it("before the migration it finds the owner through the direct profile read", async () => {
+    const { db } = world({ withOwnerFn: false, withLedger: false });
+    const { notify, requests } = notifier(db);
+    expect((await notify(DELIVERABLE, "mcp")).status).toBe("sent");
+    expect((JSON.parse(requests[0].body) as { to: string[] }).to).toEqual(["owner@acme.test"]);
+  });
+
+  it("sends nothing when the owner lookup is refused for another reason", async () => {
+    const { db, tables } = world();
+    const refusing = { ...db, rpc: async () => ({ data: null, error: { message: "permission denied", code: "42501" } }) } as unknown as typeof db;
+    const { notify, requests } = notifier(refusing);
+    expect(await notify(DELIVERABLE, "mcp")).toEqual({ status: "skipped", reason: "no_recipient" });
+    expect(requests).toHaveLength(0);
+    expect(tables.email_notifications).toHaveLength(0);
   });
 
   it("logs outcomes without ids, titles or addresses", async () => {

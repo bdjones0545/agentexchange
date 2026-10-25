@@ -141,7 +141,15 @@ export function deliverableSubmittedEmail(input: {
 const isMissingTable = (error: { code?: string; message?: string }) =>
   error.code === "42P01" || error.code === "PGRST205" || (/email_notifications/.test(error.message ?? "") && /does not exist|schema cache/.test(error.message ?? ""));
 
+/** organization_owner_email() does not exist until the email_notifications migration is applied. */
+const isMissingFunction = (error: { code?: string }) => error.code === "PGRST202" || error.code === "42883";
+
 async function ownerEmail(db: SupabaseClient, organizationId: string): Promise<string | null> {
+  const { data: resolved, error } = await db.rpc("organization_owner_email", { org_id: organizationId });
+  if (!error) return typeof resolved === "string" && resolved.includes("@") ? resolved : null;
+  if (!isMissingFunction(error)) return null;
+  // Before the migration: production's older blanket grants still allow reading
+  // the owner's profile directly. A fresh project has no such grant.
   const { data: org } = await db.from("organizations").select("owner_id").eq("id", organizationId).maybeSingle();
   const ownerId = (org as Row | null)?.owner_id as string | undefined;
   if (!ownerId) return null;
