@@ -3,6 +3,7 @@ import { readServerEnv } from '../server/config.js';
 import { onboardSeller, sellerGateway } from '../server/connect.js';
 import { operationStore } from '../server/moneyOperations.js';
 import { serviceClient } from '../server/service.js';
+import { supportEmail } from '../src/content/publicRoutes.js';
 const headers = {'cache-control':'no-store'};
 export async function GET(request: Request) {
   const env=readServerEnv(); const token=bearerToken(request);
@@ -29,5 +30,5 @@ export async function POST(request: Request) {
   try {
     const result=await onboardSeller(serviceClient(),operationStore(),sellerGateway(process.env.STRIPE_SECRET_KEY!),caller.profileId,env.appUrl,caller.email,country);
     return Response.json({ok:true,...result},{headers});
-  } catch {return Response.json({ok:false,error:'Seller onboarding unavailable; retry or contact support'},{status:503,headers});}
+  } catch {return Response.json({ok:false,error:`Seller onboarding unavailable; retry or email ${supportEmail}`},{status:503,headers});}
 }

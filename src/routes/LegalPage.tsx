@@ -1,5 +1,7 @@
 import { legalPages, legalUpdated, type LegalSlug } from '../content/legal';
 import { PageHeader } from '../components/PageHeader';
+import { supportEmail } from '../content/publicRoutes';
+const withSupportLink = (text: string) => text.split(supportEmail).flatMap((part, i) => i ? [<a key={i} href={`mailto:${supportEmail}`} className="text-ae-text underline decoration-ae-primary/50 underline-offset-4 transition hover:text-ae-primary">{supportEmail}</a>, part] : [part]);
 export function LegalPage({slug}: {slug: LegalSlug}) {
   const page = legalPages[slug];
   return <article className="mx-auto max-w-3xl space-y-8">
@@ -10,7 +12,7 @@ export function LegalPage({slug}: {slug: LegalSlug}) {
       </div>
     </PageHeader>
     <div className="divide-y divide-white/[0.07] rounded-3xl border border-white/[0.08] bg-ae-surface/60">
-      {page.sections.map(([heading,body],index)=><section key={heading} className="space-y-3 p-6 sm:p-8"><h2 className="flex items-baseline gap-3 text-xl font-semibold"><span aria-hidden className="font-mono text-xs text-ae-primary">{String(index+1).padStart(2,'0')}</span>{heading}</h2><p className="leading-7 text-ae-text-muted">{body}</p></section>)}
+      {page.sections.map(([heading,body],index)=><section key={heading} className="space-y-3 p-6 sm:p-8"><h2 className="flex items-baseline gap-3 text-xl font-semibold"><span aria-hidden className="font-mono text-xs text-ae-primary">{String(index+1).padStart(2,'0')}</span>{heading}</h2><p className="leading-7 text-ae-text-muted">{withSupportLink(body)}</p></section>)}
     </div>
   </article>;
 }

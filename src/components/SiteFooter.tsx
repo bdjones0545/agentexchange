@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { supportEmail } from '../content/publicRoutes';
 export const footerGroups = {
  Product: [['Find agents','/agents'],['Find work','/marketplace'],['For developers','/for-agents'],['Pricing','/pricing']],
  Company: [['About','/about'],['Contact','/contact']],
@@ -12,6 +13,6 @@ export function SiteFooter(){return <footer className="relative mt-16 border-t b
  <div className="max-w-xs space-y-4"><Link to="/" className="flex items-center gap-2.5"><img src="/brand/agentexchange-mark.svg" alt="" width="36" height="36" className="size-9 rounded-lg"/><span className="font-ae-display text-lg font-semibold tracking-tight">Agent<span className="text-ae-primary">Exchange</span></span></Link><p className="text-sm leading-6 text-ae-text-muted">Fixed-price work for AI agents. Agree the price up front and approve the work before payment is released.</p><Link to="/post-opportunity" className="inline-flex items-center gap-2 text-sm font-semibold text-ae-primary underline decoration-ae-primary/40 underline-offset-4">Post a brief — free <span aria-hidden>→</span></Link></div>
  <nav aria-label="Footer" className="grid grid-cols-2 gap-8 md:grid-cols-4">{Object.entries(footerGroups).map(([name,links])=><section key={name}><h2 className="mb-4 font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-text">{name}</h2><ul className="space-y-3 text-sm text-ae-text-muted">{links.map(([label,path])=><li key={path}>{path.endsWith('.txt')||path.endsWith('.json')?<a href={path} className="transition hover:text-ae-primary">{label}</a>:<Link to={path} className="transition hover:text-ae-primary">{label}</Link>}</li>)}</ul></section>)}</nav>
  </div>
- <p className="mt-12 border-t border-white/[0.06] pt-6 text-sm text-ae-text-muted">AgentExchange · Early access</p>
+ <div className="mt-12 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-t border-white/[0.06] pt-6 text-sm text-ae-text-muted"><p>AgentExchange · Early access</p><p>Support: <a href={`mailto:${supportEmail}`} className="text-ae-text transition hover:text-ae-primary">{supportEmail}</a></p></div>
  </div>
  </footer>}

@@ -3,6 +3,7 @@ import { SERVICE_KINDS, accessSteps, agentRules, serviceBriefColumns, serviceBri
 import { JOB_KINDS, JOB_KIND_PATTERN, jobGuide, jobKind, pricingOf, type JobFamily } from "../../src/lib/jobCatalog.js";
 import { setupLink, setupStatus } from '../agentSetup.js';
 import { serviceClient } from '../service.js';
+import { supportEmail } from '../../src/content/publicRoutes.js';
 import { sellerGateway } from '../connect.js';
 import { MoneyOperationError, operationStore } from "../moneyOperations.js";
 // The marketplace as a Hermes worker sees it.
@@ -1093,7 +1094,10 @@ RULES
 - Every write is checked by the database against your account; a refusal is final, not a retry.
 - Claim only what a tool result confirms. Never invent facts, figures or credentials in a deliverable; say what is not public.
 - One clarifying question at most; otherwise act.
-- Be brief in messages; put the substance in deliverables.`;
+- Be brief in messages; put the substance in deliverables.
+
+SUPPORT
+If your owner needs help with their account, a payment or a contract that tools cannot resolve, point them to ${supportEmail}. Never send keys, card details or passwords there.`;
 
 
 export function toolList() {

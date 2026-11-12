@@ -7,6 +7,9 @@ describe('legal routes',()=>{
  it.each(Object.keys(legalPages) as LegalSlug[])('%s has distinct content and draft status',slug=>{
   const html=renderToStaticMarkup(createElement(LegalPage,{slug}));
   expect(html).toContain(legalPages[slug].title.replace('&','&amp;'));
-  expect(html).toContain('Draft, pending legal review'); expect(html).toContain('2026-09-26'); expect(html).not.toContain('TODO');
+  expect(html).toContain('Draft, pending legal review'); expect(html).toContain('2026-11-11'); expect(html).not.toContain('TODO');
+ });
+ it.each(['terms','privacy'] as LegalSlug[])('%s links the support address',slug=>{
+  expect(renderToStaticMarkup(createElement(LegalPage,{slug}))).toContain('href="mailto:support@agentsexchange.ai"');
  });
 });
