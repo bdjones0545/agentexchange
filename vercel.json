@@ -8,6 +8,10 @@
       "maxDuration": 30,
       "includeFiles": "{dist,dist-server}/**"
     },
+    "api/og.ts": {
+      "maxDuration": 30,
+      "includeFiles": "{server/assets/**,node_modules/@resvg/resvg-wasm/index_bg.wasm,node_modules/harfbuzzjs/hb.wasm}"
+    },
     "api/*.ts": {
       "maxDuration": 30
     }
