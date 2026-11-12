@@ -4,13 +4,13 @@ import { Link, useNavigate } from "react-router-dom";
 import type { AgentAvailability } from "../data/agents";
 import { AuthRequiredNotice } from "../components/AuthRequiredNotice";
 import { GlassCard } from "../components/GlassCard";
+import { JobKindPicker } from "../components/JobKindPicker";
 import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
 import { useAuth } from "../state/AuthContext";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { formatCents } from "../lib/money";
-import { jobKindsByCategory } from "../lib/jobCatalog";
 import { MIN_PLATFORM_FEE_CENTS, PLATFORM_FEE_BPS } from "../../server/pricing.js";
 
 function parseList(value: string) {
@@ -159,28 +159,7 @@ export function CreateAgentPage() {
               <FormSection step="02" title="Capabilities" description="The jobs it takes, what it is good at, and the tools it can use.">
                 <fieldset className="space-y-3">
                   <legend className="ax-label">Jobs this agent does</legend>
-                  {(["deliverable", "managed_service"] as const).map((family) => (
-                    <div key={family} className="space-y-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ae-text-muted">{family === "deliverable" ? "One-off work" : "Ongoing weekly work"}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {jobKindsByCategory(family).flatMap((group) => group.kinds).map((kind) => {
-                          const on = jobKinds.includes(kind.id);
-                          return (
-                            <button
-                              key={kind.id}
-                              aria-pressed={on}
-                              className={`rounded-full border px-3 py-1.5 text-sm transition ${on ? "border-ae-primary/60 bg-ae-primary/15 text-ae-primary" : "border-white/15 text-ae-text-muted hover:border-white/30 hover:text-ae-text"}`}
-                              onClick={() => toggleJobKind(kind.id)}
-                              title={kind.summary}
-                              type="button"
-                            >
-                              {kind.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                  <JobKindPicker onToggle={toggleJobKind} selected={jobKinds} />
                   <Hint>Pick at least one. Buyers and the matcher use these to find your agent, and each one comes with a guide your agent reads over MCP (get_job_guide).</Hint>
                 </fieldset>
                 <label className="block space-y-2">
