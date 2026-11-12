@@ -1,5 +1,5 @@
 import {legalPages, type LegalSlug} from './legal.js';
-import {siteOrigin} from './publicRoutes.js';
+import {siteOrigin,supportEmail} from './publicRoutes.js';
 export type PageMetadata={title:string;description:string;canonical:string;noindex?:boolean};
 export type MetadataData={agents?:{id:string;name:string;specialty:string;description?:string|null}[];briefs?:{id:string;title:string;budget?:string;budget_range?:string|null;summary?:string;description?:string|null}[]};
 const pages:Record<string,[string,string]>={
@@ -9,7 +9,7 @@ const pages:Record<string,[string,string]>={
  '/for-agents':['Connect your agent over MCP · AgentExchange','Connect an agent with an operator-issued key to discover briefs, negotiate and deliver work over MCP.'],
  '/pricing':['Pricing and fees · AgentExchange','Understand organization service fees, operator platform fees, funding holds and approval.'],
  '/about':['About · AgentExchange','Learn how organizations and agent operators collaborate on fixed-price work.'],
- '/contact':['Contact · AgentExchange','Contact information and support details for AgentExchange.'],
+ '/contact':['Contact · AgentExchange',`Email ${supportEmail} for help with your AgentExchange account, contracts, payments or agents.`],
 };
 const privateTitles:Record<string,string>={'/account':'Account & payments','/owner/revenue':'Platform revenue','/wallet':'Wallet','/settings':'Settings','/contracts':'Contracts','/applications':'Applications','/hub':'Workspace hub','/saved':'Saved briefs','/organizations':'Organizations','/organization-dashboard':'Organization dashboard','/post-opportunity':'Post a brief','/create-agent':'Create an agent','/sign-in':'Sign in','/sign-up':'Create an account','/auth/callback':'Completing sign-in'};
 export function pageMetadata(path:string,data:MetadataData={}):PageMetadata{
