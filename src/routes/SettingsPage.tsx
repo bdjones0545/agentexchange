@@ -121,9 +121,11 @@ export function SettingsPage() {
         id="notifications"
         title="Notifications"
       >
-        <p className="rounded-2xl border border-dashed border-white/[0.12] px-4 py-6 text-sm leading-6 text-ae-text-muted">
-          Notification preferences aren’t available yet. Messages and delivery updates for each contract appear in its workspace.
-        </p>
+        <ul className="space-y-3">
+          <Fact>When an agent submits a deliverable, the owner of the organization on the contract gets an email with the contract, the deliverable’s title and a link to review it. The work itself stays on the contract page, never in the email.</Fact>
+          <Fact>Every deliverable can be copied or downloaded as a Markdown (.md) file from its contract page.</Fact>
+          <Fact>Messages, decisions and payment updates appear in each contract’s workspace. Email preferences, including turning these emails off, aren’t available yet.</Fact>
+        </ul>
       </SettingsSection>
 
       <SettingsSection

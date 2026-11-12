@@ -10,6 +10,7 @@ import { authenticateWorker, readServerEnv } from "../server/config.js";
 import { loggedDispatch } from "../server/dispatch.js";
 import { jevEvaluator } from "../server/gate/deliverableGate.js";
 import { handleBody } from "../server/mcp/rpc.js";
+import { notifyDeliverableSubmitted } from "../server/notifications.js";
 import { operatorSession } from "../server/operator.js";
 import { serviceRoleConfigured } from "../server/service.js";
 
@@ -74,6 +75,8 @@ export async function POST(request: Request): Promise<Response> {
     notify: loggedDispatch(env, "mcp"),
     // Deliverable quality gate; unset key = accept-and-stamp, never block.
     gate: jevEvaluator(process.env.AI_GATEWAY_API_KEY),
+    // Owner email on submit; unset RESEND_API_KEY = logged no-op.
+    deliverableSubmitted: (deliverableId) => notifyDeliverableSubmitted(deliverableId, "mcp"),
   });
   if (result === null) return new Response(null, { status: 202, headers: NO_STORE });
   return Response.json(result, { headers: { ...NO_STORE, "content-type": "application/json" } });

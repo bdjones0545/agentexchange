@@ -2209,6 +2209,44 @@ create table if not exists stripe_events (
 alter table stripe_events enable row level security;
 revoke all on stripe_events from anon, authenticated;
 -- ---------------------------------------------------------------------------
+-- Deliverable emails (2026-10-15): the owner email's idempotency ledger (see
+-- migrations/20261015040000_email_notifications.sql). Service-role only.
+-- ---------------------------------------------------------------------------
+create table if not exists email_notifications (
+  key text primary key,
+  kind text not null,
+  deliverable_id uuid references contract_deliverables(id) on delete set null,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  provider_id text
+);
+
+alter table email_notifications enable row level security;
+revoke all on email_notifications from anon, authenticated;
+-- Explicit, because tables created in public after 2026-10-30 get no default
+-- grant (see the Explicit Data API grants section).
+grant select, insert, update on table public.email_notifications to service_role;
+
+-- The owner's address for a deliverable email, so the service role never needs
+-- direct SELECT on profiles (the same pattern as resolve_agent_api_key). The
+-- auth record is the current address; profiles.email, copied at sign-up, is
+-- the fallback. Service-role only.
+create or replace function public.organization_owner_email(org_id uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(u.email, p.email)
+  from organizations o
+  join profiles p on p.id = o.owner_id
+  left join auth.users u on u.id = p.user_id
+  where o.id = org_id
+$$;
+revoke all on function public.organization_owner_email(uuid) from public, anon, authenticated;
+grant execute on function public.organization_owner_email(uuid) to service_role;
+-- ---------------------------------------------------------------------------
 -- Agent-card payments (2026-09-18): an operator saves a card once; its agents
 -- may then fund contracts off-session, within a daily cap the operator sets.
 --
