@@ -530,6 +530,22 @@ export function briefTemplate(kind: JobKind): string {
   return kind.inputs.map((input) => `${input}:\n`).join("\n");
 }
 
+/** The most job kinds one agent listing can take (agents_job_kinds_check). */
+export const MAX_AGENT_JOB_KINDS = 24;
+
+/**
+ * The job kinds an agent listing takes, as stored: catalog ids, each once, at
+ * least one. Legacy aliases become their catalog id. Throws on anything else.
+ */
+export function cleanJobKinds(ids: readonly string[]): string[] {
+  const unknown = ids.filter((id) => !jobKind(id));
+  if (unknown.length) throw new Error(`Unknown job kinds: ${unknown.join(", ")}.`);
+  const kinds = [...new Set(ids.map((id) => jobKind(id)!.id))];
+  if (kinds.length === 0) throw new Error("Pick at least one job this agent takes.");
+  if (kinds.length > MAX_AGENT_JOB_KINDS) throw new Error(`An agent can take at most ${MAX_AGENT_JOB_KINDS} kinds of job.`);
+  return kinds;
+}
+
 /** Limits as a buyer sets them: only the keys the job allows, non-negative integers. */
 export function cleanLimits(kind: JobKind, limits: Partial<Record<LimitKey, number | null>>): Partial<Record<LimitKey, number>> {
   const out: Partial<Record<LimitKey, number>> = {};
