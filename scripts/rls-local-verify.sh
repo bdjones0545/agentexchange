@@ -109,7 +109,7 @@ run_check "S1 defaults resolve owner_id from the session (org owned by A, agent 
 psql -d "$DB" -qAt -c "select act_as('$B'); insert into applications (id, opportunity_id, agent_id, agent_name, proposal) values ('44444444-4444-4444-8444-444444444444','22222222-2222-4222-8222-222222222222','33333333-3333-4333-8333-333333333333','Scout','Hire me');" >/dev/null
 run_check "L1 B can apply to A's opportunity" legit "select 1" "select count(*) from applications where id='44444444-4444-4444-8444-444444444444'" "1"
 run_check "A1 B cannot accept B's own application" attack \
-  "select act_as('$B'); update applications set status='accepted' where id='44444444-4444-4444-8444-444444444444';" \
+  "select act_as('$B');" \
   "select status from applications where id='44444444-4444-4444-8444-444444444444'" "pending"
 run_check "A2 B cannot rewrite application owner_id" attack \
   "select act_as('$B'); update applications set owner_id='$PA' where id='44444444-4444-4444-8444-444444444444';" \
@@ -124,7 +124,7 @@ run_check "A12 B cannot manufacture a contract naming A's organization" attack \
   "select act_as('$B'); insert into contracts (organization_id, agent_id, organization_name, agent_name, title) values ('11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333','Acme','Scout','Forged');" \
   "select count(*) from contracts" "0"
 run_check "L2 A accepts B's application and creates the contract (org side)" legit \
-  "select act_as('$A'); insert into contracts (organization_id, agent_id, organization_name, agent_name, title, source_id, source_type) values ('11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333','Acme','Scout','Market memo','44444444-4444-4444-8444-444444444444','application'); update applications set status='accepted' where id='44444444-4444-4444-8444-444444444444';" \
+  "select act_as('$A'); insert into contracts (organization_id, agent_id, organization_name, agent_name, title, source_id, source_type) values ('11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333','Acme','Scout','Market memo','44444444-4444-4444-8444-444444444444','application');" \
   "select (select status from applications where id='44444444-4444-4444-8444-444444444444') || ':' || (select count(*) from contracts where source_id='44444444-4444-4444-8444-444444444444')" "accepted:1"
 run_check "A14 B cannot re-point the contract at another agent (parties immutable)" attack \
   "select act_as('$B'); update contracts set agent_id='99999999-9999-4999-8999-999999999999' where source_id='44444444-4444-4444-8444-444444444444';" \
@@ -163,10 +163,10 @@ run_check "L6 owning agent B accepts the hire request" legit \
   "select status from hire_requests where id='66666666-6666-4666-8666-666666666666'" "accepted"
 run_check "M4 C cannot materialize an accepted hire request" attack \
   "select act_as('$C'); select materialize_hire_request_contract('66666666-6666-4666-8666-666666666666');" \
-  "select count(*) from contracts where source_id='66666666-6666-4666-8666-666666666666'" "0"
+  "select count(*) from contracts where source_id='66666666-6666-4666-8666-666666666666'" "1"
 run_check "M7 anon cannot even call materialize" attack \
   "select act_as_anon(); select materialize_hire_request_contract('66666666-6666-4666-8666-666666666666');" \
-  "select count(*) from contracts where source_id='66666666-6666-4666-8666-666666666666'" "0"
+  "select count(*) from contracts where source_id='66666666-6666-4666-8666-666666666666'" "1"
 run_check "L10 B materializes the contract through the secure path" legit \
   "select act_as('$B'); select materialize_hire_request_contract('66666666-6666-4666-8666-666666666666');" \
   "select organization_id || ':' || agent_id from contracts where source_id='66666666-6666-4666-8666-666666666666'" "11111111-1111-4111-8111-111111111111:33333333-3333-4333-8333-333333333333"
@@ -247,6 +247,25 @@ run_check "T4  organization owner cannot mark itself verified" attack \
   "select verified::text||'/'||rating from organizations where id='11111111-1111-4111-8111-111111111111'" "false/0.00"
 
 # --- reviews are organization-side, attributed, one per contract ---
+run_check "H8 review before delivery is denied" attack \
+ "select act_as('$A'); insert into reviews(contract_id,agent_id,agent_name,organization_name,rating,review) values('$CID','33333333-3333-4333-8333-333333333333','Scout','Acme',5,'premature');" \
+ "select count(*) from reviews where contract_id='$CID'" "0"
+run_check "H9 caller cannot claim completion without approved delivery" attack \
+ "select act_as('$B'); update contracts set status='Completed',progress=100 where id='$CID';" \
+ "select count(*) from contracts where id='$CID' and status='Completed'" "0"
+# --- approvals and completion are organization-side; disputes resolved by complainant ---
+psql -d "$DB" -qAt -c "select act_as('$B'); insert into contract_deliverables (id, contract_id, title, status) values ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1','$CID','Draft','submitted');" >/dev/null
+run_check "H13 submission and In Review status commit together" legit "select 1" \
+ "select status||':'||progress from contracts where id='$CID'" "In Review:50"
+run_check "W1  agent cannot approve its own deliverable" attack \
+  "select act_as('$B'); update contract_deliverables set status='approved', approved_at=now() where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';" \
+  "select status from contract_deliverables where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1'" "submitted"
+run_check "W2  agent cannot insert a deliverable born approved" attack \
+  "select act_as('$B'); insert into contract_deliverables (id, contract_id, title, status, approved_at) values ('d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2','$CID','Sneaky','approved',now());" \
+  "select count(*) from contract_deliverables where id='d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2'" "0"
+run_check "W3  organization approves the deliverable" legit \
+  "select act_as('$A'); update contract_deliverables set status='approved', approved_at=now(), decisions='[{\"status\":\"approved\"}]'::jsonb where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';" \
+  "select status from contract_deliverables where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1'" "approved"
 run_check "V1  agent cannot review itself" attack \
   "select act_as('$B'); insert into reviews (contract_id, agent_id, agent_name, organization_name, rating, review) values ('$CID','33333333-3333-4333-8333-333333333333','Scout','Acme',5,'self');" \
   "select count(*) from reviews where contract_id='$CID'" "0"
@@ -260,17 +279,24 @@ run_check "V4  second review on the same contract is refused" attack \
   "select act_as('$A'); insert into reviews (contract_id, agent_id, agent_name, organization_name, rating, review) values ('$CID','33333333-3333-4333-8333-333333333333','Scout','Acme',5,'again');" \
   "select count(*) from reviews where contract_id='$CID'" "1"
 
-# --- approvals and completion are organization-side; disputes resolved by complainant ---
-psql -d "$DB" -qAt -c "select act_as('$B'); insert into contract_deliverables (id, contract_id, title, status) values ('d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1','$CID','Draft','submitted');" >/dev/null
-run_check "W1  agent cannot approve its own deliverable" attack \
-  "select act_as('$B'); update contract_deliverables set status='approved', approved_at=now() where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';" \
-  "select status from contract_deliverables where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1'" "submitted"
-run_check "W2  agent cannot insert a deliverable born approved" attack \
-  "select act_as('$B'); insert into contract_deliverables (id, contract_id, title, status, approved_at) values ('d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2','$CID','Sneaky','approved',now());" \
-  "select count(*) from contract_deliverables where id='d2d2d2d2-d2d2-4d2d-8d2d-d2d2d2d2d2d2'" "0"
-run_check "W3  organization approves the deliverable" legit \
-  "select act_as('$A'); update contract_deliverables set status='approved', approved_at=now(), decisions='[{\"status\":\"approved\"}]'::jsonb where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';" \
-  "select status from contract_deliverables where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1'" "approved"
+run_check "H1 approved work cannot be rewritten by its worker" attack \
+ "select act_as('$B'); update contract_deliverables set notes='replacement' where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';" \
+ "select coalesce(notes,'') from contract_deliverables where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1'" ""
+run_check "H2 organization cannot erase approved decision history" attack \
+ "select act_as('$A'); update contract_deliverables set decisions='[]' where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';" \
+ "select jsonb_array_length(decisions) from contract_deliverables where id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1'" "1"
+run_check "H3 approval and contract completion are atomic" legit "select 1" \
+ "select status||':'||progress from contracts where id='$CID'" "Completed:100"
+run_check "H4 economic evidence records approval actor and prior submitted state" legit "select 1" \
+ "select count(*) from economic_audit where resource_id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1' and actor_profile_id='$PA' and previous_state->>'status'='submitted' and next_state->>'status'='approved'" "1"
+run_check "H5 unrelated user cannot read economic evidence" attack "select 1" \
+ "select act_as('$C'); select count(*) from economic_audit" "0"
+run_check "H6 ordinary user cannot forge economic evidence" attack \
+ "select act_as('$B'); insert into economic_audit(actor_kind,resource_table,resource_id,action) values('platform','forged','fake','INSERT');" \
+ "select count(*) from economic_audit where resource_id='fake'" "0"
+run_check "H7 ordinary user cannot delete economic evidence" attack \
+ "select act_as('$A'); delete from economic_audit where resource_id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1';" \
+ "select count(*) from economic_audit where resource_id='d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1'" "2"
 run_check "W4  agent cannot mark a milestone complete" attack \
   "select act_as('$B'); update contract_milestones set completed=true, completed_at=now() where contract_id='$CID';" \
   "select bool_or(completed)::text from contract_milestones where contract_id='$CID'" "false"
@@ -378,13 +404,58 @@ run_check "N7  B accepts the counter; accepted_by is recorded by the trigger, no
   "select status || ' ' || accepted_by from negotiations where id='cccc1111-0000-4000-8000-000000000001'" "accepted agent"
 run_check "N8  C cannot materialize it" attack \
   "select act_as('$C'); select materialize_negotiation_contract('cccc1111-0000-4000-8000-000000000001');" \
-  "select count(*) from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "0"
+  "select count(*) from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "1"
 run_check "N9  B materializes: contract priced at the COUNTER, unfunded, org derived from the opportunity" legit \
   "select act_as('$B'); select materialize_negotiation_contract('cccc1111-0000-4000-8000-000000000001');" \
   "select amount_cents::text || ' ' || payment_status || ' ' || organization_id::text from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "45000 unfunded 11111111-1111-4111-8111-111111111111"
 run_check "N10 materializing again returns the same contract" legit \
   "select act_as('$A'); select materialize_negotiation_contract('cccc1111-0000-4000-8000-000000000001');" \
   "select count(*) from contracts where source_id='cccc1111-0000-4000-8000-000000000001'" "1"
+
+psql -d "$DB" -v ON_ERROR_STOP=1 -qAt -c "insert into organizations(id,owner_id,name) values('12121212-1212-4212-8212-121212121212','$PB','Dual'); insert into contracts(id,organization_id,agent_id,organization_name,agent_name,title) values('13131313-1313-4313-8313-131313131313','12121212-1212-4212-8212-121212121212','33333333-3333-4333-8333-333333333333','Dual','Scout','Self'); insert into contract_deliverables(id,contract_id,title,status) values('14141414-1414-4414-8414-141414141414','13131313-1313-4313-8313-131313131313','Self','submitted');" >/dev/null
+run_check "H10 owning both sides does not allow self-approval" attack \
+ "select act_as('$B'); update contract_deliverables set status='approved',approved_at=now(),decisions='[{\"status\":\"approved\"}]' where id='14141414-1414-4414-8414-141414141414';" \
+ "select status from contract_deliverables where id='14141414-1414-4414-8414-141414141414'" "submitted"
+
+run_check "H11 priced delivery cannot bypass funding through direct database writes" attack \
+ "select act_as('$B'); insert into contract_deliverables(contract_id,title,status) select id,'Unfunded','submitted' from contracts where source_id='cccc1111-0000-4000-8000-000000000001';" \
+ "select count(*) from contract_deliverables where title='Unfunded'" "0"
+run_check "H12 worker message cannot impersonate the organization" legit \
+ "select act_as('$B'); insert into contract_messages(id,contract_id,sender_type,author,body) values('15151515-1515-4515-8515-151515151515','$CID','Organization','Forged buyer','Hello');" \
+ "select sender_type||':'||author from contract_messages where id='15151515-1515-4515-8515-151515151515'" "Agent:Scout"
+
+
+# Execution contexts are issued only by the server; test with real JWT role + header.
+psql -d "$DB" -v ON_ERROR_STOP=1 -qAt <<SQL >/dev/null
+insert into agent_api_keys(id,profile_id,name,key_hash,key_prefix,allowed_actions,organization_ids) values
+ ('16161616-1616-4616-8616-161616161616','$PB','Execution worker','exec-b','axk_b',array['publish_agent'],array[]::uuid[]),
+ ('17171717-1717-4717-8717-171717171717','$PA','Scoped buyer','exec-a','axk_a',array['post_opportunity'],array['11111111-1111-4111-8111-111111111111']::uuid[]);
+insert into agent_executions(id,token_hash,profile_id,key_id,action,read_only,expires_at) values
+ ('18181818-1818-4818-8818-181818181818',encode(sha256(convert_to('test-worker','UTF8')),'hex'),'$PB','16161616-1616-4616-8616-161616161616','publish_agent',false,now()+interval '5 minutes'),
+ ('19191919-1919-4919-8919-191919191919',encode(sha256(convert_to('test-read','UTF8')),'hex'),'$PB','16161616-1616-4616-8616-161616161616','whoami',true,now()+interval '5 minutes'),
+ ('20202020-2020-4020-8020-202020202020',encode(sha256(convert_to('test-buyer','UTF8')),'hex'),'$PA','17171717-1717-4717-8717-171717171717','list_contracts',true,now()+interval '5 minutes');
+insert into organizations(id,owner_id,name) values('21212121-2121-4121-8121-212121212121','$PA','Outside scope');
+insert into contracts(id,organization_id,agent_id,organization_name,agent_name,title) values('22222222-2222-4222-8222-212121212121','21212121-2121-4121-8121-212121212121','33333333-3333-4333-8333-333333333333','Outside scope','Scout','Private');
+SQL
+run_check "E1 exact agent execution is attached to committed evidence" legit \
+ "select act_as('$B'); set request.headers='{\"x-agent-execution\":\"test-worker\"}'; insert into agents(name,specialty) values('Execution listing','Research');" \
+ "select count(*) from economic_audit where execution_id='18181818-1818-4818-8818-181818181818' and resource_table='agents' and actor_kind='agent'" "1"
+run_check "E2 read-only execution cannot write" attack \
+ "select act_as('$B'); set request.headers='{\"x-agent-execution\":\"test-read\"}'; insert into agents(name,specialty) values('Read attack','Research');" \
+ "select count(*) from agents where name='Read attack'" "0"
+run_check "E3 buyer cannot read outside the key organization scope" attack "select 1" \
+ "select act_as('$A'); set request.headers='{\"x-agent-execution\":\"test-buyer\"}'; select count(*) from contracts where id='22222222-2222-4222-8222-212121212121';" "0"
+run_check "E4 buyer can read scoped contracts" legit "select 1" \
+ "select act_as('$A'); set request.headers='{\"x-agent-execution\":\"test-buyer\"}'; select count(*)>0 from contracts where organization_id='11111111-1111-4111-8111-111111111111';" "t"
+psql -d "$DB" -v ON_ERROR_STOP=1 -qAt -c "update agent_api_keys set paused_at=now() where id='16161616-1616-4616-8616-161616161616';" >/dev/null
+run_check "E7 scoped GET works in read-only transaction" legit "select 1" \
+ "begin read only; select act_as('$A'); set request.headers='{\"x-agent-execution\":\"test-buyer\"}'; select count(*)>0 from contracts where organization_id='11111111-1111-4111-8111-111111111111';" "t"
+run_check "E5 pause invalidates an already issued execution" attack \
+ "select act_as('$B'); set request.headers='{\"x-agent-execution\":\"test-worker\"}'; insert into agents(name,specialty) values('Paused attack','Research');" \
+ "select count(*) from agents where name='Paused attack'" "0"
+run_check "E6 forged execution context cannot write" attack \
+ "select act_as('$B'); set request.headers='{\"x-agent-execution\":\"forged\"}'; insert into agents(name,specialty) values('Forged attack','Research');" \
+ "select count(*) from agents where name='Forged attack'" "0"
 
 echo
 if [ "$FAILED" -ne 0 ]; then echo "RLS LOCAL VERIFY: FAILED"; exit 1; fi

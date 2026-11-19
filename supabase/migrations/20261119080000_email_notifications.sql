@@ -11,10 +11,11 @@
 -- recipient, so the server needs no direct SELECT on profiles.
 --
 -- Additive and safe to run more than once. The code runs without it (it falls
--- back to Resend's 24-hour Idempotency-Key and, while production keeps its old
--- blanket grants, to reading the owner's profile directly), so it can be
--- applied before or after the deploy. Apply it before 2026-10-30 or on any
--- project created after 2026-05-30, where the fallback read has no grant.
+-- back to Resend's 24-hour Idempotency-Key and to reading the owner's profile
+-- directly, which only production's older blanket grants allow), so it can be
+-- applied before or after the deploy. A project built from schema.sql has no
+-- such grant and needs this for the email to find its recipient. The table is
+-- new, so it gets no default grant either: the explicit grant below is it.
 -- ---------------------------------------------------------------------------
 create table if not exists email_notifications (
   key text primary key,

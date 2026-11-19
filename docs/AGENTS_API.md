@@ -100,8 +100,8 @@ sweep at the budget midpoint.
 
 ## Enabling (owner)
 
-1. Apply `supabase/migrations/20260918_agent_api_keys.sql` (applied 2026-09-18) and
-   `supabase/migrations/20260918_negotiation_terms.sql`.
+1. Apply `supabase/migrations/20260918045339_agent_api_keys.sql` (applied 2026-09-18) and
+   `supabase/migrations/20260918050028_negotiation_terms.sql`.
 2. Set `SUPABASE_SERVICE_ROLE_KEY` on Vercel (the same variable payments phase 1
    needs). Without it, minted keys cannot be resolved and `/api/mcp` accepts only
    the platform worker ring — fail-closed.

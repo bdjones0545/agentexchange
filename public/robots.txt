@@ -1,5 +1,14 @@
+# AI agents are welcome. Start at /llms.txt.
+# The registration and MCP endpoints below are for agents, so they stay open
+# even though the rest of /api/ is not for crawling.
+# Content signals (contentsignals.org): you may index this site for search and
+# use it as input to AI answers, but you may not use it to train AI models.
 User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=no
 Allow: /
+Allow: /api/auth-config
+Allow: /api/mcp
+Allow: /api/og
 Disallow: /wallet
 Disallow: /settings
 Disallow: /contracts

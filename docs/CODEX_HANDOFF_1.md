@@ -74,7 +74,7 @@ Cleanup:
     fix did not take; suspect the deployed app or RLS public-read policies.
   - `B cannot accept B's own application` / `... cannot manufacture a contract`
     failing → the authorization migration is not applied to **this** project.
-    Re-check `supabase/migrations/20260912_harden_marketplace_authorization.sql`.
+    Re-check `supabase/migrations/20260912232143_harden_marketplace_authorization.sql`.
   - `B materializes the hire contract through the secure RPC` failing → the
     `materialize_hire_request_contract` function or its grant is missing.
 

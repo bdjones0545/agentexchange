@@ -5,7 +5,7 @@
 // (Account → Agent API keys). Both end in a real user session, so every read and
 // write is decided by RLS exactly as it is for a browser.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { agentSession, resolveAgentKey } from "../server/agentKeys.js";
+import { agentKeyFromHeader, agentSession, resolveAgentKey } from "../server/agentKeys.js";
 import { authenticateWorker, readServerEnv } from "../server/config.js";
 import { loggedDispatch } from "../server/dispatch.js";
 import { jevEvaluator } from "../server/gate/deliverableGate.js";
@@ -44,7 +44,7 @@ export async function POST(request: Request): Promise<Response> {
       },
     };
   } else if (keysEnabled) {
-    const presented = (/^Bearer\s+(.+)$/i.exec(header ?? "") ?? [])[1]?.trim() ?? "";
+    const presented = agentKeyFromHeader(header);
     const resolved = presented ? await resolveAgentKey(presented) : null;
     if (resolved) {
       identity = {
@@ -72,7 +72,8 @@ export async function POST(request: Request): Promise<Response> {
     paymentsAllowed: identity.paymentsAllowed,
     now: () => new Date().toISOString(),
     paymentsEnabled: env.paymentsEnabled,
-    notify: loggedDispatch(env, "mcp"),
+    // Never wake the worker that made the call about its own write.
+    notify: loggedDispatch({ ...env, workers: env.workers.filter((w) => w.name !== identity.name) }, "mcp"),
     // Deliverable quality gate; unset key = accept-and-stamp, never block.
     gate: jevEvaluator(process.env.AI_GATEWAY_API_KEY),
     // Owner email on submit; unset RESEND_API_KEY = logged no-op.

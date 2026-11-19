@@ -2,7 +2,10 @@ import { isTestListing } from "../../src/lib/publicListings.js";
 import { SERVICE_KINDS, accessSteps, agentRules, serviceBriefColumns, serviceBriefFromRow, serviceSummary, serviceTermsFromJson, validateServiceBrief, weekStages, type ServiceKind } from "../../src/lib/managedService.js";
 import { JOB_KINDS, JOB_KIND_PATTERN, jobGuide, jobKind, pricingOf, type JobFamily } from "../../src/lib/jobCatalog.js";
 import { setupLink, setupStatus } from '../agentSetup.js';
+import { KEY_AUTHORITY_COLUMNS, paymentRefusal, type KeyAuthority, type PaymentAction } from '../agentAuthority.js';
+import type { DispatchEvent } from '../dispatch.js';
 import { serviceClient } from '../service.js';
+import { supportEmail } from '../../src/content/publicRoutes.js';
 import { sellerGateway } from '../connect.js';
 import { MoneyOperationError, operationStore } from "../moneyOperations.js";
 // The marketplace as a Hermes worker sees it.
@@ -36,7 +39,7 @@ export interface ToolContext {
   /** When true, a contract must be funded (payment_status authorized) before work starts. */
   paymentsEnabled: boolean;
   /** Tell workers something happened (identifiers only). Best-effort. */
-  notify?: (event: { event: "contract_funded" | "deliverable_decision"; contractId: string }) => Promise<unknown>;
+  notify?: (event: DispatchEvent) => Promise<unknown>;
   /**
    * Quality gate for submit_deliverable (server/gate/deliverableGate.ts). null or
    * undefined means no evaluator is configured: deliverables are accepted and
@@ -57,6 +60,39 @@ function moneyDeps(ctx: ToolContext, op: OperatorHandle) {
     stripe: realStripe(process.env.STRIPE_SECRET_KEY ?? ""),
     appUrl: (process.env.APP_URL ?? "https://www.agentsexchange.ai").replace(/\/$/, ""),
     notify: ctx.notify,
+  };
+}
+
+/** Tell the other party's worker; a failed or missing notifier never fails the write that already happened. */
+async function notifyQuietly(ctx: ToolContext, event: DispatchEvent) {
+  try {
+    await ctx.notify?.(event);
+  } catch {
+    // The worker's timed sweep still finds the change.
+  }
+}
+
+/**
+ * The database refuses an agent's money operation unless the key lists the
+ * action and the contract's organization. Say so plainly, with the owner's setup
+ * link, before any money operation starts; otherwise the agent only sees
+ * "Current agent payment authority required".
+ */
+async function paymentScopeRefusal(ctx: ToolContext, op: OperatorHandle, action: PaymentAction, contractId: string) {
+  if (!ctx.agentKeyId) return null;
+  const [{ data: key }, { data: contract }] = await Promise.all([
+    op.db.from("agent_api_keys").select(KEY_AUTHORITY_COLUMNS).eq("id", ctx.agentKeyId).maybeSingle(),
+    op.db.from("contracts").select("id,organization_id,organization_name").eq("id", contractId).maybeSingle(),
+  ]);
+  if (!contract) return null; // The money path reports a missing or invisible contract as before.
+  const why = paymentRefusal((key ?? {}) as KeyAuthority, action, contract.organization_id as string | null);
+  if (!why) return null;
+  const appUrl = (process.env.APP_URL ?? "https://www.agentsexchange.ai").replace(/\/$/, "");
+  return {
+    ok: false,
+    error: `${why} Nothing was charged. Send the owner who issued this key this link so they can allow this agent to pay for ${contract.organization_name ?? "this organization"}: ${setupLink(appUrl, ctx.agentKeyId)}`,
+    ownerSetupUrl: setupLink(appUrl, ctx.agentKeyId),
+    organizationId: contract.organization_id,
   };
 }
 
@@ -90,10 +126,22 @@ function fail(step: string, error: { message: string } | null): { ok: false; err
   return { ok: false, error: `${step}: ${error?.message ?? "unknown error"}` };
 }
 
+/**
+ * Whether buyers can see a listing yet. New and edited listings wait for the
+ * platform's review; without this an agent publishes, sees ok:true, and waits
+ * for hires that cannot come.
+ */
+function listingReview(status: unknown) {
+  if (status === "approved") return { status: "approved", public: true, note: "Your listing is public on the marketplace." };
+  if (status === "rejected") return { status: "rejected", public: false, note: `Your listing was not approved and stays private. Email ${supportEmail} to ask why.` };
+  if (status === "pending") return { status: "pending", public: false, note: "Your listing is waiting for review and becomes public once approved. Editing it later sends it back for review." };
+  return { status: "unknown", public: true, note: "This marketplace does not review listings." };
+}
+
 async function ownedAgents(op: OperatorHandle): Promise<Row[]> {
   const { data, error } = await op.db
     .from("agents")
-    .select("id,name,specialty,skills,availability,verification_status,trust_score")
+    .select("id,name,specialty,skills,availability,verification_status,trust_score,moderation_status")
     .eq("owner_id", op.profileId)
     .order("created_at", { ascending: true });
   if (error) throw new Error(`agents: ${error.message}`);
@@ -284,7 +332,7 @@ export const TOOLS = [
       const unknown = jobKinds.filter((id) => !jobKind(id));
       if (unknown.length) return { ok: false, error: `Unknown job kinds: ${unknown.join(", ")}. See list_job_kinds.` };
       const existing = (await ownedAgents(op)).find((a) => a.name === input.name);
-      if (existing) return { ok: true, created: false, agent: existing };
+      if (existing) return { ok: true, created: false, agent: existing, review: listingReview(existing.moderation_status) };
       const { data, error } = await op.db
         .from("agents")
         .insert({
@@ -298,10 +346,10 @@ export const TOOLS = [
           tool_access: input.toolAccess,
           job_kinds: jobKinds,
         })
-        .select("id,name,specialty,skills,availability,verification_status,trust_score,job_kinds")
+        .select("id,name,specialty,skills,availability,verification_status,trust_score,job_kinds,moderation_status")
         .single();
       if (error) return fail("publish_agent", error);
-      return { ok: true, created: true, agent: data };
+      return { ok: true, created: true, agent: data, review: listingReview(data.moderation_status) };
     },
   }),
   tool({
@@ -936,6 +984,7 @@ export const TOOLS = [
       if (readError) return fail("accept_application (read)", readError);
       const { error: statusError } = await op.db.from("applications").update({ status: "accepted" }).eq("id", app.id);
       if (statusError) return fail("accept_application (status)", statusError);
+      await notifyQuietly(ctx, { event: "contract_created", contractId });
       return { ok: true, contract: contractSummary(contract as Row) };
     },
   }),
@@ -987,6 +1036,8 @@ export const TOOLS = [
       if (!updated) return { ok: false, error: `negotiation is ${neg.status}; only a pending proposal can be accepted by the organization` };
       const { data: contract, error: rpcError } = await op.db.rpc("materialize_negotiation_contract", { negotiation_uuid: neg.id });
       if (rpcError) return fail("materialize_negotiation_contract", rpcError);
+      const created = contract as Row | null;
+      if (created?.id) await notifyQuietly(ctx, { event: "contract_created", contractId: String(created.id) });
       return { ok: true, negotiationId: neg.id, acceptedPriceCents: neg.amount_cents, contract: contractSummary(contract as Row) };
     },
   }),
@@ -1009,6 +1060,8 @@ export const TOOLS = [
         .select("id,status,amount_cents,created_at")
         .single();
       if (error) return fail("send_hire_request", error);
+      // The browser has always woken the hired agent's worker; an agent hiring over MCP now does too.
+      await notifyQuietly(ctx, { event: "hire_request", hireRequestId: String(data.id) });
       return { ok: true, hireRequest: data };
     },
   }),
@@ -1051,6 +1104,8 @@ export const TOOLS = [
       if (!ctx.paymentsEnabled) return { ok: false, error: "payments are not enabled on this marketplace yet" };
       if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission; the owner must issue a payment-enabled key"};
       const op = await ctx.open();
+      const refused = await paymentScopeRefusal(ctx, op, "fund_contract", input.contractId);
+      if (refused) return refused;
       try {
         const r = await fundWithSavedCard(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, agentKeyId:ctx.agentKeyId });
         return { ok: true, contractId: input.contractId, paymentStatus: r.paymentStatus, chargedCents: r.quote.totalCents, quote: r.quote };
@@ -1070,6 +1125,8 @@ export const TOOLS = [
       if (!ctx.paymentsEnabled) return { ok: false, error: "payments are not enabled on this marketplace yet" };
       if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission"};
       const op = await ctx.open();
+      const refused = await paymentScopeRefusal(ctx, op, "release_payment", input.contractId);
+      if (refused) return refused;
       try {
         const r = await releaseFunds(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, action: input.action });
         return { ok: true, contractId: input.contractId, ...r };
@@ -1086,11 +1143,11 @@ export type AnyTool = (typeof TOOLS)[number];
 export const MARKETPLACE_GUIDE = `AgentExchange is a marketplace where organizations post briefs and agents do the work.
 
 OWNER PAYMENT SETUP
-Call get_owner_setup_link and share the URL with the owner who issued your key. They sign in, save a card, set limits, and explicitly enable the key; seller verification is optional for buyers. Call get_payment_setup_status after they finish; poll no faster than every 30 seconds. Never ask for card numbers, bank details, identity documents, or owner passwords in chat.
+Call get_owner_setup_link and share the URL with the owner who issued your key. They sign in, save a card, set limits, explicitly enable the key, and choose which of their organizations it may pay for; seller verification is optional for buyers. A brief you post under a new organization needs that organization allowed too. Call get_payment_setup_status after they finish (canPay, and organizations[].canPayFor); poll no faster than every 30 seconds. Never ask for card numbers, bank details, identity documents, or owner passwords in chat.
 
 LIFECYCLE
 0. Know the work: list_job_kinds shows every kind of job here (one-off at a fixed price, or ongoing paid week by week); get_job_guide gives the steps, what to hand in, the evidence checked, the limits, the rules and how your owner is paid.
-1. Publish a listing for your agent (publish_agent with jobKinds, or set_agent_job_kinds later). Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
+1. Publish a listing for your agent (publish_agent with jobKinds, or set_agent_job_kinds later). A new or edited listing is reviewed before buyers can see it; publish_agent and whoami report its review status. Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
 2. Find work: search_opportunities (filter by jobKind) / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
 3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
 4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve. submit_deliverable runs a quality gate against the brief: an ok=false result with gate.verdict "returned" means revise per gate.flags and resubmit — do not argue with it and do not resubmit unchanged.
@@ -1103,7 +1160,10 @@ RULES
 - Every write is checked by the database against your account; a refusal is final, not a retry.
 - Claim only what a tool result confirms. Never invent facts, figures or credentials in a deliverable; say what is not public.
 - One clarifying question at most; otherwise act.
-- Be brief in messages; put the substance in deliverables.`;
+- Be brief in messages; put the substance in deliverables.
+
+SUPPORT
+If your owner needs help with their account, a payment or a contract that tools cannot resolve, point them to ${supportEmail}. Never send keys, card details or passwords there.`;
 
 
 export function toolList() {

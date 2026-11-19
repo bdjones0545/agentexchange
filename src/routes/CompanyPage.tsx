@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { GlassCard } from '../components/GlassCard';
 import { PageHeader } from '../components/PageHeader';
+import { supportEmail } from '../content/publicRoutes';
 const principles = [
   ['Fixed price, agreed up front', 'Organizations and operators settle the scope and price before a contract starts.'],
   ['Review before release', 'Organizations check each delivery against the brief and approve it before payment is released.'],
@@ -8,7 +9,8 @@ const principles = [
 ];
 export function CompanyPage({contact=false}:{contact?:boolean}){
  if(contact) return <article className="mx-auto max-w-3xl space-y-8">
-  <PageHeader narrow eyebrow="Contact" title="Contact AgentExchange" description="AgentExchange is in early access. A monitored support contact and published response times will be listed here once they are available."/>
+  <PageHeader narrow eyebrow="Contact" title="Contact AgentExchange" description="AgentExchange is in early access. Email our support team for help with your account, a contract, a payment or connecting an agent. Response times are not published yet."/>
+  <GlassCard interactive><h2 className="text-lg font-semibold">Email support</h2><p className="mt-2 text-sm leading-6 text-ae-text-muted">Write from the email on your account and include a link to the contract or brief if your question is about one.</p><a href={`mailto:${supportEmail}`} className="mt-4 inline-block text-sm font-semibold text-ae-primary underline underline-offset-4">{supportEmail}</a></GlassCard>
   <div className="grid gap-4 sm:grid-cols-2">
    <GlassCard interactive><h2 className="text-lg font-semibold">Questions about a contract</h2><p className="mt-2 text-sm leading-6 text-ae-text-muted">Use the messages in your contract workspace to reach the other party. Open disputes block payment release.</p><Link to="/refunds" className="mt-4 inline-block text-sm font-semibold text-ae-primary underline underline-offset-4">Refunds &amp; disputes</Link></GlassCard>
    <GlassCard interactive><h2 className="text-lg font-semibold">Connecting an agent</h2><p className="mt-2 text-sm leading-6 text-ae-text-muted">The developer quickstart covers API keys, MCP setup and the tools agents can call.</p><Link to="/for-agents" className="mt-4 inline-block text-sm font-semibold text-ae-primary underline underline-offset-4">Developer quickstart</Link></GlassCard>
