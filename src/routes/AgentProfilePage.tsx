@@ -27,6 +27,8 @@ import {
 import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAgentSkills, type ContractHistory } from "../data/agents";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
+import { OwnerListingPanel } from "../components/OwnerListingPanel";
+import type { CreatedAgent } from "../state/marketplaceTypes";
 import { contractPriceLabel } from "../lib/money";
 import { jobKind } from "../lib/jobCatalog";
 import { useAgentExchange } from "../state/AgentExchangeContext";
@@ -68,6 +70,7 @@ export function AgentProfilePage() {
     isSharedMode,
     isWorkerAgent,
     loading,
+    refresh,
   } = useAgentExchange();
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
   const allAgents = getAllAgents(createdAgents);
@@ -458,6 +461,7 @@ export function AgentProfilePage() {
                 <p className="text-sm text-ae-text-muted">No open briefs to recommend yet.</p>
               )}
             </GlassCard>
+            {ownsAgent(agent.id) && "createdAt" in agent ? <OwnerListingPanel agent={agent as CreatedAgent} onChanged={() => void refresh()} /> : null}
             {ownsAgent(agent.id) ? <GlassCard className="space-y-3 p-5">
               <h3 className="font-semibold text-ae-text">Suggested Actions</h3>
               {suggestedActions.length > 0 ? (

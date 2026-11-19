@@ -5,14 +5,16 @@ import {getAllOpportunities} from '../data/localSelectors';
 import {GlassCard} from '../components/GlassCard';
 import {PageHeader} from '../components/PageHeader';
 import {NotFoundPage} from './NotFoundPage';
+import {OwnerBriefPanel} from '../components/OwnerBriefPanel';
+import type {CreatedOpportunity} from '../state/marketplaceTypes';
 import {ACCESS_RULES,SERVICE_KINDS,formatSpendCap} from '../lib/managedService';
 import {earningsNote,jobKind} from '../lib/jobCatalog';
 
 const sectionHeading = 'font-ae-display text-xl font-semibold tracking-tight sm:text-2xl';
 
-export function BriefPage(){const {id}=useParams();const {createdOpportunities,loading}=useAgentExchange();const brief=getAllOpportunities(createdOpportunities).find(b=>b.id===id);
+export function BriefPage(){const {id}=useParams();const {createdOpportunities,loading,ownsOpportunity,refresh}=useAgentExchange();const brief=getAllOpportunities(createdOpportunities,{includeClosed:true}).find(b=>b.id===id);
  if(loading&&!brief)return <p role="status" className="mx-auto max-w-3xl rounded-2xl border border-white/[0.08] bg-ae-surface/60 px-5 py-4 text-sm text-ae-text-muted motion-safe:animate-pulse">Loading brief…</p>;if(!brief)return <NotFoundPage/>;
- const skills=brief.requiredSkills??[];const kind=jobKind(brief.jobKind);
+ const skills=brief.requiredSkills??[];const kind=jobKind(brief.jobKind);const closed=(brief as CreatedOpportunity).status==='closed';const owner=ownsOpportunity(brief.id)&&'createdAt' in brief;
  return <article className="space-y-10">
   <PageHeader eyebrow={brief.category} title={brief.title} description={brief.organization?<>Posted by <span className="text-ae-text">{brief.organization}</span></>:undefined}/>
   <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
@@ -42,6 +44,8 @@ export function BriefPage(){const {id}=useParams();const {createdOpportunities,l
     </GlassCard>
    </div>
    <aside className="min-w-0 space-y-6 lg:sticky lg:top-28">
+    {owner?<OwnerBriefPanel brief={brief as CreatedOpportunity} onChanged={()=>void refresh()}/>:null}
+    {closed&&!owner?<p role="note" className="rounded-2xl border border-ae-amber/30 bg-ae-amber/[0.08] px-4 py-3 text-sm text-ae-amber">This brief is closed and no longer takes applications.</p>:null}
     <GlassCard className="space-y-5 p-6">
      <div>
       <p className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.14em] text-ae-text-muted">Budget</p>
@@ -51,7 +55,7 @@ export function BriefPage(){const {id}=useParams();const {createdOpportunities,l
       <h2 className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.14em] text-ae-text-muted">Skills</h2>
       {skills.length>0?<ul className="flex flex-wrap gap-2">{skills.map(skill=><li key={skill} className="max-w-full truncate rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-xs text-ae-text-muted">{skill}</li>)}</ul>:<p className="text-sm text-ae-text-muted">See brief scope</p>}
      </section>
-     <Link className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ae-primary px-5 py-3 font-ae-label text-sm font-semibold text-ae-primary-ink transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-8px_rgb(120_240_188_/_0.6)]" to={`/marketplace?brief=${encodeURIComponent(brief.id)}`}>View brief in marketplace <span aria-hidden>→</span></Link>
+     {closed?null:<Link className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ae-primary px-5 py-3 font-ae-label text-sm font-semibold text-ae-primary-ink transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-8px_rgb(120_240_188_/_0.6)]" to={`/marketplace?brief=${encodeURIComponent(brief.id)}`}>View brief in marketplace <span aria-hidden>→</span></Link>}
     </GlassCard>
    </aside>
   </div>
