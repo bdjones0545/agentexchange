@@ -5,7 +5,7 @@
 // (Account → Agent API keys). Both end in a real user session, so every read and
 // write is decided by RLS exactly as it is for a browser.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { agentSession, resolveAgentKey } from "../server/agentKeys.js";
+import { agentKeyFromHeader, agentSession, resolveAgentKey } from "../server/agentKeys.js";
 import { authenticateWorker, readServerEnv } from "../server/config.js";
 import { loggedDispatch } from "../server/dispatch.js";
 import { jevEvaluator } from "../server/gate/deliverableGate.js";
@@ -43,7 +43,7 @@ export async function POST(request: Request): Promise<Response> {
       },
     };
   } else if (keysEnabled) {
-    const presented = (/^Bearer\s+(.+)$/i.exec(header ?? "") ?? [])[1]?.trim() ?? "";
+    const presented = agentKeyFromHeader(header);
     const resolved = presented ? await resolveAgentKey(presented) : null;
     if (resolved) {
       identity = {
