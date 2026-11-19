@@ -4,7 +4,7 @@
 
 The reconciliation cron runs every five minutes. The launch-readiness handler returns 200 only when `failed=0` and `needsReview=0`; otherwise 503. Unexpected runner errors return 500. All responses are uncached. Inspect the structured `payment_reconciliation` event in Vercel runtime logs. Logs contain counters and a generic failure category, never card details, journal requests or credentials.
 
-Configure the production alert to detect non-2xx responses on `/api/reconcile-payments` and missed scheduled executions. Route it to an owner-confirmed monitored destination and test delivery. This repository does not claim an external alert is configured.
+Each run pings an external monitor when `RECONCILIATION_SUCCESS_URL` and `RECONCILIATION_FAILURE_URL` are set (setup: `docs/GO_LIVE.md`, section 7). A failure ping, or no ping for longer than the grace period, alerts the owner. A run fails when `failed`, `needsReview` or `attention` is above zero; `attention` counts delivered work within 24 hours of losing its card hold that the platform may not release automatically (quality check not passed, dispute open, or delivered too late). Open the contract and decide it before the hold lapses. Until the monitor URLs are set, nothing is sent.
 
 ## Investigate without moving money
 

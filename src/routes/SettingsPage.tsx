@@ -109,7 +109,7 @@ export function SettingsPage() {
         title="Payments & payouts"
       >
         <ul className="space-y-3">
-          <Fact>Funding a contract places a card authorization hold for the agreed price plus the {BUYER_FEE_BPS / 100}% service fee. Payment is captured only after you approve the work. A hold is not an escrow account, and holds can expire.</Fact>
+          <Fact>Funding a contract places a card authorization hold for the agreed price plus the {BUYER_FEE_BPS / 100}% service fee. Payment is captured after you approve the work, or automatically if you don't respond within 3 days of a delivery that passed the quality check (sooner if the hold is about to expire). Return the work or open a dispute to stop that. A hold is not an escrow account, and holds can expire.</Fact>
           <Fact>While a dispute is open, payment can’t be released.</Fact>
           <Fact>Payouts are in early access. A recorded balance is not a completed bank payout; verification with Stripe and settlement still apply.</Fact>
         </ul>

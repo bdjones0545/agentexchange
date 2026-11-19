@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { feeBreakdown, formatCents } from "../lib/money";
+import type { ReleaseDeliverable } from "../lib/autoRelease";
 import { fetchHoldState, fetchPaymentsConfig, holdNotice, releaseFunding, startFunding, type HoldState, type PaymentsConfig } from "../lib/payments";
 import type { ContractPaymentStatus, LocalContract } from "../state/marketplaceTypes";
 import { PrimaryButton } from "./PrimaryButton";
@@ -58,6 +59,8 @@ type FundingPanelProps = {
   allDeliverablesApproved: boolean;
   /** Unresolved disputes on this contract; the server refuses release while any are open. */
   openDisputes?: number;
+  /** The contract's deliverables, for the automatic-release date (src/lib/autoRelease.ts). */
+  deliverables?: ReleaseDeliverable[];
   onChanged: () => void;
 };
 
@@ -66,7 +69,7 @@ type FundingPanelProps = {
  * of the agreed price + 3% fee), release it after approving the work, or cancel
  * the hold. Renders nothing when payments are not enabled for the product.
  */
-export function FundingPanel({ allDeliverablesApproved, contract, isOrganizationSide, onChanged, openDisputes = 0 }: FundingPanelProps) {
+export function FundingPanel({ allDeliverablesApproved, contract, deliverables, isOrganizationSide, onChanged, openDisputes = 0 }: FundingPanelProps) {
   const [config, setConfig] = useState<PaymentsConfig | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -156,7 +159,7 @@ export function FundingPanel({ allDeliverablesApproved, contract, isOrganization
           <p className="rounded-xl border border-ae-cyan/20 bg-ae-cyan/[0.06] px-3.5 py-2.5 text-xs leading-5 text-ae-text-muted">Checkout finished; confirming with the payment provider. This updates within a few seconds.</p>
         ) : null}
         {(() => {
-          const notice = nowSeconds === null ? null : holdNotice(status, hold, isOrganizationSide, nowSeconds);
+          const notice = nowSeconds === null ? null : holdNotice(status, hold, isOrganizationSide, nowSeconds, deliverables ? { deliverables, openDisputes } : undefined);
           if (!notice) return null;
           return (
             <p

@@ -1,6 +1,7 @@
 // Browser side of funding. Everything here talks to the product's own API with
 // the user's session; Stripe is never called from the browser and no key is
 // bundled. Amounts are quoted by the server.
+import { autoReleasePlan, type ReleaseDeliverable } from "./autoRelease";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
 export type PaymentsConfig = {
@@ -92,6 +93,9 @@ export async function fetchHoldState(contractId: string): Promise<HoldState> {
 
 const HOUR = 3600;
 
+const formatWhen = (epochSeconds: number) =>
+  new Date(epochSeconds * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
 /**
  * What the contract page says about the hold window. Holds last about seven
  * days and are never renewed, so work has to be approved and released inside
@@ -102,10 +106,27 @@ export function holdNotice(
   state: HoldState,
   isOrganizationSide: boolean,
   nowSeconds: number,
+  work?: { deliverables: ReleaseDeliverable[]; openDisputes: number },
 ): { tone: "info" | "warning"; text: string } | null {
   if (status === "authorized" && state.holdExpiresAt) {
     const left = state.holdExpiresAt - nowSeconds;
-    const when = new Date(state.holdExpiresAt * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    const when = formatWhen(state.holdExpiresAt);
+    // Delivered work the platform will release if the buyer stays silent (src/lib/autoRelease.ts).
+    const plan = work && left > 0
+      ? autoReleasePlan({ paymentStatus: status, holdExpiresAt: state.holdExpiresAt, ...work }, nowSeconds * 1000)
+      : null;
+    if (plan?.eligible) {
+      const at = formatWhen(Math.floor(plan.releaseAt / 1000));
+      if (plan.due) {
+        return { tone: "info", text: "The review window has ended, so AgentExchange is approving the work and releasing payment now." };
+      }
+      return isOrganizationSide
+        ? {
+            tone: plan.releaseAt / 1000 - nowSeconds <= 24 * HOUR ? "warning" : "info",
+            text: `If you don't review the delivered work, AgentExchange approves it and releases payment on ${at}. Approve it, return it with a note, or open a dispute before then to decide yourself.`,
+          }
+        : { tone: "info", text: `If the buyer doesn't respond, payment is released automatically on ${at}, unless they return the work or open a dispute first.` };
+    }
     if (left <= 0) {
       return { tone: "warning", text: "The card hold has expired. It will be released shortly, and the contract can then be funded again." };
     }

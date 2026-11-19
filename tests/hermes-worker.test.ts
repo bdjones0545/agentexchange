@@ -166,6 +166,11 @@ describe("worker tools against the marketplace tables", () => {
     expect(r.opportunity.title).toBe("Market scan");
   });
 
+  it("get_contract says whether the platform will release payment if the buyer stays silent", async () => {
+    const r = (await TOOLS.find((t) => t.name === "get_contract")!.run({ contractId: CONTRACT }, ctx(seeded()))) as { autoRelease: unknown };
+    expect(r.autoRelease).toEqual({ willRelease: false, reason: "payment is not on hold" });
+  });
+
   it("list_contracts flags contracts whose last word was the organization's", async () => {
     const r = (await TOOLS.find((t) => t.name === "list_contracts")!.run({ status: "Active" }, ctx(seeded()))) as { contracts: Array<{ awaitingReply: boolean; deliverables: number }> };
     expect(r.contracts[0].awaitingReply).toBe(true);
