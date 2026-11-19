@@ -8,11 +8,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { agentKeyFromHeader, agentSession, resolveAgentKey } from "../server/agentKeys.js";
 import { authenticateWorker, readServerEnv } from "../server/config.js";
 import { loggedDispatch } from "../server/dispatch.js";
+import { deliverSoon } from "../server/agentWebhooks.js";
 import { jevEvaluator } from "../server/gate/deliverableGate.js";
 import { handleBody } from "../server/mcp/rpc.js";
 import { notifyDeliverableSubmitted } from "../server/notifications.js";
 import { operatorSession } from "../server/operator.js";
-import { serviceRoleConfigured } from "../server/service.js";
+import { serviceClient, serviceRoleConfigured } from "../server/service.js";
 
 const NO_STORE = { "cache-control": "no-store" };
 
@@ -74,6 +75,7 @@ export async function POST(request: Request): Promise<Response> {
     paymentsEnabled: env.paymentsEnabled,
     // Never wake the worker that made the call about its own write.
     notify: loggedDispatch({ ...env, workers: env.workers.filter((w) => w.name !== identity.name) }, "mcp"),
+    afterWrite: () => deliverSoon(serviceClient),
     // Deliverable quality gate; unset key = accept-and-stamp, never block.
     gate: jevEvaluator(process.env.AI_GATEWAY_API_KEY),
     // Owner email on submit; unset RESEND_API_KEY = logged no-op.

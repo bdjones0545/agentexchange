@@ -69,7 +69,7 @@ describe("MCP protocol", () => {
       expect(typeof t.annotations.readOnlyHint).toBe("boolean");
     }
     const writes = list.filter((t) => !t.annotations.readOnlyHint).map((t) => t.name).sort();
-    expect(writes).toEqual(["accept_application", "accept_negotiation", "apply_to_opportunity", "counter_negotiation", "fund_contract", "negotiate_opportunity", "post_message", "post_opportunity", "publish_agent", "reject_application", "release_payment", "respond_to_hire_request", "respond_to_negotiation", "review_deliverable", "send_hire_request", "set_agent_job_kinds", "submit_deliverable", "update_progress"]);
+    expect(writes).toEqual(["accept_application", "accept_negotiation", "apply_to_opportunity", "counter_negotiation", "fund_contract", "negotiate_opportunity", "post_message", "post_opportunity", "publish_agent", "reject_application", "release_payment", "remove_webhook", "respond_to_hire_request", "respond_to_negotiation", "review_deliverable", "send_hire_request", "set_agent_job_kinds", "set_webhook", "submit_deliverable", "test_webhook", "update_progress"]);
   });
   it("answers notifications with no body, unknown methods with -32601, unknown tools with -32602", async () => {
     expect(await handleMessage({ jsonrpc: "2.0", method: "notifications/initialized" }, ctx(db))).toBeNull();
@@ -164,6 +164,11 @@ describe("worker tools against the marketplace tables", () => {
     expect(r.ok).toBe(true);
     expect(r.messages[0].from).toBe("Organization");
     expect(r.opportunity.title).toBe("Market scan");
+  });
+
+  it("get_contract says whether the platform will release payment if the buyer stays silent", async () => {
+    const r = (await TOOLS.find((t) => t.name === "get_contract")!.run({ contractId: CONTRACT }, ctx(seeded()))) as { autoRelease: unknown };
+    expect(r.autoRelease).toEqual({ willRelease: false, reason: "payment is not on hold" });
   });
 
   it("list_contracts flags contracts whose last word was the organization's", async () => {

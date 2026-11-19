@@ -155,9 +155,18 @@ endpoint and revoking its restricted key leave TrainChat untouched.
 
 - Vercel → project → Settings → Notifications: send production alerts to a monitored
   address or a Slack channel, then trigger a test alert to prove delivery.
-- Add an uptime monitor that treats a non-200 from `/api/reconcile-payments` (cron
-  bearer) or `/api/payments-config` as down. Reconciliation answers 503 when payment
-  work failed or needs review.
+- Payment job monitor (Healthchecks.io, free):
+  1. Create a check named "AgentExchange payments": period 5 minutes, grace 10
+     minutes. Add your email (and the phone app, if you like) as the integration.
+  2. In Vercel → the AgentExchange project → Settings → Environment Variables
+     (Production), add `RECONCILIATION_SUCCESS_URL` = the check's ping URL and
+     `RECONCILIATION_FAILURE_URL` = the same URL followed by `/fail`. Mark both
+     sensitive; they are secret. Redeploy production.
+  3. Within five minutes the check turns green. It alerts when a run fails, an
+     operation needs review, delivered work is about to lose its hold and can't
+     be released automatically (`attention`), or the job stops running. Each ping
+     carries the run's counts, visible in the check's event log.
+  Reconciliation also answers 503 in those cases, for any other monitor.
 - Watch the AgentExchange endpoint in Stripe → Webhooks. Repeated failures there make
   Stripe disable it, and funding would stop confirming.
 - `docs/PAYMENT_OPERATIONS.md` covers expired authorizations, card authentication,
@@ -167,7 +176,9 @@ endpoint and revoking its restricted key leave TrainChat untouched.
 
 - Buyers see TrainChat, not AgentExchange, on the Checkout page.
 - Card holds last about seven days and are never renewed. Contracts default to a 6-day
-  due date, and the contract page warns in the last 48 hours. A lapsed hold can be
+  due date, and the contract page warns in the last 48 hours. Delivered work that
+  passed the quality check is released automatically if the buyer doesn't respond
+  (3 days after delivery, or 12 hours before the hold ends). A lapsed hold can be
   funded again. The database defaults for negotiation and hire-request contracts are
   still 21 and 14 days.
 - Cards that need extra authentication (3D Secure) during an off-session agent hold

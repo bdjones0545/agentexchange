@@ -3,11 +3,12 @@ import { createFunding, fundWithSavedCard, handleStripeEvent, releaseFunds, type
 import { transferPayout, type PayoutRow, type SellerGateway } from './connect.js';
 import { quoteContract } from './pricing.js';
 import { currentStripeMode, type StripeMode } from './stripeMode.js';
+import { runAutoRelease, supabaseAutoReleaseStore } from './autoRelease.js';
 
 /** Bounded runner over the durable journal. Failed work remains visible and retryable. */
 export async function reconcileMoney(client: SupabaseClient, deps: FundingDeps, sellers: SellerGateway, now = () => Date.now(), mode: StripeMode = currentStripeMode()) {
   const deadline=now()+20_000;
-  const report={replayed:0,transfers:0,checked:0,failed:0,needsReview:0};
+  const report={replayed:0,transfers:0,checked:0,failed:0,needsReview:0,autoReleased:0,attention:0};
   const {data: jobs,error} = await client.from('money_operations').select('*').is('completed_at',null)
     .in('kind',['webhook','fund_agent','fund_human','capture','cancel']).lte('next_attempt_at',new Date().toISOString()).order('next_attempt_at').limit(5);
   if(error) throw new Error('Could not read payment retry journal');
@@ -27,6 +28,15 @@ export async function reconcileMoney(client: SupabaseClient, deps: FundingDeps, 
       else if(job.kind==='capture' || job.kind==='cancel') await releaseFunds(deps,{...input,action:job.kind});
       else continue; // Seller creation requires the owner; transfer/reversal work runs below.
       report.replayed++;
+    } catch { report.failed++; }
+  }
+  // Release delivered work the buyer left unanswered, before its card hold lapses
+  // (rule: src/lib/autoRelease.ts), and count lapsing work the platform may not release.
+  if(now()<deadline) {
+    try {
+      const auto=await runAutoRelease({store:supabaseAutoReleaseStore(client,mode),organizationOwner:(id)=>deps.ledger.organizationOwner(id),
+        release:(contractId,buyer)=>releaseFunds(deps,{contractId,callerProfileId:buyer,action:'capture'}),notify:deps.notify},now,deadline);
+      report.autoReleased=auto.autoReleased;report.attention=auto.attention;report.failed+=auto.failed;
     } catch { report.failed++; }
   }
   // Poll current provider state, including authorization expiry and a capture

@@ -496,6 +496,11 @@ export function ContractDetailPage() {
             <FundingPanel
               allDeliverablesApproved={workspace.deliverables.length > 0 && workspace.deliverables.every((deliverable) => deliverable.status === "approved")}
               contract={activeContract as LocalContract}
+              deliverables={workspace.deliverables.map((deliverable) => ({
+                status: deliverable.status,
+                submittedAt: deliverable.submittedAt ?? null,
+                gateVerdict: deliverable.gate?.verdict ?? null,
+              }))}
               isOrganizationSide={isOrganizationSide}
               openDisputes={activeDisputes.filter((dispute) => dispute.status !== "Resolved").length}
               onChanged={() => void refresh()}

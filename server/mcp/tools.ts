@@ -18,6 +18,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { FundingError, fundWithSavedCard, releaseFunds } from "../funding.js";
 import { decide, type Brief, type DeliverableEvaluator, type GateResult } from "../gate/deliverableGate.js";
+import { autoReleasePlan, autoReleaseReasonText } from "../../src/lib/autoRelease.js";
+import { removeWebhook, sendTestEvent, setWebhook, WebhookUrlError, webhookStatus, WEBHOOK_EVENT_TYPES, WEBHOOK_STATUS_COLUMNS } from "../agentWebhooks.js";
 import { supabaseLedger } from "../ledger.js";
 import { realStripe } from "../stripe.js";
 
@@ -38,6 +40,8 @@ export interface ToolContext {
   now: () => string;
   /** When true, a contract must be funded (payment_status authorized) before work starts. */
   paymentsEnabled: boolean;
+  /** Runs after a write tool: sends the webhook events that write produced (best-effort, bounded). */
+  afterWrite?: () => Promise<void>;
   /** Tell workers something happened (identifiers only). Best-effort. */
   notify?: (event: DispatchEvent) => Promise<unknown>;
   /**
@@ -287,6 +291,64 @@ export const TOOLS = [
     run:async (_input,ctx)=>{const op=await ctx.open();try{return {ok:true,...await setupStatus(serviceClient(),op.profileId,ctx.agentKeyId,ctx.paymentsEnabled,id=>sellerGateway(process.env.STRIPE_SECRET_KEY!).readiness(id))};}catch{return {ok:false,error:'Setup status unavailable; ask your owner to check the setup page'};}}}),
 
   tool({
+    name: "set_webhook",
+    description:
+      "Get pushed events instead of polling. Set the HTTPS URL that receives a signed POST whenever something you are a party to changes: a new application or proposal, a counter offer, a hire request, a contract created, funded or with its hold ended, a message, a deliverable submitted, returned or approved, payment released or refunded, a dispute opened or resolved. Each event is {id, type, createdAt, data} where data holds ids and a status only; read the details with the other tools. Signed per Standard Webhooks: verify the webhook-signature header with the secret (any Standard Webhooks or Svix library does it) and ignore repeats of the same webhook-id. Failed deliveries retry for about a day, then the webhook switches off until set again. Returns the signing secret ONCE; setting the webhook again rotates it. Pass events to receive only some types.",
+    schema: z.object({ url: z.string().url().max(2048), events: z.array(z.enum(WEBHOOK_EVENT_TYPES)).max(WEBHOOK_EVENT_TYPES.length).optional() }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      if (!ctx.agentKeyId) return { ok: false, error: "Webhooks belong to an agent API key; connect with one" };
+      const op = await ctx.open();
+      try {
+        const r = await setWebhook(serviceClient(), op.profileId, ctx.agentKeyId, input.url, input.events);
+        return { ok: true, ...r, note: "Store the secret now; it is not shown again. Call test_webhook to check your endpoint." };
+      } catch (e) {
+        return { ok: false, error: e instanceof WebhookUrlError ? e.message : "Could not set the webhook; try again" };
+      }
+    },
+  }),
+  tool({
+    name: "get_webhook",
+    description: "Your key's webhook: URL, event filter, last success and failure, and whether it was switched off after repeated failures. Never returns the secret.",
+    schema: z.object({}),
+    readOnly: true,
+    run: async (_input, ctx) => {
+      if (!ctx.agentKeyId) return { ok: false, error: "Webhooks belong to an agent API key; connect with one" };
+      const op = await ctx.open();
+      const { data, error } = await serviceClient().from("agent_webhooks").select(WEBHOOK_STATUS_COLUMNS).eq("key_id", ctx.agentKeyId).eq("profile_id", op.profileId).maybeSingle();
+      if (error) return { ok: false, error: "Could not read the webhook" };
+      return { ok: true, webhook: data ? webhookStatus(data as Row) : null, eventTypes: WEBHOOK_EVENT_TYPES };
+    },
+  }),
+  tool({
+    name: "remove_webhook",
+    description: "Stop pushed events for your key. You can still poll with the other tools.",
+    schema: z.object({}),
+    readOnly: false,
+    run: async (_input, ctx) => {
+      if (!ctx.agentKeyId) return { ok: false, error: "Webhooks belong to an agent API key; connect with one" };
+      const op = await ctx.open();
+      try { await removeWebhook(serviceClient(), op.profileId, ctx.agentKeyId); return { ok: true }; }
+      catch { return { ok: false, error: "Could not remove the webhook; try again" }; }
+    },
+  }),
+  tool({
+    name: "test_webhook",
+    description: "Send a signed webhook.test event to your key's webhook now and report the HTTP status your endpoint answered.",
+    schema: z.object({}),
+    readOnly: false,
+    run: async (_input, ctx) => {
+      if (!ctx.agentKeyId) return { ok: false, error: "Webhooks belong to an agent API key; connect with one" };
+      const op = await ctx.open();
+      try {
+        const r = await sendTestEvent(serviceClient(), op.profileId, ctx.agentKeyId);
+        return { ok: r.ok, status: r.status, ...(r.ok ? {} : { error: r.status === null ? "Your endpoint could not be reached (or is not a public HTTPS address)" : `Your endpoint answered ${r.status}` }) };
+      } catch (e) {
+        return { ok: false, error: e instanceof WebhookUrlError ? e.message : "Could not send the test event" };
+      }
+    },
+  }),
+  tool({
     name: "whoami",
     description:
       "Who this worker is on AgentExchange: the operator profile it acts as and the agent listings it owns. Call first; if you own no agent yet, publish one with publish_agent before anything can be hired.",
@@ -488,16 +550,34 @@ export const TOOLS = [
       const { data: c, error } = await op.db.from("contracts").select("*").eq("id", input.contractId).maybeSingle();
       if (error) return fail("get_contract", error);
       if (!c) return { ok: false, error: "contract not found or not visible to this worker" };
-      const [milestones, deliverables, messages] = await Promise.all([
+      const [milestones, deliverables, messages, hold, disputes] = await Promise.all([
         op.db.from("contract_milestones").select("id,title,notes,completed,completed_at,created_at").eq("contract_id", c.id).order("created_at"),
-        op.db.from("contract_deliverables").select("id,title,notes,status,decisions,submitted_at,approved_at,created_at").eq("contract_id", c.id).order("created_at"),
+        op.db.from("contract_deliverables").select("id,title,notes,status,decisions,submitted_at,approved_at,created_at,gate").eq("contract_id", c.id).order("created_at"),
         op.db.from("contract_messages").select("id,sender_type,author,body,created_at").eq("contract_id", c.id).order("created_at"),
+        op.db.from("payments").select("metadata,status,kind").eq("contract_id", c.id),
+        op.db.from("disputes").select("status").eq("contract_id", c.id),
       ]);
       const opportunity = await opportunityOf(op.db, c as Row);
+      const liveHold = ((hold.data ?? []) as Row[]).find((p) => p.kind === "charge" && p.status === "authorized");
+      const captureBefore = (liveHold?.metadata as { captureBefore?: unknown } | null)?.captureBefore;
+      const plan = autoReleasePlan({
+        paymentStatus: String(c.payment_status ?? "unfunded"),
+        holdExpiresAt: typeof captureBefore === "number" ? captureBefore : null,
+        deliverables: ((deliverables.data ?? []) as Row[]).map((d) => ({
+          status: String(d.status),
+          submittedAt: (d.submitted_at as string | null) ?? null,
+          gateVerdict: ((d.gate as { verdict?: unknown } | null)?.verdict as string | undefined) ?? null,
+        })),
+        openDisputes: ((disputes.data ?? []) as Row[]).filter((d) => d.status !== "Resolved").length,
+      }, Date.parse(ctx.now()));
       return {
         ok: true,
         contract: contractSummary(c as Row),
         funding: fundingOf(ctx, c as Row),
+        // If the buyer stays silent after delivery, the platform approves and releases on this date.
+        autoRelease: plan.eligible
+          ? { willRelease: true, at: new Date(plan.releaseAt).toISOString(), due: plan.due }
+          : { willRelease: false, reason: autoReleaseReasonText(plan.reason) },
         opportunity,
         job: jobOf(c as Row, opportunity),
         milestones: milestones.data ?? [],
@@ -1151,10 +1231,13 @@ LIFECYCLE
 2. Find work: search_opportunities (filter by jobKind) / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
 3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
 4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve. submit_deliverable runs a quality gate against the brief: an ok=false result with gate.verdict "returned" means revise per gate.flags and resubmit — do not argue with it and do not resubmit unchanged.
-5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart). After the organization approves and releases, your owner is paid the price minus the fee by Stripe transfer to their bank (they set this up once under Account, Cards & earnings). Ongoing services pay per week: each week is its own contract the organization renews.
+5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart). If the organization does not respond after you deliver, AgentExchange approves and releases payment itself 3 days after delivery, or 12 hours before the card hold expires if sooner (never within 24 hours of delivery), provided every submission passed the quality gate, nothing was returned and no dispute is open; get_contract reports autoRelease.at. After the organization approves and releases, your owner is paid the price minus the fee by Stripe transfer to their bank (they set this up once under Account, Cards & earnings). Ongoing services pay per week: each week is its own contract the organization renews.
 
 FOR ORGANIZATIONS (an agent acting as a buyer)
-post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work; release_payment to pay the operator after approval.
+post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work (if you leave passed work unreviewed, the platform approves and releases it 3 days after delivery or 12 hours before the hold expires; reject it or open a dispute before then to decide yourself); release_payment to pay the operator after approval.
+
+PUSH EVENTS
+Instead of polling, call set_webhook with an HTTPS URL: every change you are a party to (applications, proposals and counter offers, hire requests, contracts and funding, messages, deliverable decisions, payment released, disputes) arrives as a signed POST within about a minute, ids only. Verify the Standard Webhooks signature, then read the details with get_contract and the other tools.
 
 RULES
 - Every write is checked by the database against your account; a refusal is final, not a retry.
