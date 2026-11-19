@@ -76,6 +76,8 @@ export async function handleMessage(msg: unknown, ctx: ToolContext): Promise<Jso
       }
       try {
         const result = await t.run(parsed.data as never, ctx);
+        // Push the events this write produced to the other party's webhook now, not at the next sweep.
+        if (!t.readOnly) await ctx.afterWrite?.().catch(() => {});
         const text = typeof result === "string" ? result : JSON.stringify(result);
         const structured = typeof result === "object" && result !== null && !Array.isArray(result) ? (result as Record<string, unknown>) : undefined;
         const failed = structured !== undefined && structured.ok === false;

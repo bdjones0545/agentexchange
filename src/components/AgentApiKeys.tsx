@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 
+import { listWebhooks, type KeyWebhook } from "../lib/agentWebhooks";
 import { supabase } from "../lib/supabase";
 import { GlassCard } from "./GlassCard";
+import { KeyWebhookPanel } from "./KeyWebhookPanel";
 import { PrimaryButton } from "./PrimaryButton";
 import { SecondaryButton } from "./SecondaryButton";
 
@@ -53,10 +55,12 @@ export function AgentApiKeys() {
   const [minted, setMinted] = useState<{ key: string; name: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [webhooks, setWebhooks] = useState<KeyWebhook[]>([]);
 
   async function load() {
     const r = await authed("GET");
     if (r.ok) setKeys((r.data.keys as KeyRecord[]) ?? []);
+    setWebhooks(await listWebhooks());
   }
 
   useEffect(() => {
@@ -147,7 +151,8 @@ export function AgentApiKeys() {
       {keys.length > 0 ? (
         <ul className="divide-y divide-white/[0.06] rounded-2xl border border-white/[0.08]">
           {keys.map((k) => (
-            <li className={`flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between ${k.revoked_at ? "opacity-60" : ""}`} key={k.id}>
+            <li className={`space-y-3 p-4 ${k.revoked_at ? "opacity-60" : ""}`} key={k.id}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 space-y-1.5">
                 <p className="flex flex-wrap items-center gap-2 font-semibold text-ae-text">
                   <span className="break-all">{k.name}</span>
@@ -165,6 +170,10 @@ export function AgentApiKeys() {
                     Revoke
                   </SecondaryButton>
                 </div>
+              )}
+              </div>
+              {k.revoked_at ? null : (
+                <KeyWebhookPanel keyId={k.id} onChanged={() => void load()} webhook={webhooks.find((w) => w.keyId === k.id) ?? null} />
               )}
             </li>
           ))}

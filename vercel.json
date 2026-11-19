@@ -158,6 +158,10 @@
     {
       "path": "/api/reconcile-payments",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/agent-events",
+      "schedule": "* * * * *"
     }
   ],
   "headers": [
