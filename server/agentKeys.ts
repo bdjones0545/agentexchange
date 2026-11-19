@@ -23,6 +23,21 @@ export function looksLikeAgentKey(presented: string): boolean {
   return /^axk_[A-Za-z0-9_-]{40,50}$/.test(presented);
 }
 
+/**
+ * The agent key in an Authorization header. "Bearer <key>" is the documented
+ * form, but many MCP clients have a single "key" field and send the key as-is
+ * (seen 2026-11-19: Workforcio's "Any MCP server" form), so a bare key, or one
+ * glued to "Bearer", is accepted too. Only something shaped like an agent key
+ * comes back, and it is still checked against the stored hash.
+ */
+export function agentKeyFromHeader(header: string | null | undefined): string {
+  const value = (header ?? "").trim();
+  const bearer = /^Bearer\s+(.+)$/i.exec(value);
+  if (bearer) return bearer[1].trim();
+  const bare = /^(?:Bearer)?(axk_[A-Za-z0-9_-]{40,50})$/i.exec(value);
+  return bare && looksLikeAgentKey(bare[1]) ? bare[1] : "";
+}
+
 export interface ResolvedAgentKey {
   keyId: string;
   canSpend: boolean;
