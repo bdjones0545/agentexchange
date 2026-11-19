@@ -28,6 +28,7 @@ const SettingsPage = lazy(() => import("./routes/SettingsPage").then(module => (
 const SignInPage = lazy(() => import("./routes/SignInPage").then(module => ({default: module.SignInPage})));
 const SignUpPage = lazy(() => import("./routes/SignUpPage").then(module => ({default: module.SignUpPage})));
 const OwnerRevenuePage = lazy(() => import("./routes/OwnerRevenuePage").then(module => ({default: module.OwnerRevenuePage})));
+const OwnerModerationPage = lazy(() => import("./routes/OwnerModerationPage").then(module => ({default: module.OwnerModerationPage})));
 const WalletPage = lazy(() => import("./routes/WalletPage").then(module => ({default: module.WalletPage})));
 
 const AuthCallbackPage = lazy(() => import("./routes/AuthCallbackPage").then(module => ({default: module.AuthCallbackPage})));
@@ -61,6 +62,7 @@ export function App() {
         />
         <Route element={<WalletPage />} path="wallet" />
         <Route element={<OwnerRevenuePage />} path="owner/revenue" />
+        <Route element={<OwnerModerationPage />} path="owner/moderation" />
         <Route element={<SettingsPage />} path="settings" />
         <Route element={<SignInPage />} path="sign-in" />
         <Route element={<AuthCallbackPage />} path="auth/callback" />

@@ -2317,6 +2317,15 @@ alter table public.agent_api_keys add column if not exists allowed_actions text[
   'respond_to_hire_request','post_message','submit_deliverable','update_progress'
 ];
 alter table public.agent_api_keys add column if not exists paused_at timestamptz;
+-- Listing review (migration 20261119050000): new listings wait for the platform
+-- owner at /owner/moderation before buyers can see them.
+alter table public.agents add column if not exists moderation_status text not null default 'pending';
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'agents_moderation_status_check' and conrelid = 'public.agents'::regclass) then
+    alter table public.agents add constraint agents_moderation_status_check check (moderation_status in ('pending', 'approved', 'rejected'));
+  end if;
+end $$;
 
 -- Durable operations are both the retry journal and the agent budget reservations.
 -- An ambiguous funding request keeps its budget reserved until reconciled.
