@@ -2,25 +2,33 @@ import {useEffect,useState} from 'react';
 import {supabase} from '../lib/supabase';
 import {GlassCard} from './GlassCard';
 import {SecondaryButton} from './SecondaryButton';
-type Status={cardSource:'shared'|'dedicated';cardLabel:string|null;enabled:boolean;agentName:string;cardSaved:boolean;limitsSet:boolean;paymentPermission:boolean;canPay:boolean;canReceive:boolean;verificationUnavailable:boolean};
+type Organization={id:string;name:string;covered:boolean;canPayFor:boolean};
+type Status={cardSource:'shared'|'dedicated';cardLabel:string|null;enabled:boolean;agentName:string;cardSaved:boolean;limitsSet:boolean;paymentPermission:boolean;paymentSwitchOn?:boolean;organizations?:Organization[];canPay:boolean;canReceive:boolean;verificationUnavailable:boolean};
+type Grant={canSpend?:boolean;organizationIds?:string[]};
 export function AgentSetup({id}:{id:string}) {
   const [status,setStatus]=useState<Status|null>(null);
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
-  async function request(method='GET',permission?:boolean) {
+  async function request(method='GET',grant?:Grant) {
     const session=await supabase?.auth.getSession();
     const token=session?.data.session?.access_token;
     if(!token) throw new Error('Sign in to continue');
     const r=await fetch(method==='GET'?`/api/agent-setup?id=${encodeURIComponent(id)}`:'/api/agent-keys',{
       method,headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
-      ...(method==='PATCH'?{body:JSON.stringify({id,canSpend:permission})}:{})});
+      ...(method==='PATCH'?{body:JSON.stringify({id,...grant})}:{})});
     const data=await r.json();
     if(!r.ok) throw new Error(data.error ?? 'Setup unavailable');
     return data;
   }
   async function refresh(){setBusy(true);setError('');try {setStatus(await request());}catch(e){setError(e instanceof Error?e.message:'Could not refresh');}finally{setBusy(false);}}
   useEffect(()=>{setStatus(null);void refresh();},[id]);
-  async function permission(value:boolean){setBusy(true);setError('');try{await request('PATCH',value);setStatus(await request());}catch(e){setError(e instanceof Error?e.message:'Could not save');}finally{setBusy(false);}}
+  async function save(grant:Grant){setBusy(true);setError('');try{await request('PATCH',grant);setStatus(await request());}catch(e){setError(e instanceof Error?e.message:'Could not save');}finally{setBusy(false);}}
+  const permission=(value:boolean)=>save({canSpend:value});
+  function toggleOrganization(orgId:string,on:boolean){
+    const current=(status?.organizations ?? []).filter(o=>o.covered).map(o=>o.id);
+    void save({organizationIds:on?[...new Set([...current,orgId])]:current.filter(o=>o!==orgId)});
+  }
+  const coveredCount=(status?.organizations ?? []).filter(o=>o.covered).length;
   async function card(action:'setup'|'shared') {
     setBusy(true);setError('');
     try {
@@ -34,7 +42,7 @@ export function AgentSetup({id}:{id:string}) {
   const steps=status?[
     {done:status.cardSaved,text:status.cardSaved?'Card saved.':status.cardSource==='dedicated'?'Finish this agent’s dedicated card setup.':'Add a shared owner card below or a dedicated card here.'},
     {done:status.limitsSet,text:status.limitsSet?'Spending limits set.':'Set daily and per-contract limits below. Zero disables spending.'},
-    {done:status.paymentPermission,text:status.paymentPermission?'This key has payment permission.':'Enable payment permission for this key only when you trust the agent.'},
+    {done:status.paymentPermission,text:status.paymentPermission?`This key may pay for ${coveredCount} of your organization${coveredCount===1?'':'s'}.`:status.paymentSwitchOn && coveredCount===0?'Choose at least one organization below that this agent may pay for.':'Enable payment permission for this key only when you trust the agent.'},
     {done:status.canReceive,text:status.canReceive?'Earnings account ready.':'To earn, complete Receive earnings below with Stripe. This is optional for buyers.'},
   ]:[];
   return <GlassCard className="space-y-6 border-ae-primary/25 p-6 sm:p-8">
@@ -66,6 +74,15 @@ export function AgentSetup({id}:{id:string}) {
       <div className="space-y-3">
         <p className="text-sm leading-6 text-ae-text-muted">Payment permission allows this agent to authorize holds and release payment after approval, within your shared limits. Do not enable it if you want to perform every payment yourself.</p>
         {id!=='worker' && <SecondaryButton disabled={busy} onClick={()=>void permission(!status.paymentPermission)}>{status.paymentPermission?'Disable this agent’s payments':'Allow this agent to pay within my limits'}</SecondaryButton>}
+        {id!=='worker' && status.paymentSwitchOn && <fieldset className="space-y-2 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5">
+          <legend className="ax-label px-1">Organizations this agent may pay for</legend>
+          <p className="text-sm leading-6 text-ae-text-muted">The agent can fund and release contracts only for the organizations ticked here. A brief it posts under a new organization needs that organization ticked too.</p>
+          {(status.organizations ?? []).length===0 && <p className="text-sm leading-6 text-ae-text-muted">You have no organizations yet. Post a brief first, then allow this agent to pay for it here.</p>}
+          {(status.organizations ?? []).map(org=><label key={org.id} className="flex items-center gap-3 text-sm text-ae-text">
+            <input type="checkbox" className="size-4 shrink-0 accent-ae-primary" checked={org.covered} disabled={busy} onChange={e=>toggleOrganization(org.id,e.target.checked)} />
+            {org.name}
+          </label>)}
+        </fieldset>}
         {id==='worker' && <p className="text-sm leading-6 text-ae-text-muted">Platform worker credentials cannot spend. Issue a payment-enabled API key below for your agent.</p>}
       </div>
       <p className="text-ae-text">{status.canPay?'Ready to request payments within your limits.':'Payments need the remaining steps above.'} {status.verificationUnavailable?'Stripe verification status is temporarily unavailable; refresh later.':''}</p>

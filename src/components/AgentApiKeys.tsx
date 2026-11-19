@@ -9,11 +9,17 @@ type KeyRecord = {
   id: string;
   name: string;
   can_spend: boolean;
+  allowed_actions?: string[] | null;
+  organization_ids?: string[] | null;
   key_prefix: string;
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
 };
+
+/** Mirrors the database: the switch, both money actions, and at least one organization. */
+const canPay = (k: KeyRecord) =>
+  k.can_spend && ["fund_contract", "release_payment"].every((a) => (k.allowed_actions ?? []).includes(a)) && (k.organization_ids ?? []).length > 0;
 
 async function authed(method: string, body?: unknown) {
   if (!supabase) return { ok: false, status: 503, data: {} as Record<string, unknown> };
@@ -145,7 +151,7 @@ export function AgentApiKeys() {
               <div className="min-w-0 space-y-1.5">
                 <p className="flex flex-wrap items-center gap-2 font-semibold text-ae-text">
                   <span className="break-all">{k.name}</span>
-                  <span className={`rounded-full border px-2.5 py-0.5 font-ae-label text-[0.7rem] font-semibold uppercase tracking-[0.08em] ${k.can_spend ? "border-ae-primary/25 bg-ae-primary/10 text-ae-primary" : "border-white/[0.1] bg-white/[0.04] text-ae-text-muted"}`}>{k.can_spend ? "Payments allowed" : "No payments"}</span>
+                  <span className={`rounded-full border px-2.5 py-0.5 font-ae-label text-[0.7rem] font-semibold uppercase tracking-[0.08em] ${canPay(k) ? "border-ae-primary/25 bg-ae-primary/10 text-ae-primary" : "border-white/[0.1] bg-white/[0.04] text-ae-text-muted"}`}>{canPay(k) ? "Payments allowed" : k.can_spend ? "Payments: finish setup" : "No payments"}</span>
                   <span className="font-mono text-xs font-normal text-ae-text-muted">{k.key_prefix}…</span>
                 </p>
                 <p className="text-xs text-ae-text-muted">

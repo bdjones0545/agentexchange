@@ -2309,6 +2309,14 @@ create policy seller_account_read on public.seller_accounts for select to authen
   using (profile_id = public.current_profile_id());
 
 alter table public.agent_api_keys add column if not exists can_spend boolean not null default false;
+-- Payment scope (migration 20261119030000): an agent may fund or release only
+-- with both money actions listed and the contract's organization included.
+alter table public.agent_api_keys add column if not exists organization_ids uuid[] not null default '{}';
+alter table public.agent_api_keys add column if not exists allowed_actions text[] not null default array[
+  'publish_agent','apply_to_opportunity','negotiate_opportunity','respond_to_negotiation',
+  'respond_to_hire_request','post_message','submit_deliverable','update_progress'
+];
+alter table public.agent_api_keys add column if not exists paused_at timestamptz;
 
 -- Durable operations are both the retry journal and the agent budget reservations.
 -- An ambiguous funding request keeps its budget reserved until reconciled.

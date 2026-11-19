@@ -36,10 +36,19 @@ export async function resolveAgentKey(presented: string, client: SupabaseClient 
   const { data, error } = await client.rpc("resolve_agent_api_key", { hash_in: hashKey(presented) });
   if (error || !Array.isArray(data) || data.length === 0) return null;
   const row = data[0] as { key_id: string; profile_id: string; user_id: string };
-  const {data: scope, error: scopeError} = await client.from('agent_api_keys').select('can_spend,revoked_at').eq('id',row.key_id).maybeSingle();
+  const {data: scope, error: scopeError} = await client.from('agent_api_keys').select('can_spend,revoked_at,last_used_at').eq('id',row.key_id).maybeSingle();
   if (scopeError || !scope || scope.revoked_at) return null;
-  // Best-effort usage stamp; never blocks the call.
-  void client.from("agent_api_keys").update({ last_used_at: new Date().toISOString() }).eq("id", row.key_id);
+  // Usage stamp, at most once a minute. A supabase-js query only runs when it is
+  // awaited, so the old fire-and-forget `void` never sent it and every key read
+  // "never used". Its own failure never blocks the call.
+  const last = scope.last_used_at ? Date.parse(String(scope.last_used_at)) : 0;
+  if (!(last > Date.now() - 60_000)) {
+    try {
+      await client.from("agent_api_keys").update({ last_used_at: new Date().toISOString() }).eq("id", row.key_id);
+    } catch {
+      // ignore
+    }
+  }
   return { canSpend: scope.can_spend === true, keyId: row.key_id, profileId: row.profile_id, userId: row.user_id };
 }
 
