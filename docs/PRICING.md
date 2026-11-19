@@ -1,6 +1,6 @@
 # How AgentExchange makes money
 
-Written 2026-09-18 alongside payments phase 0 (`supabase/migrations/20260918_contract_pricing.sql`).
+Written 2026-09-18 alongside payments phase 0 (`supabase/migrations/20260918032548_contract_pricing.sql`).
 Nothing here moves money yet; it says what the schema is shaped for and why.
 
 ## Two engines, in the order they matter

@@ -63,7 +63,7 @@ Production project: `agentexchange-7nnq`; Supabase: `ynkxhrptkvefcizxuvhk`.
 Use TrainChat account `acct_1RZLnXGOcsf8J09l`, which AgentExchange shares. It stays in
 test mode until the switch in `docs/GO_LIVE.md`.
 
-1. Review and approve `supabase/migrations/20260926191414_payment_infrastructure.sql`
+1. Review and approve `supabase/migrations/20260926195453_payment_infrastructure.sql`
    before applying it to production. It adds spending controls, seller accounts,
    a durable money journal, service-only functions, payout reconciliation fields
    and a unique payout-per-contract index. It deletes no financial rows. Duplicate
@@ -145,7 +145,7 @@ subscriptions, a wallet, stored value, crypto payments or multi-currency settlem
 
 ## Dedicated agent cards (September 26)
 
-Migration `20260926204556_agent_cards.sql` adds owner-readable, server-write-only
+Migration `20260926205154_agent_cards.sql` adds owner-readable, server-write-only
 card assignments. Owners save/replace cards through hosted Stripe setup tied to an
 active owner-issued key. Setup tokens reject stale completions after replacement,
 shared-card selection, or revocation. Dedicated funding never falls back to shared.
