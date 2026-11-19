@@ -60,10 +60,10 @@ comments and whitespace are ignored. "Identical" means byte for byte.
 | `20261015014913_payment_provider_mode.sql` | Applied, identical | `provider_mode` on payments and payouts: the Stripe mode each row was written in, so reconciliation skips pilot test-mode rows after the switch to live keys. |
 | `20261015040104_managed_services.sql` | Applied, identical | Managed-service contracts: service terms, a seeded checklist and weekly renewals. |
 | `20261015042847_job_catalog.sql` | Applied, identical | The job catalog in the database: `job_kind` on briefs and on the contracts made from them (derived and immutable), and a managed-service brief's week-1 checklist and limits. |
-| `20261022000000_explicit_data_api_grants.sql` | **Not yet.** Every grant it declares already holds on production (86 of 86 checked 2026-11-19), so applying it changes nothing there. | Explicit per-role grants on every public table the app uses, for projects created after Supabase stopped granting new tables by default. |
-| `20261119030000_agent_key_payment_scope.sql` | **Not yet recorded.** Already in effect via `20260927182500`; a no-op there. | Records `agent_api_keys.allowed_actions`, `organization_ids` and `paused_at` for projects built from this folder. |
-| `20261119050000_agent_moderation_status.sql` | **Not yet recorded.** Already in effect via `20261011021649`; a no-op there. | Records `agents.moderation_status`. The owner reviews the queue at `/owner/moderation`. |
-| `20261119070000_production_catch_up.sql` | **Not yet.** | Adds `reviews.contract_title`, which the app sends on every review (production rejects every review insert today), and the `disputes.owner_id` index. |
+| `20261022000000_explicit_data_api_grants.sql` | Applied 2026-11-19. A no-op there: all 86 grants it declares were already held. | Explicit per-role grants on every public table the app uses, for projects created after Supabase stopped granting new tables by default. |
+| `20261119030000_agent_key_payment_scope.sql` | Recorded 2026-11-19. A no-op there: already in effect via `20260927182500`. | Records `agent_api_keys.allowed_actions`, `organization_ids` and `paused_at` for projects built from this folder. |
+| `20261119050000_agent_moderation_status.sql` | Recorded 2026-11-19. A no-op there: already in effect via `20261011021649`. | Records `agents.moderation_status`. The owner reviews the queue at `/owner/moderation`. |
+| `20261119070000_production_catch_up.sql` | Applied 2026-11-19 | Adds `reviews.contract_title`, which the app sends on every review (until it ran, production rejected every review insert), and the `disputes.owner_id` index. |
 
 ## How this was checked (2026-11-19)
 
@@ -71,19 +71,22 @@ comments and whitespace are ignored. "Identical" means byte for byte.
 index, policy, trigger, table grant, function body and function grant in
 `public` and `policy_private`. It was run read-only on production and on a
 database built from `schema.sql` in a disposable local Postgres set up with
-Supabase's default privileges. Of 340 facts, 338 are equal. The other two are
-the column and index that `20261119070000_production_catch_up.sql` adds.
+Supabase's default privileges. Of 340 facts, 338 were equal; the other two
+were the column and index that `20261119070000_production_catch_up.sql` adds.
+After it was applied, all 340 are equal.
 
 Before this, `schema.sql` lacked the nine migrations production ran from the
 unmerged `harden/bounded-marketplace` and iOS release branches and the four
 October 15 migrations, so a project built from it was missing 9 tables, the
 `policy_private` schema and 30 functions.
 
-The four pending migrations were rehearsed on a local copy shaped like
+The last four migrations were first rehearsed on a local copy shaped like
 production, with its ledger. A run against the wrong ledger, against a ledger
 with newer entries, or without the columns they assume aborts with no writes.
 The real run leaves the copy identical to a fresh `schema.sql` build, a second
-run changes nothing, and the rollback restores the previous catalog.
+run changes nothing, and the rollback restores the previous catalog. They were
+then applied to production in one transaction with ledger rows under these
+versions; each recorded statement hashes identically to its file.
 
 `scripts/verify-money-db.py` (which also runs `rls-local-verify.sh` and
 `verify-managed-services-db.sh`), `scripts/verify-policy-db.py` and
