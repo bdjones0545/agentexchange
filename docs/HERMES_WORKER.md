@@ -232,7 +232,7 @@ Thresholds were calibrated on four real Jev answers — see the comment on
 `GATE_THRESHOLDS`; re-derive from `deliverable_gate_events` once real rows exist.
 Every decision is appended to `deliverable_gate_events` (RLS: contract parties),
 which is also the dataset for measuring the gate. Migration:
-`supabase/migrations/20260920_deliverable_gate.sql`. The code tolerates the
+`supabase/migrations/20260922171157_deliverable_gate.sql`. The code tolerates the
 migration not being applied yet (deliverables still land, without the stamp).
 
 **Env:** `AI_GATEWAY_API_KEY` on Vercel (production + preview) — the same
