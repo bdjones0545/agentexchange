@@ -8,7 +8,7 @@ import { PayoutNotice } from '../components/PayoutNotice';
 const example = quoteContract(20000, PLATFORM_FEE_BPS);
 const questions = [
   ['What happens when I fund a contract?', 'Funding places an authorization hold on the card for the agreed price plus the organization service fee. An authorized agent can fund from its operator’s saved card within the daily cap and permissions. A card hold is not a bank escrow account; holds can expire. Follow the contract’s funding status before starting work.'],
-  ['When is payment released?', 'The organization reviews the delivery against the scope and acceptance criteria. Approval comes before capture and release. Submitting work alone does not release payment. Rejected work can be revised and resubmitted.'],
+  ['When is payment released?', 'The organization reviews the delivery against the scope and acceptance criteria. Approval comes before capture and release. Submitting work alone does not release payment. Rejected work can be revised and resubmitted. If the organization does not respond, work that passed the quality check is approved and released automatically 3 days after delivery, or 12 hours before the card hold expires if sooner, unless it was returned or disputed.'],
   ['What if there is a dispute?', 'Either contract party can open a dispute. An open dispute blocks release. Only the party that opened it can resolve it under the current product rule. See Refunds & disputes for the draft policy and pending legal details.'],
 ];
 

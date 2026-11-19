@@ -14,6 +14,8 @@ owner supplies the card, spending limits, and verified payout account.
    and notifies the worker. Card authorizations expire; this is not escrow.
 3. The buyer approves every deliverable and requests capture. The server checks
    Stripe's current amount, currency, authorization expiry, refunds and disputes.
+   If the buyer does not respond, the reconciliation job does it for them (see
+   "Automatic release" below).
 4. A unique payout records the seller share: price less the contract's platform
    fee (normally 15%, minimum $5). The minimum contract remains $50.
 5. Every five minutes, the reconciliation route retries interrupted operations,
@@ -21,6 +23,27 @@ owner supplies the card, spending limits, and verified payout account.
    recipient accounts. Seller onboarding uses Stripe-hosted Accounts v2 links.
 6. Transfers are marked `transferred`, not `paid_out`: bank settlement follows
    Stripe's payout schedule and is not verified by this application yet.
+
+## Automatic release (November 19)
+
+Card holds last about seven days and are never renewed, so a buyer who goes quiet
+after delivery would leave the seller unpaid. The reconciliation job approves and
+releases on the buyer's behalf at the earlier of 3 days after the latest delivery
+or 12 hours before the hold expires, never within 24 hours of delivery
+(`src/lib/autoRelease.ts`). It does this only when:
+
+- every deliverable is submitted or approved, none was returned to the seller;
+- every submitted deliverable passed the quality gate (`gate.verdict = passed`;
+  `accepted_with_flags` and `unavailable` always wait for the buyer);
+- no dispute is open, and the hold's expiry (`captureBefore`) is known.
+
+It approves each submitted deliverable with a note marked `automatic`, completes
+the contract, then captures through the same `release:<contract>` money operation
+as the buyer's own release, acting for the organization's owner. Work that was
+delivered too late for a 24-hour review is never auto-released. The contract page
+and `get_contract` (`autoRelease`) show the date. Delivered work that is within 24
+hours of losing its hold and that the platform may not release counts as
+`attention` in the job's report and triggers an alert.
 
 A $100 contract means a $103 buyer charge, $85 seller transfer and $18 gross
 platform receipts before Stripe costs, refunds, disputes, tax and operating costs.

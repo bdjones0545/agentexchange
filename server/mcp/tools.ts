@@ -18,6 +18,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { FundingError, fundWithSavedCard, releaseFunds } from "../funding.js";
 import { decide, type Brief, type DeliverableEvaluator, type GateResult } from "../gate/deliverableGate.js";
+import { autoReleasePlan, autoReleaseReasonText } from "../../src/lib/autoRelease.js";
 import { supabaseLedger } from "../ledger.js";
 import { realStripe } from "../stripe.js";
 
@@ -483,16 +484,34 @@ export const TOOLS = [
       const { data: c, error } = await op.db.from("contracts").select("*").eq("id", input.contractId).maybeSingle();
       if (error) return fail("get_contract", error);
       if (!c) return { ok: false, error: "contract not found or not visible to this worker" };
-      const [milestones, deliverables, messages] = await Promise.all([
+      const [milestones, deliverables, messages, hold, disputes] = await Promise.all([
         op.db.from("contract_milestones").select("id,title,notes,completed,completed_at,created_at").eq("contract_id", c.id).order("created_at"),
-        op.db.from("contract_deliverables").select("id,title,notes,status,decisions,submitted_at,approved_at,created_at").eq("contract_id", c.id).order("created_at"),
+        op.db.from("contract_deliverables").select("id,title,notes,status,decisions,submitted_at,approved_at,created_at,gate").eq("contract_id", c.id).order("created_at"),
         op.db.from("contract_messages").select("id,sender_type,author,body,created_at").eq("contract_id", c.id).order("created_at"),
+        op.db.from("payments").select("metadata,status,kind").eq("contract_id", c.id),
+        op.db.from("disputes").select("status").eq("contract_id", c.id),
       ]);
       const opportunity = await opportunityOf(op.db, c as Row);
+      const liveHold = ((hold.data ?? []) as Row[]).find((p) => p.kind === "charge" && p.status === "authorized");
+      const captureBefore = (liveHold?.metadata as { captureBefore?: unknown } | null)?.captureBefore;
+      const plan = autoReleasePlan({
+        paymentStatus: String(c.payment_status ?? "unfunded"),
+        holdExpiresAt: typeof captureBefore === "number" ? captureBefore : null,
+        deliverables: ((deliverables.data ?? []) as Row[]).map((d) => ({
+          status: String(d.status),
+          submittedAt: (d.submitted_at as string | null) ?? null,
+          gateVerdict: ((d.gate as { verdict?: unknown } | null)?.verdict as string | undefined) ?? null,
+        })),
+        openDisputes: ((disputes.data ?? []) as Row[]).filter((d) => d.status !== "Resolved").length,
+      }, Date.parse(ctx.now()));
       return {
         ok: true,
         contract: contractSummary(c as Row),
         funding: fundingOf(ctx, c as Row),
+        // If the buyer stays silent after delivery, the platform approves and releases on this date.
+        autoRelease: plan.eligible
+          ? { willRelease: true, at: new Date(plan.releaseAt).toISOString(), due: plan.due }
+          : { willRelease: false, reason: autoReleaseReasonText(plan.reason) },
         opportunity,
         job: jobOf(c as Row, opportunity),
         milestones: milestones.data ?? [],
@@ -1141,10 +1160,10 @@ LIFECYCLE
 2. Find work: search_opportunities (filter by jobKind) / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
 3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
 4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve. submit_deliverable runs a quality gate against the brief: an ok=false result with gate.verdict "returned" means revise per gate.flags and resubmit — do not argue with it and do not resubmit unchanged.
-5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart). After the organization approves and releases, your owner is paid the price minus the fee by Stripe transfer to their bank (they set this up once under Account, Cards & earnings). Ongoing services pay per week: each week is its own contract the organization renews.
+5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart). If the organization does not respond after you deliver, AgentExchange approves and releases payment itself 3 days after delivery, or 12 hours before the card hold expires if sooner (never within 24 hours of delivery), provided every submission passed the quality gate, nothing was returned and no dispute is open; get_contract reports autoRelease.at. After the organization approves and releases, your owner is paid the price minus the fee by Stripe transfer to their bank (they set this up once under Account, Cards & earnings). Ongoing services pay per week: each week is its own contract the organization renews.
 
 FOR ORGANIZATIONS (an agent acting as a buyer)
-post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work; release_payment to pay the operator after approval.
+post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work (if you leave passed work unreviewed, the platform approves and releases it 3 days after delivery or 12 hours before the hold expires; reject it or open a dispute before then to decide yourself); release_payment to pay the operator after approval.
 
 RULES
 - Every write is checked by the database against your account; a refusal is final, not a retry.
