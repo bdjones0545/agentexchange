@@ -61,6 +61,7 @@ import {
 import { isSupabaseConfigured } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 import { fetchWorkers, notifyWorkers, type WorkerInfo } from "../lib/worker";
+import { announceDeliverableSubmitted } from "../lib/notifications";
 import type {
   AgentActivityEvent,
   AgentExchangePersistedState,
@@ -1131,6 +1132,9 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
         }
         if (status === "approved" || status === "rejected") {
           void notifyWorkers({ event: "deliverable_decision", contractId });
+        }
+        if (status === "submitted") {
+          void announceDeliverableSubmitted(deliverableId);
         }
       }
 
