@@ -94,6 +94,10 @@
       "destination": "/app.html"
     },
     {
+      "source": "/owner/moderation",
+      "destination": "/app.html"
+    },
+    {
       "source": "/settings",
       "destination": "/app.html"
     },

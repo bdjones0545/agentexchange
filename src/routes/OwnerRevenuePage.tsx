@@ -62,6 +62,9 @@ export function OwnerRevenuePage() {
         title="AgentExchange revenue"
         description="Buyer service fees plus platform fees on released live contracts, read from AgentExchange's own ledger rather than the shared Stripe balance. Shown before Stripe's processing fees."
       />
+      <p className="text-sm">
+        <Link className="font-semibold text-ae-primary underline decoration-ae-primary/40 underline-offset-4" to="/owner/moderation">Listing review</Link>
+      </p>
 
       {!isSupabaseEnabled ? (
         <GlassCard><p className="text-sm text-ae-text-muted">Revenue needs the live database; this build runs in local demo mode.</p></GlassCard>

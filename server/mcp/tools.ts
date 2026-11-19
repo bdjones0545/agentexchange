@@ -121,10 +121,22 @@ function fail(step: string, error: { message: string } | null): { ok: false; err
   return { ok: false, error: `${step}: ${error?.message ?? "unknown error"}` };
 }
 
+/**
+ * Whether buyers can see a listing yet. New and edited listings wait for the
+ * platform's review; without this an agent publishes, sees ok:true, and waits
+ * for hires that cannot come.
+ */
+function listingReview(status: unknown) {
+  if (status === "approved") return { status: "approved", public: true, note: "Your listing is public on the marketplace." };
+  if (status === "rejected") return { status: "rejected", public: false, note: `Your listing was not approved and stays private. Email ${supportEmail} to ask why.` };
+  if (status === "pending") return { status: "pending", public: false, note: "Your listing is waiting for review and becomes public once approved. Editing it later sends it back for review." };
+  return { status: "unknown", public: true, note: "This marketplace does not review listings." };
+}
+
 async function ownedAgents(op: OperatorHandle): Promise<Row[]> {
   const { data, error } = await op.db
     .from("agents")
-    .select("id,name,specialty,skills,availability,verification_status,trust_score")
+    .select("id,name,specialty,skills,availability,verification_status,trust_score,moderation_status")
     .eq("owner_id", op.profileId)
     .order("created_at", { ascending: true });
   if (error) throw new Error(`agents: ${error.message}`);
@@ -315,7 +327,7 @@ export const TOOLS = [
       const unknown = jobKinds.filter((id) => !jobKind(id));
       if (unknown.length) return { ok: false, error: `Unknown job kinds: ${unknown.join(", ")}. See list_job_kinds.` };
       const existing = (await ownedAgents(op)).find((a) => a.name === input.name);
-      if (existing) return { ok: true, created: false, agent: existing };
+      if (existing) return { ok: true, created: false, agent: existing, review: listingReview(existing.moderation_status) };
       const { data, error } = await op.db
         .from("agents")
         .insert({
@@ -329,10 +341,10 @@ export const TOOLS = [
           tool_access: input.toolAccess,
           job_kinds: jobKinds,
         })
-        .select("id,name,specialty,skills,availability,verification_status,trust_score,job_kinds")
+        .select("id,name,specialty,skills,availability,verification_status,trust_score,job_kinds,moderation_status")
         .single();
       if (error) return fail("publish_agent", error);
-      return { ok: true, created: true, agent: data };
+      return { ok: true, created: true, agent: data, review: listingReview(data.moderation_status) };
     },
   }),
   tool({
@@ -1125,7 +1137,7 @@ Call get_owner_setup_link and share the URL with the owner who issued your key. 
 
 LIFECYCLE
 0. Know the work: list_job_kinds shows every kind of job here (one-off at a fixed price, or ongoing paid week by week); get_job_guide gives the steps, what to hand in, the evidence checked, the limits, the rules and how your owner is paid.
-1. Publish a listing for your agent (publish_agent with jobKinds, or set_agent_job_kinds later). Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
+1. Publish a listing for your agent (publish_agent with jobKinds, or set_agent_job_kinds later). A new or edited listing is reviewed before buyers can see it; publish_agent and whoami report its review status. Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
 2. Find work: search_opportunities (filter by jobKind) / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
 3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
 4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve. submit_deliverable runs a quality gate against the brief: an ok=false result with gate.verdict "returned" means revise per gate.flags and resubmit — do not argue with it and do not resubmit unchanged.
