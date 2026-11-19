@@ -2,6 +2,8 @@ import { isTestListing } from "../../src/lib/publicListings.js";
 import { SERVICE_KINDS, accessSteps, agentRules, serviceBriefColumns, serviceBriefFromRow, serviceSummary, serviceTermsFromJson, validateServiceBrief, weekStages, type ServiceKind } from "../../src/lib/managedService.js";
 import { JOB_KINDS, JOB_KIND_PATTERN, jobGuide, jobKind, pricingOf, type JobFamily } from "../../src/lib/jobCatalog.js";
 import { setupLink, setupStatus } from '../agentSetup.js';
+import { KEY_AUTHORITY_COLUMNS, paymentRefusal, type KeyAuthority, type PaymentAction } from '../agentAuthority.js';
+import type { DispatchEvent } from '../dispatch.js';
 import { serviceClient } from '../service.js';
 import { supportEmail } from '../../src/content/publicRoutes.js';
 import { sellerGateway } from '../connect.js';
@@ -37,7 +39,7 @@ export interface ToolContext {
   /** When true, a contract must be funded (payment_status authorized) before work starts. */
   paymentsEnabled: boolean;
   /** Tell workers something happened (identifiers only). Best-effort. */
-  notify?: (event: { event: "contract_funded" | "deliverable_decision"; contractId: string }) => Promise<unknown>;
+  notify?: (event: DispatchEvent) => Promise<unknown>;
   /**
    * Quality gate for submit_deliverable (server/gate/deliverableGate.ts). null or
    * undefined means no evaluator is configured: deliverables are accepted and
@@ -53,6 +55,39 @@ function moneyDeps(ctx: ToolContext, op: OperatorHandle) {
     stripe: realStripe(process.env.STRIPE_SECRET_KEY ?? ""),
     appUrl: (process.env.APP_URL ?? "https://www.agentsexchange.ai").replace(/\/$/, ""),
     notify: ctx.notify,
+  };
+}
+
+/** Tell the other party's worker; a failed or missing notifier never fails the write that already happened. */
+async function notifyQuietly(ctx: ToolContext, event: DispatchEvent) {
+  try {
+    await ctx.notify?.(event);
+  } catch {
+    // The worker's timed sweep still finds the change.
+  }
+}
+
+/**
+ * The database refuses an agent's money operation unless the key lists the
+ * action and the contract's organization. Say so plainly, with the owner's setup
+ * link, before any money operation starts; otherwise the agent only sees
+ * "Current agent payment authority required".
+ */
+async function paymentScopeRefusal(ctx: ToolContext, op: OperatorHandle, action: PaymentAction, contractId: string) {
+  if (!ctx.agentKeyId) return null;
+  const [{ data: key }, { data: contract }] = await Promise.all([
+    op.db.from("agent_api_keys").select(KEY_AUTHORITY_COLUMNS).eq("id", ctx.agentKeyId).maybeSingle(),
+    op.db.from("contracts").select("id,organization_id,organization_name").eq("id", contractId).maybeSingle(),
+  ]);
+  if (!contract) return null; // The money path reports a missing or invisible contract as before.
+  const why = paymentRefusal((key ?? {}) as KeyAuthority, action, contract.organization_id as string | null);
+  if (!why) return null;
+  const appUrl = (process.env.APP_URL ?? "https://www.agentsexchange.ai").replace(/\/$/, "");
+  return {
+    ok: false,
+    error: `${why} Nothing was charged. Send the owner who issued this key this link so they can allow this agent to pay for ${contract.organization_name ?? "this organization"}: ${setupLink(appUrl, ctx.agentKeyId)}`,
+    ownerSetupUrl: setupLink(appUrl, ctx.agentKeyId),
+    organizationId: contract.organization_id,
   };
 }
 
@@ -927,6 +962,7 @@ export const TOOLS = [
       if (readError) return fail("accept_application (read)", readError);
       const { error: statusError } = await op.db.from("applications").update({ status: "accepted" }).eq("id", app.id);
       if (statusError) return fail("accept_application (status)", statusError);
+      await notifyQuietly(ctx, { event: "contract_created", contractId });
       return { ok: true, contract: contractSummary(contract as Row) };
     },
   }),
@@ -978,6 +1014,8 @@ export const TOOLS = [
       if (!updated) return { ok: false, error: `negotiation is ${neg.status}; only a pending proposal can be accepted by the organization` };
       const { data: contract, error: rpcError } = await op.db.rpc("materialize_negotiation_contract", { negotiation_uuid: neg.id });
       if (rpcError) return fail("materialize_negotiation_contract", rpcError);
+      const created = contract as Row | null;
+      if (created?.id) await notifyQuietly(ctx, { event: "contract_created", contractId: String(created.id) });
       return { ok: true, negotiationId: neg.id, acceptedPriceCents: neg.amount_cents, contract: contractSummary(contract as Row) };
     },
   }),
@@ -1000,6 +1038,8 @@ export const TOOLS = [
         .select("id,status,amount_cents,created_at")
         .single();
       if (error) return fail("send_hire_request", error);
+      // The browser has always woken the hired agent's worker; an agent hiring over MCP now does too.
+      await notifyQuietly(ctx, { event: "hire_request", hireRequestId: String(data.id) });
       return { ok: true, hireRequest: data };
     },
   }),
@@ -1042,6 +1082,8 @@ export const TOOLS = [
       if (!ctx.paymentsEnabled) return { ok: false, error: "payments are not enabled on this marketplace yet" };
       if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission; the owner must issue a payment-enabled key"};
       const op = await ctx.open();
+      const refused = await paymentScopeRefusal(ctx, op, "fund_contract", input.contractId);
+      if (refused) return refused;
       try {
         const r = await fundWithSavedCard(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, agentKeyId:ctx.agentKeyId });
         return { ok: true, contractId: input.contractId, paymentStatus: r.paymentStatus, chargedCents: r.quote.totalCents, quote: r.quote };
@@ -1061,6 +1103,8 @@ export const TOOLS = [
       if (!ctx.paymentsEnabled) return { ok: false, error: "payments are not enabled on this marketplace yet" };
       if (!ctx.paymentsAllowed) return {ok:false,error:"This agent key has no payment permission"};
       const op = await ctx.open();
+      const refused = await paymentScopeRefusal(ctx, op, "release_payment", input.contractId);
+      if (refused) return refused;
       try {
         const r = await releaseFunds(moneyDeps(ctx, op), { contractId: input.contractId, callerProfileId: op.profileId, action: input.action });
         return { ok: true, contractId: input.contractId, ...r };
@@ -1077,7 +1121,7 @@ export type AnyTool = (typeof TOOLS)[number];
 export const MARKETPLACE_GUIDE = `AgentExchange is a marketplace where organizations post briefs and agents do the work.
 
 OWNER PAYMENT SETUP
-Call get_owner_setup_link and share the URL with the owner who issued your key. They sign in, save a card, set limits, and explicitly enable the key; seller verification is optional for buyers. Call get_payment_setup_status after they finish; poll no faster than every 30 seconds. Never ask for card numbers, bank details, identity documents, or owner passwords in chat.
+Call get_owner_setup_link and share the URL with the owner who issued your key. They sign in, save a card, set limits, explicitly enable the key, and choose which of their organizations it may pay for; seller verification is optional for buyers. A brief you post under a new organization needs that organization allowed too. Call get_payment_setup_status after they finish (canPay, and organizations[].canPayFor); poll no faster than every 30 seconds. Never ask for card numbers, bank details, identity documents, or owner passwords in chat.
 
 LIFECYCLE
 0. Know the work: list_job_kinds shows every kind of job here (one-off at a fixed price, or ongoing paid week by week); get_job_guide gives the steps, what to hand in, the evidence checked, the limits, the rules and how your owner is paid.
