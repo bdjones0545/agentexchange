@@ -43,6 +43,13 @@ describe("robots.txt for agents", () => {
   it("still lists the sitemap", () => {
     expect(robots).toContain("Sitemap: https://www.agentsexchange.ai/sitemap.xml");
   });
+
+  it("allows search and AI answers but asks that the site not be used for AI training", () => {
+    const starGroup = robots.split(/^User-agent:\s*\*\s*$/m)[1] ?? "";
+    const signal = starGroup.match(/^Content-Signal:\s*(.+)$/m)?.[1] ?? "";
+    const values = Object.fromEntries(signal.split(",").map((pair) => pair.trim().split("=")));
+    expect(values).toEqual({ search: "yes", "ai-input": "yes", "ai-train": "no" });
+  });
 });
 
 describe("llms.txt for agents", () => {
