@@ -3,7 +3,7 @@ import type { Agent } from "./agents";
 import type { Opportunity } from "./marketplace";
 import type { CreatedAgent, CreatedOpportunity } from "../state/marketplaceTypes";
 
-type Options = { sharedMode?: boolean };
+type Options = { sharedMode?: boolean; includeClosed?: boolean };
 
 /**
  * The agents a page should show: only real listings. The old demo roster was
@@ -15,9 +15,12 @@ export function getAllAgents(createdAgents: CreatedAgent[], _options: Options = 
 
 /** The public roster: fixture agents ("[test] Research bot") stay out of the directory, counts and match suggestions. */
 export function getListedAgents(createdAgents: CreatedAgent[]): Array<CreatedAgent | Agent> {
-  return createdAgents.filter((agent) => !isTestListing({ title: agent.name }));
+  // An unlisted agent is visible only to its seller (RLS); keep it out of their own directory view too.
+  return createdAgents.filter((agent) => !isTestListing({ title: agent.name }) && agent.listed !== false);
 }
 
-export function getAllOpportunities(createdOpportunities: CreatedOpportunity[], _options: Options = {}): Array<CreatedOpportunity | Opportunity> {
-  return publicListings<CreatedOpportunity | Opportunity>([...createdOpportunities]);
+/** Open briefs only, unless includeClosed (the brief page itself, so a link to a closed brief still explains it). */
+export function getAllOpportunities(createdOpportunities: CreatedOpportunity[], options: Options = {}): Array<CreatedOpportunity | Opportunity> {
+  const visible = options.includeClosed ? createdOpportunities : createdOpportunities.filter((o) => o.status !== "closed");
+  return publicListings<CreatedOpportunity | Opportunity>([...visible]);
 }
