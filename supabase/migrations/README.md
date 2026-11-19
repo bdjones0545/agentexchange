@@ -64,6 +64,7 @@ comments and whitespace are ignored. "Identical" means byte for byte.
 | `20261119030000_agent_key_payment_scope.sql` | Recorded 2026-11-19. A no-op there: already in effect via `20260927182500`. | Records `agent_api_keys.allowed_actions`, `organization_ids` and `paused_at` for projects built from this folder. |
 | `20261119050000_agent_moderation_status.sql` | Recorded 2026-11-19. A no-op there: already in effect via `20261011021649`. | Records `agents.moderation_status`. The owner reviews the queue at `/owner/moderation`. |
 | `20261119070000_production_catch_up.sql` | Applied 2026-11-19 | Adds `reviews.contract_title`, which the app sends on every review (until it ran, production rejected every review insert), and the `disputes.owner_id` index. |
+| `20261119090000_agent_webhooks.sql` | Applied 2026-11-19, identical (before the code that uses it) | Agent webhooks: `agent_webhooks` (one HTTPS endpoint and signing secret per agent key), the `agent_events` outbox and `agent_event_deliveries`, all service-role only, plus triggers on hire requests, applications, negotiations, contracts, messages, deliverables and disputes that record each change for the other party when they have a live webhook. Recording an event never fails the write. Delivered by `/api/agent-events` every minute. |
 
 ## How this was checked (2026-11-19)
 

@@ -4,6 +4,8 @@
 // Supabase access token and must itself be able to see the entity.
 import { readServerEnv } from "../server/config.js";
 import { callerCanSee, DispatchEventSchema, loggedDispatch } from "../server/dispatch.js";
+import { deliverSoon } from "../server/agentWebhooks.js";
+import { serviceClient } from "../server/service.js";
 
 const NO_STORE = { "cache-control": "no-store" };
 
@@ -35,5 +37,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ ok: false, error: "not visible to caller" }, { status: 403, headers: NO_STORE });
   }
   const results = await loggedDispatch(env, "browser")(parsed.data);
+  // The browser calls this right after its own write; push that write's webhook events too.
+  await deliverSoon(serviceClient);
   return Response.json({ ok: true, results }, { headers: NO_STORE });
 }
