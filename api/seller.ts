@@ -1,7 +1,7 @@
 import { bearerToken, callerProfile } from '../server/caller.js';
 import { readServerEnv } from '../server/config.js';
 import { onboardSeller, sellerGateway } from '../server/connect.js';
-import { operationStore } from '../server/moneyOperations.js';
+import { failureLabel, operationStore } from '../server/moneyOperations.js';
 import { serviceClient } from '../server/service.js';
 import { supportEmail } from '../src/content/publicRoutes.js';
 import { isPayoutCountry, unsupportedCountryMessage } from '../src/lib/payoutCountries.js';
@@ -38,5 +38,8 @@ export async function POST(request: Request) {
   try {
     const result=await onboardSeller(serviceClient(),operationStore(),sellerGateway(process.env.STRIPE_SECRET_KEY!),caller.profileId,env.appUrl,caller.email,country);
     return Response.json({ok:true,...result},{headers});
-  } catch {return Response.json({ok:false,error:`Stripe couldn't start payout setup just now. Please try again in a few minutes. If it keeps failing, email ${supportEmail} from your account email.`},{status:503,headers});}
+  } catch (e) {
+    // The reason, never the provider's free-text message (it can contain personal data).
+    console.error(JSON.stringify({event:'seller_onboarding',ok:false,reason:failureLabel(e),country:country||null}));
+    return Response.json({ok:false,error:`Stripe couldn't start payout setup just now. Please try again in a few minutes. If it keeps failing, email ${supportEmail} from your account email.`},{status:503,headers});}
 }
