@@ -2903,7 +2903,11 @@ begin
   end if;
   -- Stripe may prune idempotency keys after 24h. Never recreate an unknown charge
   -- or transfer after that window. Reconciliation must resolve it first.
-  if p_kind <> 'webhook' and op.attempts > 0 and op.created_at < now()-interval '23 hours' then
+  -- Seller account setup is exempt: it moves no money, and Stripe's v2 accounts API
+  -- keeps a key for 30 days and re-runs a request that failed, so a retry returns the
+  -- account an earlier attempt made. After 30 days the worst case is a second, unused
+  -- account; refusing the retry would lock the seller out of payouts for good.
+  if p_kind not in ('webhook','seller') and op.attempts > 0 and op.created_at < now()-interval '23 hours' then
     return jsonb_build_object('state','review');
   end if;
   token := gen_random_uuid();

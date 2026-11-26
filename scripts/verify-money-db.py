@@ -48,6 +48,10 @@ alter default privileges in schema public grant all on sequences to anon,authent
         transactional=next((ROOT/'supabase/migrations').glob('*_transactional_marketplace_operations.sql'))
         sql(transactional.read_text())
         sql(transactional.read_text())
+        # Redefines begin_money_operation() after the reapplied older versions above.
+        seller_retry=next((ROOT/'supabase/migrations').glob('*_seller_setup_retry.sql'))
+        sql(seller_retry.read_text())
+        sql(seller_retry.read_text())
         readonly=next((ROOT/'supabase/migrations').glob('*_agent_readonly_authority.sql'))
         sql(readonly.read_text())
         bank=next((ROOT/'supabase/migrations').glob('*_seller_bank_payout_observations.sql'))
@@ -96,6 +100,15 @@ insert into billing_accounts(profile_id,agent_daily_cap_cents,agent_per_contract
         sql(f"update money_operations set lease_until=null,created_at=now()-interval '25 hours' where key='{winner}'")
         assert json.loads(sql('set role service_role;'+begin(winner,c)))['state']=='review'
         print('PASS leases prevent duplicate execution; stale attempts require reconciliation')
+        # Seller payout setup moves no money: a failed first try stays retryable.
+        setup=f"select public.begin_money_operation('seller:{PROFILE}','seller','{PROFILE}',null,'{{\"profileId\":\"{PROFILE}\"}}',0);"
+        lease=json.loads(sql('set role service_role;'+setup))['token']
+        sql(f"set role service_role;select fail_money_operation('seller:{PROFILE}','{lease}','StripeInvalidRequestError:capability_not_available_in_country');")
+        sql(f"update money_operations set created_at=now()-interval '20 days' where key='seller:{PROFILE}'")
+        assert json.loads(sql('set role service_role;'+setup))['state']=='acquired'
+        sql(f"update money_operations set lease_until=null where key='seller:{PROFILE}'")
+        assert json.loads(sql('set role service_role;'+begin(winner,c)))['state']=='review'
+        print('PASS a failed seller payout setup can be retried after 23 hours; a stale charge still cannot')
         for role in ['anon','authenticated']:
             sql(f'set role {role};'+begin('attack',c),False)
             sql(f"set role {role};insert into seller_accounts values('{PROFILE}','acct_attacker',now());",False)
