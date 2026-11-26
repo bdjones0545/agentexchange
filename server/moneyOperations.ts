@@ -49,7 +49,27 @@ export async function runMoneyOperation<T>(store: OperationStore, op: MoneyOpera
     return result;
   } catch (error) {
     // Do not persist provider messages, which may contain personal information.
-    await store.fail(op.key, claim.token, error instanceof Error ? error.name : 'operation_failed').catch(() => {});
+    await store.fail(op.key, claim.token, failureLabel(error)).catch(() => {});
     throw error;
   }
+}
+
+/**
+ * What a failed money operation records: the error class plus Stripe's
+ * structured fields (type, code, the parameter it rejected, HTTP status), which
+ * say why it failed without the free-text message that may carry personal data.
+ * For example "StripeInvalidRequestError:country_unsupported param=identity.country http=400".
+ */
+export function failureLabel(error: unknown): string {
+  if (!(error instanceof Error)) return 'operation_failed';
+  const e = error as Error & { type?: unknown; code?: unknown; param?: unknown; statusCode?: unknown };
+  const safe = (v: unknown) => (typeof v === 'string' || typeof v === 'number') && /^[\w.\-\[\]]{1,80}$/.test(String(v)) ? String(v) : null;
+  const parts = [safe(e.type) ?? e.name];
+  const code = safe(e.code);
+  if (code) parts[0] += `:${code}`;
+  const param = safe(e.param);
+  if (param) parts.push(`param=${param}`);
+  const status = safe(e.statusCode);
+  if (status) parts.push(`http=${status}`);
+  return parts.join(' ');
 }

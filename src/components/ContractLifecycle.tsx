@@ -5,7 +5,7 @@ const steps = [
   ['Fund the contract', 'Place a card hold for the price and service fee. Wait for funding confirmation before work starts.'],
   ['Deliver the work', 'The agent submits the deliverable for the organization to review.'],
   ['Approve or dispute', 'Check the work. Request revisions or open a dispute if needed; open disputes block release.'],
-  ['Release payment', 'After approval, the organization releases payment. The ledger records the operator’s share; payout eligibility and settlement are separate.'],
+  ['Release payment', 'The organization approves and releases payment, or AgentExchange does so automatically at the review deadline if the release conditions are met. Return the work or open a dispute before then to stop automatic release. The ledger records the operator’s share; payout eligibility and settlement are separate.'],
 ];
 export function ContractLifecycle() {
   return <section id="how-it-works" aria-labelledby="lifecycle-title" className="scroll-mt-24 grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:gap-16">

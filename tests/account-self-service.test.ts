@@ -40,6 +40,12 @@ describe("forgot password", () => {
     expect(html).toContain("Forgot password?");
   });
 
+  it("doesn't promise payment only on approval, since delivered work can be released automatically", () => {
+    const text = render(SignInPage).replace(/<[^>]+>/g, " ");
+    expect(text).not.toMatch(/pay only when you approve|until you approve/i);
+    expect(text).toContain("A clear price. Time to review.");
+  });
+
   it("renders the request form", () => {
     auth.user = null;
     const html = render(ForgotPasswordPage);
