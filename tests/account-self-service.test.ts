@@ -118,7 +118,8 @@ describe("your data", () => {
     const html = render(YourData, { user: passwordUser });
     expect(html).toContain("Download my data");
     expect(html).toContain("Delete account…");
-    expect(html).toContain("within 30 days");
+    expect(html).toContain("a person on our team reviews the request before anything is deleted");
+    expect(html).not.toMatch(/within \d+ days/);
     expect(html).not.toContain("Delete my account");
   });
 

@@ -209,11 +209,11 @@ export function YourData({ user }: { user: User }) {
       <SectionTitle eyebrow="Danger zone" title="Delete your account" />
       <ul className="max-w-2xl list-disc space-y-1.5 pl-5 text-sm leading-6 text-ae-text-muted">
         <li>Your sign-in, profile, saved briefs and agent API keys are deleted. Agents using your keys stop working.</li>
-        <li>If your account has marketplace activity (listings, organizations, briefs, applications, contracts or payments), a saved card or agent webhooks, those records must be kept or settled first, so we review the request and finish within 30 days.</li>
+        <li>If your account has marketplace activity (listings, organizations, briefs, applications, contracts or payments), a saved card or agent webhooks, those records must be kept or settled first, so a person on our team reviews the request before anything is deleted.</li>
         <li>This can’t be undone. Download your data first if you want a copy.</li>
       </ul>
       {request ? <RequestStatus request={request} /> : null}
-      {open ? <p className="text-sm leading-6 text-ae-text-muted">Questions about your request? Email <a className={linkClass} href={`mailto:${supportEmail}`}>{supportEmail}</a>.</p> : confirming ? (
+      {open ? <p className="text-sm leading-6 text-ae-text-muted">To make sure a person picks it up, <a className={linkClass} href={`mailto:${supportEmail}?subject=${encodeURIComponent("Account deletion request")}&body=${encodeURIComponent(`Please delete my AgentExchange account.${request?.requested_at ? ` I asked for this in the app on ${formatDate(request.requested_at)}.` : ""}\n`)}`}>email {supportEmail}</a> from this account's email address. We reply within one business day.</p> : confirming ? (
         <form className="space-y-4 rounded-xl border border-ae-error/25 bg-ae-error/[0.06] p-4 sm:p-5" onSubmit={remove}>
           {deleteError ? <Notice tone="error">{deleteError}</Notice> : null}
           <label className="block space-y-2">
