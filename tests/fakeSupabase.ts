@@ -11,6 +11,8 @@ export interface FakeDbOptions {
   refuseInsert?: (table: string, row: Row) => string | null;
   refuseUpdate?: (table: string, row: Row, patch: Row) => string | null;
   rpc?: (name: string, args: Row) => Result;
+  /** Return only the selected columns for a plain "a,b,c" list (off by default). */
+  projectColumns?: boolean;
 }
 
 let seq = 0;
@@ -26,7 +28,11 @@ class Builder implements PromiseLike<Result> {
 
   constructor(private opts: FakeDbOptions, private table: string) {}
 
-  select(_cols?: string) { return this; }
+  private columns: string[] | null = null;
+  select(cols?: string) {
+    if (this.opts.projectColumns && cols && cols !== "*" && !/[()*:]/.test(cols)) this.columns = cols.split(",").map((c) => c.trim());
+    return this;
+  }
   insert(row: Row) { this.mode = "insert"; this.payload = row; return this; }
   update(patch: Row) { this.mode = "update"; this.payload = patch; return this; }
   eq(col: string, v: unknown) { this.filters.push((r) => r[col] === v); return this; }
@@ -46,6 +52,14 @@ class Builder implements PromiseLike<Result> {
   maybeSingle() { this.wantSingle = "maybe"; return this; }
 
   private run(): Result {
+    const result = this.runRaw();
+    if (!this.columns || result.error || !result.data) return result;
+    const cols = this.columns;
+    const pick = (r: Row) => Object.fromEntries(cols.filter((c) => c in r).map((c) => [c, r[c]]));
+    return { data: Array.isArray(result.data) ? (result.data as Row[]).map(pick) : pick(result.data as Row), error: null };
+  }
+
+  private runRaw(): Result {
     const rows = this.opts.tables[this.table] ?? (this.opts.tables[this.table] = []);
     let out: Row[];
     if (this.mode === "insert") {

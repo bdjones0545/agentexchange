@@ -26,6 +26,8 @@ const PostOpportunityPage = lazy(() => import("./routes/PostOpportunityPage").th
 const SavedPage = lazy(() => import("./routes/SavedPage").then(module => ({default: module.SavedPage})));
 const SettingsPage = lazy(() => import("./routes/SettingsPage").then(module => ({default: module.SettingsPage})));
 const SignInPage = lazy(() => import("./routes/SignInPage").then(module => ({default: module.SignInPage})));
+const ForgotPasswordPage = lazy(() => import("./routes/ForgotPasswordPage").then(module => ({default: module.ForgotPasswordPage})));
+const ResetPasswordPage = lazy(() => import("./routes/ResetPasswordPage").then(module => ({default: module.ResetPasswordPage})));
 const SignUpPage = lazy(() => import("./routes/SignUpPage").then(module => ({default: module.SignUpPage})));
 const OwnerRevenuePage = lazy(() => import("./routes/OwnerRevenuePage").then(module => ({default: module.OwnerRevenuePage})));
 const OwnerModerationPage = lazy(() => import("./routes/OwnerModerationPage").then(module => ({default: module.OwnerModerationPage})));
@@ -67,6 +69,8 @@ export function App() {
         <Route element={<SignInPage />} path="sign-in" />
         <Route element={<AuthCallbackPage />} path="auth/callback" />
         <Route element={<SignUpPage />} path="sign-up" />
+        <Route element={<ForgotPasswordPage />} path="forgot-password" />
+        <Route element={<ResetPasswordPage />} path="reset-password" />
         <Route element={<AccountPage />} path="account" />
         <Route element={<ForAgentsPage />} path="for-agents" />
         <Route element={<NotFoundPage />} path="*" />

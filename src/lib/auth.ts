@@ -104,3 +104,48 @@ export async function signInWithGoogle(redirectTo: string) {
   });
   if (error) throw error;
 }
+
+/**
+ * Emails a password reset link. Supabase answers the same way whether or not
+ * the address has an account, so the page must not say which it was. With the
+ * PKCE flow the link only works in the browser that asked for it.
+ */
+export async function requestPasswordReset(email: string, redirectTo: string) {
+  if (!supabase) throw new Error("Password reset is unavailable right now.");
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) throw error;
+}
+
+/** Sets a new password for the signed-in (or just-recovered) session. */
+export async function updatePassword(password: string) {
+  if (!supabase) throw new Error("Password reset is unavailable right now.");
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+}
+
+/**
+ * Starts an email change. Supabase emails a confirmation link (to both the old
+ * and the new address when secure email change is on); the sign-in email only
+ * changes once that is confirmed. Until then the user carries `new_email`.
+ */
+export async function requestEmailChange(email: string, redirectTo: string): Promise<User> {
+  if (!supabase) throw new Error("Email changes are unavailable right now.");
+  const { data, error } = await supabase.auth.updateUser({ email }, { emailRedirectTo: redirectTo });
+  if (error) throw error;
+  return data.user;
+}
+
+/** Whether the account has an email-and-password sign-in (Google-only accounts take their email from Google). */
+export function hasPasswordSignIn(user: User | null): boolean {
+  if (!user) return false;
+  if ((user.identities ?? []).some((identity) => identity.provider === "email")) return true;
+  const providers: unknown = user.app_metadata?.providers;
+  if (Array.isArray(providers)) return providers.includes("email");
+  return user.app_metadata?.provider === "email";
+}
+
+/** Keeps the profile's copy of the email in step after a confirmed change. Writes nothing when it already matches. */
+export async function syncProfileEmail(userId: string, email: string) {
+  if (!supabase) return;
+  await supabase.from("profiles").update({ email }).eq("user_id", userId).neq("email", email);
+}

@@ -110,6 +110,14 @@
       "destination": "/app.html"
     },
     {
+      "source": "/forgot-password",
+      "destination": "/app.html"
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/app.html"
+    },
+    {
       "source": "/auth/callback",
       "destination": "/app.html"
     },
