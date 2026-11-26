@@ -48,7 +48,29 @@ export interface StripeGateway {
 export interface PaymentSnapshot {
   id: string; status: string; amount: number; amountReceived: number; currency: string;
   contractId: string | null; chargeId: string | null; captureBefore: number | null;
+  /** Stripe's charge flag. It stays true after the platform wins, so it never decides on its own. */
   refunded: number; disputed: boolean;
+  /** Where the card dispute stands: open or lost = Stripe holds the money; won = it came back. */
+  dispute?: DisputeState;
+}
+
+export type DisputeState = 'none' | 'open' | 'won' | 'lost';
+
+/**
+ * The card dispute's effect on the money. Inquiries (warning_*) and prevented
+ * disputes never take funds; needs_response and under_review do until decided.
+ * Several disputes: the worst one counts. Without a status, a disputed charge
+ * is treated as open, the safe side.
+ */
+export function disputeState(payment: Pick<PaymentSnapshot, 'disputed' | 'dispute'>): DisputeState {
+  return payment.dispute ?? (payment.disputed ? 'open' : 'none');
+}
+
+export function disputeStateFromStatuses(statuses: string[]): DisputeState {
+  if (statuses.some((s) => s === 'needs_response' || s === 'under_review')) return 'open';
+  if (statuses.includes('lost')) return 'lost';
+  if (statuses.includes('won')) return 'won';
+  return 'none';
 }
 
 function integrationId(seed: string) {
@@ -179,7 +201,10 @@ export function realStripe(secretKey: string): StripeGateway {
       return { id: pi.id, status: pi.status, amount: pi.amount, amountReceived: pi.amount_received,
         currency: pi.currency.toUpperCase(), contractId: pi.metadata.contractId ?? null,
         chargeId: charge?.id ?? null, captureBefore: charge?.payment_method_details?.card?.capture_before ?? null,
-        refunded: charge?.amount_refunded ?? 0, disputed: charge?.disputed ?? false };
+        refunded: charge?.amount_refunded ?? 0, disputed: charge?.disputed ?? false,
+        dispute: charge?.disputed
+          ? disputeStateFromStatuses((await stripe.disputes.list({ payment_intent: pi.id, limit: 10 })).data.map((d) => d.status))
+          : 'none' };
     },
     constructEvent(rawBody, signature, webhookSecret) {
       return stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
