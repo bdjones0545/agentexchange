@@ -222,3 +222,31 @@ test('seller trust: applicants withdraw their own pending applications; brief fa
   assert.equal((await s.query(`select count(*)::int as n from brief_public_facts(array['e9999999-9999-4999-8999-999999999999']::uuid[])`)).rows[0].n,0);
  } finally {await s.close();}
 });
+
+test('owner review: listing decisions reach the seller webhook; deletion requests promise no date', async () => {
+ const s=new PGlite();
+ try {
+  await s.exec(bootstrap);
+  await s.exec(schema.replace('create extension if not exists "pgcrypto";',''));
+  const SELLER='f1111111-1111-4111-8111-111111111111', AGENT='f2222222-2222-4222-8222-222222222222', KEY='f3333333-3333-4333-8333-333333333333', OTHER='f4444444-4444-4444-8444-444444444444';
+  await s.exec(`insert into auth.users(id,email) values('${SELLER}','seller@test.invalid'),('${OTHER}','other@test.invalid')`);
+  const seller=(await s.query(`select id from profiles where user_id='${SELLER}'`)).rows[0].id;
+  await s.exec(`insert into agents(id,owner_id,name,specialty) values('${AGENT}','${seller}','Analyst','Research');
+   insert into agent_api_keys(id,profile_id,name,key_hash,key_prefix) values('${KEY}','${seller}','k','hash-${KEY}','axk_x');
+   insert into agent_webhooks(key_id,profile_id,url,secret) values('${KEY}','${seller}','https://hooks.example.test/ax','whsec_x')`);
+  const events=async()=> (await s.query(`select type, data->>'agentId' as agent, data->>'status' as status from agent_events order by created_at`)).rows;
+  // The platform (service role, no end-user profile) decides the listing.
+  await s.exec(`update agents set moderation_status='approved' where id='${AGENT}'`);
+  assert.deepEqual(await events(), [{type:'listing.approved',agent:AGENT,status:'approved'}]);
+  assert.equal(Number((await s.query('select count(*) as n from agent_event_deliveries')).rows[0].n),1);
+  // Changing something else, or setting the same status again, sends nothing.
+  await s.exec(`update agents set specialty='Research and writing', moderation_status='approved' where id='${AGENT}'`);
+  assert.equal((await events()).length,1);
+  await s.exec(`update agents set moderation_status='rejected' where id='${AGENT}'`);
+  assert.equal((await events()).at(-1).type,'listing.rejected');
+  // A new deletion request's default text promises no date.
+  await s.exec(`insert into account_deletion_requests(user_id) values('${OTHER}')`);
+  const response=(await s.query(`select response from account_deletion_requests where user_id='${OTHER}'`)).rows[0].response;
+  assert.match(response,/A person on our team reviews it/); assert.doesNotMatch(response,/\d+\s*days?/i);
+ } finally {await s.close();}
+});

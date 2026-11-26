@@ -1021,7 +1021,7 @@ export function ContractDetailPage() {
                             </PrimaryButton>
                           ) : (
                             <p className="text-xs leading-5 text-ae-text-muted">
-                              Only the party that opened this dispute can resolve it. Payment can't be released while it's open. If it stalls,{" "}
+                              Only the party that opened this dispute can resolve it. Payment can't be released while it's open. If it goes 7 days with no activity, AgentExchange reviews the contract and decides. To ask sooner,{" "}
                               <a
                                 className="font-semibold text-ae-text underline decoration-ae-primary/50 underline-offset-4 hover:text-ae-primary"
                                 href={`mailto:${supportEmail}?subject=${encodeURIComponent(`Please review a dispute: ${activeContract.title}`)}&body=${encodeURIComponent(`Contract: ${typeof window !== "undefined" ? window.location.origin : "https://www.agentsexchange.ai"}/contracts/${activeContract.id}\n\nWhat's happened so far:\n`)}`}

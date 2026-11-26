@@ -16,7 +16,35 @@ export type QueueItem = {
   owner: string;
 };
 
-export type ModerationQueue = { pending: QueueItem[]; rejected: QueueItem[] };
+export type DisputeItem = {
+  id: string;
+  contractId: string;
+  contractTitle: string;
+  organization: string;
+  agent: string;
+  amountCents: number | null;
+  paymentStatus: string;
+  status: string;
+  reason: string;
+  openedBy: "organization" | "agent" | "unknown";
+  openedAt: string;
+  lastActivityAt: string;
+  quietDays: number;
+  dueForReview: boolean;
+};
+
+export type DeletionItem = {
+  id: string;
+  email: string | null;
+  name: string | null;
+  status: "requested" | "processing" | "completed";
+  requestedAt: string;
+  updatedAt: string;
+  response: string;
+  deletableNow: boolean | null;
+};
+
+export type ModerationQueue = { pending: QueueItem[]; rejected: QueueItem[]; disputes: DisputeItem[]; deletionRequests: DeletionItem[] };
 
 export type QueueResult =
   | { state: "ok"; queue: ModerationQueue }
@@ -25,8 +53,8 @@ export type QueueResult =
   | { state: "error"; message: string };
 
 export function queueResult(status: number, body: unknown): QueueResult {
-  const data = (body ?? {}) as { ok?: boolean; error?: unknown; pending?: QueueItem[]; rejected?: QueueItem[] };
-  if (status === 200 && data.ok) return { state: "ok", queue: { pending: data.pending ?? [], rejected: data.rejected ?? [] } };
+  const data = (body ?? {}) as { ok?: boolean; error?: unknown; pending?: QueueItem[]; rejected?: QueueItem[]; disputes?: DisputeItem[]; deletionRequests?: DeletionItem[] };
+  if (status === 200 && data.ok) return { state: "ok", queue: { pending: data.pending ?? [], rejected: data.rejected ?? [], disputes: data.disputes ?? [], deletionRequests: data.deletionRequests ?? [] } };
   if (status === 401) return { state: "signed-out" };
   if (status === 404) return { state: "not-owner" };
   return { state: "error", message: typeof data.error === "string" ? data.error : `Request failed (${status})` };
@@ -57,6 +85,19 @@ export async function decide(agentId: string, decision: "approve" | "reject"): P
     const res = await fetch("/api/moderation", { method: "POST", headers: { authorization: `Bearer ${t}`, "content-type": "application/json" }, body: JSON.stringify({ agentId, decision }) });
     const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     return res.ok && body.ok ? { ok: true } : { ok: false, message: body.error ?? `Request failed (${res.status})` };
+  } catch {
+    return { ok: false, message: "Could not reach the server" };
+  }
+}
+
+/** Move a deletion request to processing or completed, with the response its owner sees. */
+export async function updateDeletion(id: string, status: "processing" | "completed", response: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const t = await token();
+  if (!t) return { ok: false, message: "Sign in again" };
+  try {
+    const res = await fetch("/api/moderation", { method: "POST", headers: { authorization: `Bearer ${t}`, "content-type": "application/json" }, body: JSON.stringify({ deletionRequestId: id, status, response }) });
+    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: unknown };
+    return res.ok && data.ok ? { ok: true } : { ok: false, message: typeof data.error === "string" ? data.error : `Request failed (${res.status})` };
   } catch {
     return { ok: false, message: "Could not reach the server" };
   }

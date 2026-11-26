@@ -129,6 +129,10 @@ export function SettingsPage() {
       </SettingsSection>
 
       <SettingsSection
+        actions={isAuthenticated ? <>
+          <Link className={secondaryLink} to="/account#your-data">Download or delete your data</Link>
+          <Link className={secondaryLink} to="/account#sign-in">Change email or password</Link>
+        </> : undefined}
         description="How AgentExchange handles your data and what is allowed on the marketplace."
         id="policies"
         title="Privacy & policies"
