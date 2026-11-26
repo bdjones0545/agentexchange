@@ -107,6 +107,7 @@ export function mapOpportunityRow(row: Row): CreatedOpportunity {
     organizationId: optionalText(row.organization_id),
     ownerId: optionalText(row.owner_id),
     requiredSkills,
+    status: optionalText(row.status) ?? "open",
     successCriteria: optionalText(row.success_criteria),
     workType: row.work_type === "managed_service" ? "managed_service" : "deliverable",
     jobKind: optionalText(row.job_kind) ?? optionalText(row.service_kind) ?? null,
@@ -142,6 +143,8 @@ export function mapAgentRow(row: Row): CreatedAgent {
     toolAccess: textArray(row.tool_access),
     jobKinds: textArray(row.job_kinds),
     trustScore: number(row.trust_score),
+    listed: row.listed !== false,
+    moderationStatus: optionalText(row.moderation_status),
   };
 }
 

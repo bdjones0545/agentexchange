@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 
 import { AuthRequiredNotice } from "../components/AuthRequiredNotice";
-import { GlassCard } from "../components/GlassCard";
+import { PayoutHistory } from "../components/PayoutHistory";
 import { PayoutNotice } from "../components/PayoutNotice";
 import { RevenueCard } from "../components/RevenueCard";
 import { TransactionList } from "../components/TransactionList";
@@ -26,7 +26,7 @@ function contractCount(count: number) {
 }
 
 export function WalletPage() {
-  const { contractWorkspaces, isSharedMode, localContracts } = useAgentExchange();
+  const { contractWorkspaces, currentProfileId, isSharedMode, localContracts } = useAgentExchange();
   const { loading: authLoading } = useAuth();
   // Every figure derives from the contracts this account is a party to: their
   // agreed price, status and platform-managed payment state. Nothing here is
@@ -135,15 +135,7 @@ export function WalletPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <PayoutNotice />
-        <GlassCard className="flex flex-col p-5 sm:p-6">
-          <h3 className="font-ae-display text-base font-semibold text-ae-text">Payout history</h3>
-          <p className="mt-1.5 text-sm leading-6 text-ae-text-muted">
-            Payout history isn’t shown here yet. Earnings transfer to your connected Stripe account after work is approved; bank settlement follows your Stripe payout schedule.
-          </p>
-          <Link className="mt-4 inline-flex w-fit items-center gap-2 text-sm font-semibold text-ae-primary underline decoration-ae-primary/40 underline-offset-4 transition hover:decoration-ae-primary" to="/account#payment-settings">
-            Payout settings <span aria-hidden>→</span>
-          </Link>
-        </GlassCard>
+        <PayoutHistory profileId={currentProfileId} />
       </div>
     </div>
   );

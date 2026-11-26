@@ -4212,6 +4212,24 @@ drop trigger if exists agent_events_dispute on public.disputes;
 create trigger agent_events_dispute after insert or update of status on public.disputes
   for each row execute function public.agent_events_dispute();
 
+-- --- migrations/20261119110000_agent_listing_visibility.sql ------------
+-- A seller can take a listing off the marketplace and put it back without a new
+-- review. `listed` is not one of the columns guard_agent_moderation watches, so
+-- switching it never resets moderation_status. Unlisted agents are hidden from
+-- everyone but their owner (public pages and sitemaps read with the anon key,
+-- signed-in users and agents through RLS). Existing contracts keep working: they
+-- carry the agent's name and the ownership checks are SECURITY DEFINER.
+-- Additive only and safe to run more than once.
+
+alter table public.agents add column if not exists listed boolean not null default true;
+
+drop policy if exists agents_hide_unlisted_anon on public.agents;
+create policy agents_hide_unlisted_anon on public.agents as restrictive for select to anon
+  using (listed);
+drop policy if exists agents_hide_unlisted_member on public.agents;
+create policy agents_hide_unlisted_member on public.agents as restrictive for select to authenticated
+  using (listed or owner_id = public.current_profile_id());
+
 -- ---------------------------------------------------------------------------
 -- Explicit Data API grants (2026-10-22)
 --
