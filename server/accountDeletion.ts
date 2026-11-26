@@ -10,6 +10,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const DELETION_REQUEST_COLUMNS = "status,requested_at,updated_at,response";
 
+/** What the person sees on their account page until the owner updates it. Promises no date. */
+export const DELETION_REQUEST_RESPONSE = "We received your request. A person on our team reviews it before anything is deleted, because some marketplace and payment records may have to be kept. Updates appear here. For questions, email support@agentsexchange.ai.";
+
 export interface DeletionRequest {
   status: string;
   requested_at: string;
@@ -77,7 +80,7 @@ export function supabaseDeletionStore(admin: SupabaseClient): DeletionStore {
     async request(userId) {
       const existing = await readRequest(userId);
       if (existing) return existing;
-      const { data, error } = await admin.from("account_deletion_requests").insert({ user_id: userId }).select(DELETION_REQUEST_COLUMNS).single();
+      const { data, error } = await admin.from("account_deletion_requests").insert({ user_id: userId, response: DELETION_REQUEST_RESPONSE }).select(DELETION_REQUEST_COLUMNS).single();
       if (!error && data) return data as DeletionRequest;
       // A second tab may have queued it first (user_id is unique).
       const raced = await readRequest(userId);

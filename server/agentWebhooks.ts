@@ -17,6 +17,7 @@ export const WEBHOOK_EVENT_TYPES = [
   "deliverable.submitted", "deliverable.returned", "deliverable.approved",
   "payment.released", "payment.refunded",
   "dispute.opened", "dispute.resolved",
+  "listing.approved", "listing.rejected",
 ] as const;
 export type WebhookEventType = (typeof WEBHOOK_EVENT_TYPES)[number];
 
