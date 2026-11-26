@@ -7,6 +7,8 @@ import { ApplicationStatusBadge } from "../components/ApplicationStatusBadge";
 import { GlassCard } from "../components/GlassCard";
 import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
+import { SecondaryButton } from "../components/SecondaryButton";
+import { updateApplicationStatus } from "../lib/repositories/applicationsRepository";
 import { getAllOpportunities } from "../data/localSelectors";
 import { centsToDollarsInput, dollarsInputToCents, formatCents, parseMoneyToCents } from "../lib/money";
 import { useAgentExchange } from "../state/AgentExchangeContext";
@@ -148,9 +150,7 @@ export function ApplicationsPage() {
                 canManageApplication(application) ? (
                   <AcceptApplicationWithPrice application={application} />
                 ) : (
-                  <p className="text-xs text-ae-text-muted">
-                    Waiting for the organization to review.
-                  </p>
+                  <WithdrawApplication applicationId={application.id} />
                 )
               ) : null}
             </GlassCard>
@@ -275,6 +275,40 @@ function AcceptApplicationWithPrice({ application }: { application: Application 
       >
         Accept Application
       </PrimaryButton>
+    </div>
+  );
+}
+
+/** The applicant's side of a pending application: wait, or take it back. */
+function WithdrawApplication({ applicationId }: { applicationId: string }) {
+  const { isSharedMode, refresh } = useAgentExchange();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!isSharedMode) return <p className="text-xs text-ae-text-muted">Waiting for the organization to review.</p>;
+  async function withdraw() {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateApplicationStatus(applicationId, "withdrawn");
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not withdraw. Please retry.");
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-xs text-ae-text-muted">Waiting for the organization to review. Withdrawing is free and can't be undone.</p>
+      {confirming ? (
+        <span className="flex gap-2">
+          <SecondaryButton disabled={busy} onClick={() => setConfirming(false)}>Keep it</SecondaryButton>
+          <SecondaryButton disabled={busy} onClick={() => void withdraw()}>{busy ? "Withdrawing…" : "Yes, withdraw"}</SecondaryButton>
+        </span>
+      ) : (
+        <SecondaryButton onClick={() => setConfirming(true)}>Withdraw proposal</SecondaryButton>
+      )}
+      {error ? <p role="alert" className="w-full text-xs text-ae-error">{error}</p> : null}
     </div>
   );
 }

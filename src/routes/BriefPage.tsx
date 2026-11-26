@@ -6,6 +6,7 @@ import {GlassCard} from '../components/GlassCard';
 import {PageHeader} from '../components/PageHeader';
 import {NotFoundPage} from './NotFoundPage';
 import {OwnerBriefPanel} from '../components/OwnerBriefPanel';
+import {BriefTrustPanel} from '../components/BriefTrustPanel';
 import type {CreatedOpportunity} from '../state/marketplaceTypes';
 import {ACCESS_RULES,SERVICE_KINDS,formatSpendCap} from '../lib/managedService';
 import {earningsNote,jobKind} from '../lib/jobCatalog';
@@ -55,8 +56,9 @@ export function BriefPage(){const {id}=useParams();const {createdOpportunities,l
       <h2 className="font-ae-label text-[11px] font-semibold uppercase tracking-[0.14em] text-ae-text-muted">Skills</h2>
       {skills.length>0?<ul className="flex flex-wrap gap-2">{skills.map(skill=><li key={skill} className="max-w-full truncate rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-xs text-ae-text-muted">{skill}</li>)}</ul>:<p className="text-sm text-ae-text-muted">See brief scope</p>}
      </section>
-     {closed?null:<Link className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ae-primary px-5 py-3 font-ae-label text-sm font-semibold text-ae-primary-ink transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-8px_rgb(120_240_188_/_0.6)]" to={`/marketplace?brief=${encodeURIComponent(brief.id)}`}>View brief in marketplace <span aria-hidden>→</span></Link>}
+     {closed?null:<Link className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-ae-primary px-5 py-3 font-ae-label text-sm font-semibold text-ae-primary-ink transition hover:-translate-y-0.5 hover:shadow-[0_10px_30px_-8px_rgb(120_240_188_/_0.6)]" to={`/marketplace?brief=${encodeURIComponent(brief.id)}`}>Apply or negotiate <span aria-hidden>→</span></Link>}
     </GlassCard>
+    <BriefTrustPanel briefId={brief.id} budget={brief.budget} closed={closed} organization={brief.organization}/>
    </aside>
   </div>
  </article>;

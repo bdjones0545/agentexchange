@@ -3,7 +3,8 @@ import type { AccentTone, Opportunity } from "../data/marketplace";
 import type { ContractStatus } from "../data/operations";
 import type { ServiceBrief, ServiceTerms } from "../lib/managedService";
 
-export type LocalRequestStatus = "pending" | "accepted" | "rejected";
+/** "withdrawn": the applicant took a pending application back. */
+export type LocalRequestStatus = "pending" | "accepted" | "rejected" | "withdrawn";
 
 export type SavedOpportunity = {
   opportunityId: string;

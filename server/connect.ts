@@ -25,7 +25,7 @@ export function sellerGateway(key: string): SellerGateway {
     async onboarding(accountId, appUrl) {
       const link = await stripe.v2.core.accountLinks.create({ account: accountId,
         use_case: { type: 'account_onboarding', account_onboarding: { configurations: ['merchant', 'recipient'],
-          refresh_url: `${appUrl}/account?seller=refresh`, return_url: `${appUrl}/account?seller=return` } } });
+          refresh_url: `${appUrl}/account?seller=refresh#earnings`, return_url: `${appUrl}/account?seller=return#earnings` } } });
       return link.url;
     },
     async readiness(accountId) {

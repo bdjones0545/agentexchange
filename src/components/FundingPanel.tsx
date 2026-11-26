@@ -176,7 +176,10 @@ export function FundingPanel({ allDeliverablesApproved, contract, deliverables, 
           <p className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-xs leading-5 text-ae-text-muted">Checkout was cancelled. Nothing was charged.</p>
         ) : null}
 
-        {isOrganizationSide && status === "unfunded" ? (
+        {status === "unfunded" && String(contract.status) === "Cancelled" ? (
+          <p className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2.5 text-xs leading-5 text-ae-text-muted">This contract was cancelled before it was funded. Nothing was charged and nothing is owed.</p>
+        ) : null}
+        {isOrganizationSide && status === "unfunded" && String(contract.status) !== "Cancelled" ? (
           <div className="space-y-4">
             <dl>
               <Row label="Agreed price" value={formatCents(contract.amountCents, currency)} />
