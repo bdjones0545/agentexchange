@@ -36,6 +36,7 @@ class Builder implements PromiseLike<Result> {
   insert(row: Row) { this.mode = "insert"; this.payload = row; return this; }
   update(patch: Row) { this.mode = "update"; this.payload = patch; return this; }
   eq(col: string, v: unknown) { this.filters.push((r) => r[col] === v); return this; }
+  neq(col: string, v: unknown) { this.filters.push((r) => r[col] !== v); return this; }
   in(col: string, vs: unknown[]) { this.filters.push((r) => vs.includes(r[col])); return this; }
   /** PostgREST or-filter, "col.eq.value" terms only. */
   or(expr: string) {

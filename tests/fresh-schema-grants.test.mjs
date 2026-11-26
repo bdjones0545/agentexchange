@@ -157,3 +157,50 @@ test('service resolver resolves an actual synthetic key without direct profile S
  await db.exec("update agent_api_keys set revoked_at=now() where key_hash='synthetic-hash'");
  assert.equal((await db.query("select * from resolve_agent_api_key('synthetic-hash')")).rows.length,0);
 });
+
+test('seller trust: applicants withdraw their own pending applications; brief facts are counts only', async () => {
+ const s=new PGlite();
+ try {
+  await s.exec(bootstrap);
+  await s.exec(schema.replace('create extension if not exists "pgcrypto";',''));
+  const ORG_USER='cccccccc-cccc-4ccc-8ccc-cccccccccccc', SELLER_USER='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const ORG='e1111111-1111-4111-8111-111111111111', BRIEF='e2222222-2222-4222-8222-222222222222', AGENT='e3333333-3333-4333-8333-333333333333';
+  const APP='e4444444-4444-4444-8444-444444444444', APP2='e5555555-5555-4555-8555-555555555555';
+  await s.exec(`insert into auth.users(id,email) values('${ORG_USER}','org@test.invalid'),('${SELLER_USER}','seller@test.invalid')`);
+  const pid=async u=>(await s.query(`select id from profiles where user_id='${u}'`)).rows[0].id;
+  const orgProfile=await pid(ORG_USER), sellerProfile=await pid(SELLER_USER);
+  await s.exec(`insert into organizations(id,owner_id,name) values('${ORG}','${orgProfile}','Gym');
+   insert into opportunities(id,owner_id,organization_id,title,category,organization_name) values('${BRIEF}','${orgProfile}','${ORG}','Scan','Research','Gym');
+   insert into agents(id,owner_id,name,specialty) values('${AGENT}','${sellerProfile}','Analyst','Research');
+   insert into applications(id,owner_id,opportunity_id,agent_id,agent_name,proposal) values('${APP}','${sellerProfile}','${BRIEF}','${AGENT}','Analyst','A proposal'),('${APP2}','${sellerProfile}','${BRIEF}','${AGENT}','Analyst','Another proposal')`);
+  const asRole=async(role,uid='')=>{await s.exec('reset role');await s.query("select set_config('request.jwt.claim.sub',$1,false)",[uid]);await s.exec(`set role ${role}`);};
+  const refused=async sql=>{await assert.rejects(s.exec(sql),e=>e.code==='42501',sql);};
+  const status=async id=>{await asRole('postgres');return (await s.query(`select status from applications where id='${id}'`)).rows[0].status;};
+
+  // The organization can't withdraw on the applicant's behalf; the applicant can't accept.
+  await asRole('authenticated',ORG_USER); await refused(`update applications set status='withdrawn' where id='${APP}'`);
+  await asRole('authenticated',SELLER_USER); await refused(`update applications set status='accepted' where id='${APP}'`);
+  await refused(`update applications set status='rejected' where id='${APP}'`);
+  assert.equal(await status(APP),'pending');
+
+  // The applicant withdraws; that is final, and the application can't become a contract.
+  await asRole('authenticated',SELLER_USER); await s.exec(`update applications set status='withdrawn' where id='${APP}'`);
+  assert.equal(await status(APP),'withdrawn');
+  await asRole('authenticated',SELLER_USER); await refused(`update applications set status='pending' where id='${APP}'`);
+  await asRole('postgres');
+  await assert.rejects(s.exec(`insert into contracts(organization_id,agent_id,organization_name,agent_name,title,source_id,source_type) values('${ORG}','${AGENT}','Gym','Analyst','Scan','${APP}','application')`),/not eligible/);
+
+  // Anyone may read the facts: counts only, withdrawn proposals and unfunded contracts not counted.
+  await s.exec(`insert into contracts(organization_id,agent_id,organization_name,agent_name,title,source_id,source_type,amount_cents,payment_status) values('${ORG}','${AGENT}','Gym','Analyst','Scan','${APP2}','application',50000,'unfunded')`);
+  await asRole('anon');
+  let facts=(await s.query(`select * from brief_public_facts(array['${BRIEF}']::uuid[])`)).rows;
+  assert.equal(facts.length,1);
+  assert.deepEqual(Object.keys(facts[0]).sort(),['funded_contracts','opportunity_id','organization_paid_contracts','organization_since','proposals']);
+  assert.equal(facts[0].proposals,1); assert.equal(facts[0].funded_contracts,0); assert.equal(facts[0].organization_paid_contracts,0);
+  await asRole('postgres'); await s.exec(`update contracts set payment_status='authorized' where source_id='${APP2}'`);
+  await asRole('authenticated',SELLER_USER);
+  facts=(await s.query(`select * from brief_public_facts(array['${BRIEF}']::uuid[])`)).rows;
+  assert.equal(facts[0].funded_contracts,1);
+  assert.equal((await s.query(`select count(*)::int as n from brief_public_facts(array['e9999999-9999-4999-8999-999999999999']::uuid[])`)).rows[0].n,0);
+ } finally {await s.close();}
+});
