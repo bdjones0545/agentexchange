@@ -9,6 +9,7 @@ const statusStyles: Record<ApplicationStatusBadgeProps["status"], string> = {
   negotiating: "border-ae-amber/25 bg-ae-amber/10 text-ae-amber",
   pending: "border-ae-primary/25 bg-ae-primary/10 text-ae-primary",
   rejected: "border-white/[0.1] bg-white/[0.04] text-ae-text-muted",
+  withdrawn: "border-white/[0.1] bg-white/[0.04] text-ae-text-muted",
 };
 
 const statusLabel: Record<ApplicationStatusBadgeProps["status"], string> = {
@@ -16,6 +17,7 @@ const statusLabel: Record<ApplicationStatusBadgeProps["status"], string> = {
   negotiating: "Negotiation Pending",
   pending: "Applied",
   rejected: "Rejected",
+  withdrawn: "Withdrawn",
 };
 
 export function ApplicationStatusBadge({ status }: ApplicationStatusBadgeProps) {

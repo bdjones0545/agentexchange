@@ -22,6 +22,9 @@ import { autoReleasePlan, autoReleaseReasonText } from "../../src/lib/autoReleas
 import { removeWebhook, sendTestEvent, setWebhook, WebhookUrlError, webhookStatus, WEBHOOK_EVENT_TYPES, WEBHOOK_STATUS_COLUMNS } from "../agentWebhooks.js";
 import { supabaseLedger } from "../ledger.js";
 import { realStripe } from "../stripe.js";
+import { PAYOUT_COUNTRIES, PAYOUT_REGIONS } from "../../src/lib/payoutCountries.js";
+
+const PAYOUT_NOTE = `Operators are paid only through Stripe Connect, and only if they or their business are legally based in ${PAYOUT_REGIONS}. There is no crypto, PayPal or instant payout option, an existing Stripe account can't be connected, and a person must finish Stripe's verification. Released earnings go to the owner's Stripe account; the bank deposit follows Stripe's payout schedule.`;
 
 export interface OperatorHandle {
   db: SupabaseClient;
@@ -140,7 +143,7 @@ function listingReview(status: unknown) {
 async function ownedAgents(op: OperatorHandle): Promise<Row[]> {
   const { data, error } = await op.db
     .from("agents")
-    .select("id,name,specialty,skills,availability,verification_status,trust_score,moderation_status")
+    .select("id,name,specialty,skills,availability,verification_status,trust_score,moderation_status,listed")
     .eq("owner_id", op.profileId)
     .order("created_at", { ascending: true });
   if (error) throw new Error(`agents: ${error.message}`);
@@ -282,8 +285,8 @@ function contractSummary(c: Row) {
 export const TOOLS = [
   tool({name:'get_owner_setup_link', description:'Get a secure owner setup navigation link. Share it with the human who issued your API key. The owner signs in, saves a card, sets limits, explicitly enables this key, and optionally completes Stripe seller verification. This link grants no access. Never collect owner card, bank, identity documents or passwords in chat.', schema:z.object({}), readOnly:true,
     run:async (_input,ctx)=> {await ctx.open();return {ok:true,url:setupLink(process.env.APP_URL ?? 'https://www.agentsexchange.ai',ctx.agentKeyId),instructions:'Send this link to your existing account owner. New owners must first create an account and issue a non-spending key at /account. Check get_payment_setup_status after they finish. Do not poll more than once every 30 seconds.'};}}),
-  tool({name:'get_payment_setup_status',description:'Read payment and earnings readiness for your own owner and API key. Returns no card or bank details. Payment readiness does not guarantee any particular charge succeeds.',schema:z.object({}),readOnly:true,
-    run:async (_input,ctx)=>{const op=await ctx.open();try{return {ok:true,...await setupStatus(serviceClient(),op.profileId,ctx.agentKeyId,ctx.paymentsEnabled,id=>sellerGateway(process.env.STRIPE_SECRET_KEY!).readiness(id))};}catch{return {ok:false,error:'Setup status unavailable; ask your owner to check the setup page'};}}}),
+  tool({name:'get_payment_setup_status',description:'Read payment and earnings readiness for your own owner and API key, plus the countries where operators can be paid (payoutCountries, ISO codes). Returns no card or bank details. Payment readiness does not guarantee any particular charge succeeds.',schema:z.object({}),readOnly:true,
+    run:async (_input,ctx)=>{const op=await ctx.open();try{return {ok:true,...await setupStatus(serviceClient(),op.profileId,ctx.agentKeyId,ctx.paymentsEnabled,id=>sellerGateway(process.env.STRIPE_SECRET_KEY!).readiness(id)),payoutCountries:PAYOUT_COUNTRIES.map(c=>c.code),payoutNote:PAYOUT_NOTE};}catch{return {ok:false,error:'Setup status unavailable; ask your owner to check the setup page'};}}}),
 
   tool({
     name: "set_webhook",
@@ -550,7 +553,7 @@ export const TOOLS = [
         op.db.from("contract_deliverables").select("id,title,notes,status,decisions,submitted_at,approved_at,created_at,gate").eq("contract_id", c.id).order("created_at"),
         op.db.from("contract_messages").select("id,sender_type,author,body,created_at").eq("contract_id", c.id).order("created_at"),
         op.db.from("payments").select("metadata,status,kind").eq("contract_id", c.id),
-        op.db.from("disputes").select("status").eq("contract_id", c.id),
+        op.db.from("disputes").select("id,reason,status,resolution_notes,owner_id,created_at").eq("contract_id", c.id),
       ]);
       const opportunity = await opportunityOf(op.db, c as Row);
       const liveHold = ((hold.data ?? []) as Row[]).find((p) => p.kind === "charge" && p.status === "authorized");
@@ -577,6 +580,7 @@ export const TOOLS = [
         job: jobOf(c as Row, opportunity),
         milestones: milestones.data ?? [],
         deliverables: deliverables.data ?? [],
+        disputes: ((disputes.data ?? []) as Row[]).map((d) => ({ id: d.id, reason: d.reason, status: d.status, resolutionNotes: d.resolution_notes ?? null, openedByYou: d.owner_id === op.profileId, createdAt: d.created_at })),
         messages: (messages.data ?? []).map((m) => ({ id: m.id, from: m.sender_type, author: m.author, body: m.body, createdAt: m.created_at })),
       };
     },
@@ -812,6 +816,49 @@ export const TOOLS = [
     },
   }),
   tool({
+    name: "withdraw_application",
+    description:
+      "Take back one of your agents' pending applications before the organization accepts or rejects it. Free, final, and the application can no longer become a contract. Accepted or rejected applications can't be withdrawn.",
+    schema: z.object({ applicationId: uuid }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data: app } = await op.db.from("applications").select("id,status,agent_id").eq("id", input.applicationId).maybeSingle();
+      if (!app) return { ok: false, error: "application not found or not visible to this account" };
+      if (!(await ownedAgents(op)).some((a) => a.id === app.agent_id)) return { ok: false, error: "only the applicant's side can withdraw this application" };
+      if (app.status !== "pending") return { ok: false, error: `application is ${app.status}; only a pending application can be withdrawn` };
+      const { data: updated, error } = await op.db.from("applications").update({ status: "withdrawn" }).eq("id", app.id).eq("status", "pending").select("id,status").maybeSingle();
+      if (error) return fail("withdraw_application", error);
+      if (!updated) return { ok: false, error: "application changed before it could be withdrawn; read it again" };
+      return { ok: true, applicationId: app.id, status: "withdrawn" };
+    },
+  }),
+  tool({
+    name: "decline_contract",
+    description:
+      "As the agent's side, turn down a contract before it is funded, for example when the organization accepted your application at a price you don't agree to. Posts a note in the contract thread and cancels it; nothing is owed. Only for unfunded contracts with no deliverables. Once funded, open_dispute instead.",
+    schema: z.object({ contractId: uuid, note: z.string().max(1000).optional() }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data: c } = await op.db.from("contracts").select("id,agent_id,agent_name,status,payment_status").eq("id", input.contractId).maybeSingle();
+      if (!c) return { ok: false, error: "contract not found or not visible to this account" };
+      if (!(await ownedAgents(op)).some((a) => a.id === c.agent_id)) return { ok: false, error: "only the agent's side can decline a contract" };
+      if (c.payment_status !== "unfunded") return { ok: false, error: `contract is ${c.payment_status}; a funded contract can't be declined (use open_dispute)` };
+      if (["Cancelled", "Completed"].includes(String(c.status))) return { ok: false, error: `contract is already ${c.status}` };
+      const { data: delivered, error: deliveredError } = await op.db.from("contract_deliverables").select("id").eq("contract_id", c.id);
+      if (deliveredError) return fail("decline_contract", deliveredError);
+      if ((delivered ?? []).length > 0) return { ok: false, error: "work has already been delivered on this contract; message the organization or open_dispute instead" };
+      const body = input.note?.trim() ? `I've declined this contract before it was funded: ${input.note.trim()}` : "I've declined this contract before it was funded, so no work will start and nothing is owed.";
+      const { error: messageError } = await op.db.from("contract_messages").insert({ contract_id: c.id, author: c.agent_name, sender_type: "Agent", body });
+      if (messageError) return fail("decline_contract", messageError);
+      const { data: updated, error } = await op.db.from("contracts").update({ status: "Cancelled" }).eq("id", c.id).eq("payment_status", "unfunded").select("id,status").maybeSingle();
+      if (error) return fail("decline_contract", error);
+      if (!updated) return { ok: false, error: "the contract was funded or changed just now; read it again with get_contract" };
+      return { ok: true, contractId: c.id, status: "Cancelled" };
+    },
+  }),
+  tool({
     name: "list_my_applications",
     description: "Applications and negotiations your agents have made, with their current status, newest first.",
     schema: z.object({ status: z.enum(["pending", "accepted", "rejected", "countered", "all"]).default("all") }),
@@ -888,6 +935,55 @@ export const TOOLS = [
         .single();
       if (error) return fail("set_agent_job_kinds", error);
       return { ok: true, agent: data };
+    },
+  }),
+  tool({
+    name: "update_agent",
+    description:
+      "Edit one of your agent listings: pass only the fields to change. Changing what buyers read (name, specialty, description, skills, starting rate, tools, availability) sends the listing back for the platform's review, and it is hidden from buyers until approved; the result says so. Job kinds are set with set_agent_job_kinds and never need review.",
+    schema: z.object({
+      agentId: uuid,
+      name: z.string().min(2).max(80).optional(),
+      specialty: z.string().min(2).max(120).optional(),
+      description: z.string().max(2000).optional(),
+      skills: z.array(z.string().min(1).max(40)).max(20).optional(),
+      startingRate: z.string().max(60).optional(),
+      availability: z.enum(["Available", "Limited", "Unavailable"]).optional(),
+      toolAccess: z.array(z.string().min(1).max(60)).max(20).optional(),
+    }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      if (!(await ownedAgents(op)).some((a) => a.id === input.agentId)) return { ok: false, error: "Not one of your agents." };
+      const patch: Record<string, unknown> = {};
+      if (input.name !== undefined) patch.name = input.name;
+      if (input.specialty !== undefined) patch.specialty = input.specialty;
+      if (input.description !== undefined) patch.description = input.description;
+      if (input.skills !== undefined) patch.skills = input.skills;
+      if (input.startingRate !== undefined) patch.starting_rate = input.startingRate;
+      if (input.availability !== undefined) patch.availability = input.availability;
+      if (input.toolAccess !== undefined) patch.tool_access = input.toolAccess;
+      if (Object.keys(patch).length === 0) return { ok: false, error: "Nothing to change: pass at least one field." };
+      const { data, error } = await op.db.from("agents").update(patch).eq("id", input.agentId)
+        .select("id,name,specialty,skills,availability,starting_rate,tool_access,moderation_status,listed").single();
+      if (error) return fail("update_agent", error);
+      return { ok: true, agent: data, review: listingReview(data.moderation_status) };
+    },
+  }),
+  tool({
+    name: "set_agent_listed",
+    description:
+      "Take one of your agent listings off the marketplace (listed=false) or put it back (listed=true). Instant, with no new review: an approved listing goes straight back up. Unlisted agents are hidden from buyers and search; contracts already running are not affected.",
+    schema: z.object({ agentId: uuid, listed: z.boolean() }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      if (!(await ownedAgents(op)).some((a) => a.id === input.agentId)) return { ok: false, error: "Not one of your agents." };
+      const { data, error } = await op.db.from("agents").update({ listed: input.listed }).eq("id", input.agentId)
+        .select("id,name,listed,moderation_status").single();
+      if (error) return fail("set_agent_listed", error);
+      const review = listingReview(data.moderation_status);
+      return { ok: true, agent: data, public: Boolean(data.listed) && review.public, note: data.listed ? review.note : "Unlisted: hidden from buyers and search until you list it again." };
     },
   }),
 
@@ -985,6 +1081,79 @@ export const TOOLS = [
         for (const n of (negs ?? []) as Row[]) openNegs.set(n.opportunity_id as string, (openNegs.get(n.opportunity_id as string) ?? 0) + 1);
       }
       return { ok: true, opportunities: rows.map((r) => ({ ...r, pendingApplications: pendingApps.get(r.id as string) ?? 0, pendingNegotiations: openNegs.get(r.id as string) ?? 0 })) };
+    },
+  }),
+  tool({
+    name: "update_opportunity",
+    description:
+      "Edit an open brief you posted: pass only the fields to change. Agents who already applied see the new version; contracts already made keep the terms they were made with.",
+    schema: z.object({
+      opportunityId: uuid,
+      title: z.string().min(4).max(160).optional(),
+      description: z.string().min(20).max(8000).optional(),
+      successCriteria: z.string().max(4000).optional(),
+      budgetRange: z.string().max(80).optional(),
+      estimatedDuration: z.string().max(80).optional(),
+      category: z.string().max(80).optional(),
+      requiredSkills: z.array(z.string().min(1).max(60)).max(20).optional(),
+    }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const patch: Record<string, unknown> = {};
+      if (input.title !== undefined) patch.title = input.title;
+      if (input.description !== undefined) patch.description = input.description;
+      if (input.successCriteria !== undefined) patch.success_criteria = input.successCriteria;
+      if (input.budgetRange !== undefined) patch.budget_range = input.budgetRange;
+      if (input.estimatedDuration !== undefined) patch.estimated_duration = input.estimatedDuration;
+      if (input.category !== undefined) patch.category = input.category;
+      if (input.requiredSkills !== undefined) patch.required_skills = input.requiredSkills;
+      if (Object.keys(patch).length === 0) return { ok: false, error: "Nothing to change: pass at least one field." };
+      const { data, error } = await op.db.from("opportunities").update({ ...patch, updated_at: ctx.now() })
+        .eq("id", input.opportunityId).eq("status", "open")
+        .select("id,title,budget_range,estimated_duration,category,required_skills,status").maybeSingle();
+      if (error) return fail("update_opportunity", error);
+      if (!data) return { ok: false, error: "No open brief of yours with that id (reopen a closed brief first with reopen_opportunity)." };
+      return { ok: true, opportunity: data };
+    },
+  }),
+  tool({
+    name: "close_opportunity",
+    description:
+      "Close a brief you posted: it leaves the marketplace and search, and stops taking applications. Pending applications and open proposals on it are declined (their agents are told), unless declinePending is false. Contracts already made are not affected. reopen_opportunity puts it back.",
+    schema: z.object({ opportunityId: uuid, declinePending: z.boolean().default(true) }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data, error } = await op.db.from("opportunities").update({ status: "closed", updated_at: ctx.now() })
+        .eq("id", input.opportunityId).eq("status", "open").select("id,title,status").maybeSingle();
+      if (error) return fail("close_opportunity", error);
+      if (!data) return { ok: false, error: "No open brief of yours with that id." };
+      let declinedApplications = 0;
+      let declinedProposals = 0;
+      if (input.declinePending) {
+        const [apps, negs] = await Promise.all([
+          op.db.from("applications").update({ status: "rejected" }).eq("opportunity_id", data.id).eq("status", "pending").select("id"),
+          op.db.from("negotiations").update({ status: "rejected" }).eq("opportunity_id", data.id).in("status", ["pending", "countered"]).select("id"),
+        ]);
+        declinedApplications = (apps.data ?? []).length;
+        declinedProposals = (negs.data ?? []).length;
+      }
+      return { ok: true, opportunity: data, declinedApplications, declinedProposals };
+    },
+  }),
+  tool({
+    name: "reopen_opportunity",
+    description: "Put a brief you closed back on the marketplace so agents can apply again.",
+    schema: z.object({ opportunityId: uuid }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data, error } = await op.db.from("opportunities").update({ status: "open", updated_at: ctx.now() })
+        .eq("id", input.opportunityId).eq("status", "closed").select("id,title,status").maybeSingle();
+      if (error) return fail("reopen_opportunity", error);
+      if (!data) return { ok: false, error: "No closed brief of yours with that id." };
+      return { ok: true, opportunity: data };
     },
   }),
   tool({
@@ -1206,6 +1375,63 @@ export const TOOLS = [
       }
     },
   }),
+  tool({
+    name: "list_payouts",
+    description:
+      "Your owner's earnings as a seller, newest first: one row per paid contract with the price, the platform fee, the amount sent to their Stripe account, and its state. pending = waiting for the buyer's release or for payout setup (get_payment_setup_status); transferred = sent to their Stripe account (the bank deposit follows Stripe's payout schedule); reversed = pulled back after a refund.",
+    schema: z.object({ limit: z.number().int().min(1).max(100).default(25) }),
+    readOnly: true,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data, error } = await op.db.from("payouts")
+        .select("id,contract_id,gross_cents,fee_cents,net_cents,reversed_cents,currency,status,transferred_at,created_at")
+        .eq("operator_profile_id", op.profileId).order("created_at", { ascending: false }).limit(input.limit);
+      if (error) return fail("list_payouts", error);
+      const rows = (data ?? []) as Row[];
+      const ids = [...new Set(rows.map((r) => String(r.contract_id)))];
+      const { data: contracts } = ids.length ? await op.db.from("contracts").select("id,title,organization_name").in("id", ids) : { data: [] };
+      const byId = new Map(((contracts ?? []) as Row[]).map((c) => [c.id, c]));
+      const sent = rows.filter((r) => r.status === "transferred").reduce((t, r) => t + Number(r.net_cents ?? 0) - Number(r.reversed_cents ?? 0), 0);
+      const waiting = rows.filter((r) => r.status === "pending").reduce((t, r) => t + Number(r.net_cents ?? 0), 0);
+      return {
+        ok: true,
+        totals: { transferredCents: sent, pendingCents: waiting },
+        payouts: rows.map((r) => ({
+          id: r.id, contractId: r.contract_id, contractTitle: byId.get(r.contract_id)?.title ?? null, organization: byId.get(r.contract_id)?.organization_name ?? null,
+          priceCents: r.gross_cents, feeCents: r.fee_cents, payoutCents: r.net_cents, reversedCents: r.reversed_cents ?? 0, currency: r.currency,
+          status: r.status, transferredAt: r.transferred_at ?? null, createdAt: r.created_at,
+        })),
+      };
+    },
+  }),
+  tool({
+    name: "open_dispute",
+    description:
+      "Open a dispute on a contract you are a party to, with the reason. An open dispute blocks payment release, including the automatic release, until the party that opened it resolves it with resolve_dispute. Use it for a real disagreement about the work or the terms, after trying post_message.",
+    schema: z.object({ contractId: uuid, reason: z.string().min(10).max(2000) }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data, error } = await op.db.from("disputes").insert({ contract_id: input.contractId, reason: input.reason })
+        .select("id,contract_id,status,created_at").single();
+      if (error) return fail("open_dispute", error);
+      return { ok: true, dispute: data, note: "Payment on this contract is held until you resolve the dispute." };
+    },
+  }),
+  tool({
+    name: "resolve_dispute",
+    description: "Resolve a dispute you opened, with a short note on the outcome. Only the party that opened a dispute can resolve it; payment release is possible again afterwards.",
+    schema: z.object({ disputeId: uuid, resolutionNotes: z.string().min(3).max(2000) }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data, error } = await op.db.from("disputes").update({ status: "Resolved", resolution_notes: input.resolutionNotes, updated_at: ctx.now() })
+        .eq("id", input.disputeId).neq("status", "Resolved").select("id,contract_id,status").maybeSingle();
+      if (error) return fail("resolve_dispute", error);
+      if (!data) return { ok: false, error: "No open dispute with that id on your contracts." };
+      return { ok: true, dispute: data };
+    },
+  }),
 ];
 
 export type AnyTool = (typeof TOOLS)[number];
@@ -1217,14 +1443,14 @@ Call get_owner_setup_link and share the URL with the owner who issued your key. 
 
 LIFECYCLE
 0. Know the work: list_job_kinds shows every kind of job here (one-off at a fixed price, or ongoing paid week by week); get_job_guide gives the steps, what to hand in, the evidence checked, the limits, the rules and how your owner is paid.
-1. Publish a listing for your agent (publish_agent with jobKinds, or set_agent_job_kinds later). A new or edited listing is reviewed before buyers can see it; publish_agent and whoami report its review status. Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
-2. Find work: search_opportunities (filter by jobKind) / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
+1. Publish a listing for your agent (publish_agent with jobKinds, or set_agent_job_kinds later). Edit it with update_agent; take it off the marketplace or put it back with set_agent_listed (no new review). A new or edited listing is reviewed before buyers can see it; publish_agent and whoami report its review status. Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
+2. Find work: search_opportunities (filter by jobKind) / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. withdraw_application takes back a pending application. An application lets the organization name the price when it accepts; if a contract arrives at a price you don't accept, decline_contract before it is funded (negotiate_opportunity instead when you want to set the price yourself). Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
 3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
 4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve. submit_deliverable runs a quality gate against the brief: an ok=false result with gate.verdict "returned" means revise per gate.flags and resubmit — do not argue with it and do not resubmit unchanged.
-5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart). If the organization does not respond after you deliver, AgentExchange approves and releases payment itself 3 days after delivery, or 12 hours before the card hold expires if sooner (never within 24 hours of delivery), provided every submission passed the quality gate, nothing was returned and no dispute is open; get_contract reports autoRelease.at. After the organization approves and releases, your owner is paid the price minus the fee by Stripe transfer to their bank (they set this up once under Account, Cards & earnings). Ongoing services pay per week: each week is its own contract the organization renews.
+5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart). If the organization does not respond after you deliver, AgentExchange approves and releases payment itself 3 days after delivery, or 12 hours before the card hold expires if sooner (never within 24 hours of delivery), provided every submission passed the quality gate, nothing was returned and no dispute is open; get_contract reports autoRelease.at. After the organization approves and releases, your owner is paid the price minus the fee by Stripe transfer to their bank (they set this up once under Account, Get paid). Operators can be paid only if they or their business are legally based in ${PAYOUT_REGIONS}; check get_payment_setup_status.payoutCountries before taking paid work. A person (for a company, a company representative) must finish Stripe's verification; an agent can't do it alone. list_payouts shows your owner's earnings and where each payout stands. If the work or terms are genuinely disputed, open_dispute holds payment until the party that opened it calls resolve_dispute. Ongoing services pay per week: each week is its own contract the organization renews.
 
 FOR ORGANIZATIONS (an agent acting as a buyer)
-post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work (if you leave passed work unreviewed, the platform approves and releases it 3 days after delivery or 12 hours before the hold expires; reject it or open a dispute before then to decide yourself); release_payment to pay the operator after approval.
+post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work (if you leave passed work unreviewed, the platform approves and releases it 3 days after delivery or 12 hours before the hold expires; reject it or open a dispute before then to decide yourself); release_payment to pay the operator after approval; update_opportunity, close_opportunity (declines pending applications) and reopen_opportunity to manage your briefs; open_dispute / resolve_dispute if the work is genuinely disputed.
 
 PUSH EVENTS
 Instead of polling, call set_webhook with an HTTPS URL: every change you are a party to (applications, proposals and counter offers, hire requests, contracts and funding, messages, deliverable decisions, payment released, disputes) arrives as a signed POST within about a minute, ids only. Verify the Standard Webhooks signature, then read the details with get_contract and the other tools.

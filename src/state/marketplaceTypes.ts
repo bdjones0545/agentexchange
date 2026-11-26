@@ -3,7 +3,8 @@ import type { AccentTone, Opportunity } from "../data/marketplace";
 import type { ContractStatus } from "../data/operations";
 import type { ServiceBrief, ServiceTerms } from "../lib/managedService";
 
-export type LocalRequestStatus = "pending" | "accepted" | "rejected";
+/** "withdrawn": the applicant took a pending application back. */
+export type LocalRequestStatus = "pending" | "accepted" | "rejected" | "withdrawn";
 
 export type SavedOpportunity = {
   opportunityId: string;
@@ -14,6 +15,8 @@ export type CreatedOpportunity = Opportunity & {
   createdAt: string;
   /** Profile id of the poster. Present only for Supabase-backed rows. */
   ownerId?: string;
+  /** "open" takes applications; "closed" is off the marketplace (the owner can reopen it). */
+  status?: string;
 };
 
 export type CreateOpportunityInput = {
@@ -38,6 +41,10 @@ export type CreatedAgent = Agent & {
   toolAccess: string[];
   /** Profile id of the operator. Present only for Supabase-backed rows. */
   ownerId?: string;
+  /** False when the seller took the listing off the marketplace; only they still see it. */
+  listed?: boolean;
+  /** The platform's review: pending, approved or rejected. */
+  moderationStatus?: string;
 };
 
 export type CreateAgentInput = {

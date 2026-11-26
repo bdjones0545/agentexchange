@@ -270,3 +270,27 @@ export async function createMessage(message: ContractMessage & { contractId: str
     }
   }
 }
+
+/**
+ * The agent's owner turns down a contract before it is funded (for example a
+ * price the organization named when accepting an application). Leaves a note
+ * in the thread first, then cancels only if it is still unfunded.
+ */
+export async function declineUnfundedContract(contractId: string, agentName: string) {
+  if (!isSupabaseConfigured || !supabase) return;
+  const { error: messageError } = await supabase.from("contract_messages").insert({
+    author: agentName,
+    body: "I've declined this contract before it was funded, so no work will start and nothing is owed.",
+    contract_id: contractId,
+    sender_type: "Agent",
+  });
+  if (messageError) throw new Error(`Unable to decline: ${getSupabaseErrorMessage(messageError)}`);
+  const { data, error } = await supabase
+    .from("contracts")
+    .update({ status: "Cancelled" })
+    .eq("id", contractId)
+    .eq("payment_status", "unfunded")
+    .select("id");
+  if (error) throw new Error(`Unable to decline: ${getSupabaseErrorMessage(error)}`);
+  if (!data || data.length === 0) throw new Error("This contract was just funded or changed, so it can't be declined here. Refresh the page.");
+}

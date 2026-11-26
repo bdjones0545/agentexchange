@@ -1,8 +1,11 @@
 import {useEffect} from 'react';
-import {useNavigate,useSearchParams} from 'react-router-dom';
+import {useLocation,useNavigate,useSearchParams} from 'react-router-dom';
 import {AgentSetup} from '../components/AgentSetup';
 import {AgentApiKeys} from '../components/AgentApiKeys';
 import {AgentCardBilling} from '../components/AgentCardBilling';
+import {SignInSettings,YourData} from '../components/AccountSelfService';
+import {ReceiveEarnings} from '../components/ReceiveEarnings';
+import {OwnerReviewNotice} from '../components/OwnerReviewNotice';
 import {GlassCard} from '../components/GlassCard';
 import {PageHeader} from '../components/PageHeader';
 import {PrimaryButton} from '../components/PrimaryButton';
@@ -11,8 +14,11 @@ import {useAuth} from '../state/AuthContext';
 
 const sections=[
  {href:'#profile',label:'Profile',icon:'M12 12a4 4 0 100-8 4 4 0 000 8zM4.5 20a7.5 7.5 0 0115 0'},
+ {href:'#sign-in',label:'Email & password',icon:'M4 6.5h16v11H4zM4.5 7l7.5 6 7.5-6'},
  {href:'#agent-access',label:'Agent access',icon:'M12 3.5l7.5 4.25v8.5L12 20.5l-7.5-4.25v-8.5zM12 12l7.5-4.25M12 12v8.5M12 12L4.5 7.75'},
- {href:'#payment-settings',label:'Cards & earnings',icon:'M3.5 7h17v11h-17zM3.5 10.5h17M7 15h3'},
+ {href:'#payment-settings',label:'Cards & limits',icon:'M3.5 7h17v11h-17zM3.5 10.5h17M7 15h3'},
+ {href:'#earnings',label:'Get paid',icon:'M12 3.5v17M16.5 7.5c0-1.7-2-3-4.5-3s-4.5 1.3-4.5 3 2 2.6 4.5 3 4.5 1.3 4.5 3-2 3-4.5 3-4.5-1.3-4.5-3'},
+ {href:'#your-data',label:'Your data',icon:'M12 4v11m0 0l-4-4m4 4l4-4M5 19.5h14'},
 ];
 
 function Icon({path,className='size-4'}:{path:string;className?:string}){
@@ -20,7 +26,9 @@ function Icon({path,className='size-4'}:{path:string;className?:string}){
 }
 
 export function AccountPage(){
- const navigate=useNavigate();const [params]=useSearchParams();
+ const navigate=useNavigate();const [params]=useSearchParams();const location=useLocation();
+ // Set by the delete flow through router state, so a link cannot fake it.
+ const accountDeleted=(location.state as {accountDeleted?:unknown}|null)?.accountDeleted===true;
  const setup=params.get('agentSetup') ?? (typeof window!=='undefined'?sessionStorage.getItem('agentSetup'):null);
  useEffect(()=>{if(params.has('agentSetup'))sessionStorage.setItem('agentSetup',params.get('agentSetup')!);},[params]);
  const {error,isAuthenticated,isSupabaseEnabled,signOut,user}=useAuth();
@@ -31,6 +39,7 @@ export function AccountPage(){
  <div className={isAuthenticated?'grid gap-8 lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start':''}>
  {isAuthenticated && <nav aria-label="Account sections" className="lg:sticky lg:top-28"><ul className="flex flex-wrap gap-2 lg:flex-col lg:gap-1">{sections.map(section=><li key={section.href}><a href={section.href} className="group inline-flex items-center gap-2.5 rounded-full border border-white/[0.1] bg-white/[0.03] px-4 py-2 text-sm font-medium text-ae-text-muted transition hover:border-ae-primary/40 hover:text-ae-text lg:flex lg:w-full lg:rounded-xl lg:border-transparent lg:bg-transparent lg:px-3 lg:py-2.5 lg:hover:border-white/[0.08] lg:hover:bg-white/[0.04]"><Icon path={section.icon} className="size-4 text-ae-primary/80 transition group-hover:text-ae-primary"/>{section.label}</a></li>)}</ul></nav>}
  <div className="min-w-0 space-y-6">
+ {isAuthenticated && isSupabaseEnabled && <OwnerReviewNotice/>}
  {setup && isAuthenticated && <AgentSetup key={setup} id={setup}/>}
  <div id="profile" className="scroll-mt-28"><GlassCard className="space-y-6 p-6 sm:p-8">
  {isAuthenticated?<>
@@ -47,7 +56,9 @@ export function AccountPage(){
    <SecondaryButton onClick={()=>void signOut()}>Sign out</SecondaryButton>
   </div>
   <p className="flex gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 text-sm leading-6 text-ae-text-muted"><Icon path="M12 3.5l7 3v5.5c0 4.2-3 7.4-7 8.5-4-1.1-7-4.3-7-8.5V6.5zM9 12l2.2 2.2L15.5 10" className="mt-0.5 size-4 shrink-0 text-ae-primary"/>Only enable payment permission for agents you trust. You can revoke their access at any time.</p>
+  <p className="text-xs leading-5 text-ae-text-muted">Other people on AgentExchange see the agent and organization names you enter, in listings, proposals, contracts and messages. They don't see your account name, email or Google photo, and the legal name you give Stripe for payouts stays with Stripe.</p>
  </>:<>
+  {accountDeleted && <p role="status" className="rounded-xl border border-ae-primary/25 bg-ae-primary/10 px-4 py-3 text-sm leading-6 text-ae-primary">Your account has been deleted and you’ve been signed out.</p>}
   <div className="space-y-3">
    <p className="font-ae-label text-xs font-semibold uppercase tracking-[0.16em] text-ae-primary">Get started</p>
    <h2 className="font-ae-display text-2xl font-semibold tracking-tight sm:text-3xl">Bring your agents to work.</h2>
@@ -57,7 +68,7 @@ export function AccountPage(){
  </>}
  {error && <p role="alert" className="rounded-xl border border-ae-error/25 bg-ae-error/10 px-4 py-3 text-sm text-ae-error">{error}</p>}
  </GlassCard></div>
- {isAuthenticated && isSupabaseEnabled && <><div id="agent-access" className="scroll-mt-28"><AgentApiKeys/></div><div id="payment-settings" className="scroll-mt-28"><AgentCardBilling/></div></>}
+ {isAuthenticated && isSupabaseEnabled && user && <><div id="sign-in" className="scroll-mt-28"><SignInSettings/></div><div id="agent-access" className="scroll-mt-28"><AgentApiKeys/></div><div id="payment-settings" className="scroll-mt-28"><AgentCardBilling/></div><div id="earnings" className="scroll-mt-28"><ReceiveEarnings/></div><div id="your-data" className="scroll-mt-28"><YourData user={user}/></div></>}
  </div>
  </div>
  </div>;

@@ -37,8 +37,6 @@ async function call(method: "GET" | "POST", body?: unknown, path = "/api/billing
 export function AgentCardBilling() {
   const [billing, setBilling] = useState<Billing | null>(null);
   const [perJob, setPerJob] = useState("");
-  const [seller, setSeller] = useState<{connected?:boolean;ready?:{transfers:boolean;payouts:boolean}} | null>(null);
-  const [sellerCountry, setSellerCountry] = useState("");
   const [cap, setCap] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +53,6 @@ export function AgentCardBilling() {
   }
   useEffect(() => {
     void load();
-    void call("GET",undefined,"/api/seller").then(r=>{if(r.ok)setSeller(r.data);});
   }, []);
 
   if (!billing?.enabled) return null;
@@ -87,16 +84,6 @@ export function AgentCardBilling() {
     void load();
   }
 
-  async function setupSeller() {
-    setBusy(true); setError(null);
-    try {
-      const r=await call('POST',{country:sellerCountry},'/api/seller');
-      if(r.ok && typeof r.data.url==='string') {window.location.assign(r.data.url);return;}
-      setError(String(r.data.error ?? 'Could not start seller setup'));
-    } catch {setError('Could not connect. Please retry.');}
-    setBusy(false);
-  }
-  const sellerReady = Boolean(seller?.ready?.transfers && seller?.ready?.payouts);
   return (
     <GlassCard className="space-y-7 p-6 sm:p-8">
       <div>
@@ -137,20 +124,6 @@ export function AgentCardBilling() {
         </div>
       </div>
 
-      <div className="space-y-4 border-t border-white/[0.08] pt-7">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="font-ae-display text-xl font-semibold tracking-tight text-ae-text">Receive earnings</h3>
-          {typeof seller?.connected === "boolean" ? <span className={`rounded-full border px-3 py-1 font-ae-label text-xs font-semibold uppercase tracking-[0.08em] ${sellerReady ? "border-ae-emerald/25 bg-ae-emerald/10 text-ae-emerald" : "border-ae-amber/25 bg-ae-amber/10 text-ae-amber"}`}>{sellerReady ? "Ready" : seller.connected ? "Setup incomplete" : "Not set up"}</span> : null}
-        </div>
-        <p className="max-w-2xl text-sm leading-6 text-ae-text-muted">{sellerReady ? 'Your payout account is ready.' : 'Connect your payout account and complete verification with Stripe. Earnings transfer after work is approved; bank settlement follows your Stripe payout schedule.'}</p>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="block flex-1 space-y-2">
-            <span className="ax-label">Country where you or your business is legally based</span>
-            <input aria-label="Seller country code" placeholder="Two-letter code, e.g. US" maxLength={2} value={sellerCountry} onChange={e=>setSellerCountry(e.target.value.toUpperCase())} className="ax-input" />
-          </label>
-          <SecondaryButton className="shrink-0" disabled={busy || !/^[A-Z]{2}$/.test(sellerCountry)} onClick={()=>void setupSeller()}>{seller?.connected ? 'Continue payout setup' : 'Set up payouts'}</SecondaryButton>
-        </div>
-      </div>
       {error ? <p role="alert" className="rounded-xl border border-ae-error/25 bg-ae-error/10 px-4 py-3 text-sm text-ae-error">{error}</p> : null}
     </GlassCard>
   );

@@ -145,6 +145,11 @@ export function ApplicationModal({
           />
         </label>
 
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-xs leading-5 text-ae-text-muted" data-testid="apply-terms">
+          <p className="font-semibold text-ae-text">What happens next</p>
+          <p className="mt-1">The organization names the price when it accepts, and a contract is created then. Before any work, it places a card hold for the full price. You can decline the contract while it's unfunded, and withdraw this proposal any time before it's accepted. Want to set your own price? Use Negotiate instead.</p>
+        </div>
+
         <div className="flex flex-col-reverse gap-3 border-t border-white/[0.06] pt-5 sm:flex-row sm:justify-end">
           <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
           <PrimaryButton disabled={!canSubmit} type="submit">

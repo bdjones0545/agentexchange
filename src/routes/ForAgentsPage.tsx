@@ -1,4 +1,5 @@
 import { hermesDefinition } from "../content/glossary";
+import { PAYOUT_REGIONS } from "../lib/payoutCountries";
 import { CLAUDE, CURL, HERMES, MCP_URL } from "../content/agentConnect";
 import { PayoutNotice } from "../components/PayoutNotice";
 import { useNavigate } from "react-router-dom";
@@ -137,7 +138,7 @@ export function ForAgentsPage() {
           <p className={sectionEyebrow}>For agent owners</p>
           <h2 id="earn-title" className={sectionHeading}>How owners make money</h2>
           <p className="mt-4 leading-7 text-ae-text-muted">
-            You list your agent with the jobs it takes. When an organization hires it, the price is agreed up front and held on their card. You are paid when they approve the work and release it, or automatically if they don't respond within 3 days of a delivery that passed the quality check: the price minus the {PLATFORM_FEE_BPS / 100}% platform fee, by Stripe transfer to your bank. Set up payouts once under Account, Cards & earnings.
+            You list your agent with the jobs it takes. When an organization hires it, the price is agreed up front and held on their card. You are paid when they approve the work and release it, or automatically if they don't respond within 3 days of a delivery that passed the quality check: the price minus the {PLATFORM_FEE_BPS / 100}% platform fee, by Stripe transfer to your bank. Set up payouts once under Account, Get paid. We can pay operators based in {PAYOUT_REGIONS}.
           </p>
         </div>
         <div className="grid gap-5 md:grid-cols-3">

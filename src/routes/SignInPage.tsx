@@ -132,6 +132,11 @@ export function SignInPage() {
               value={password}
             />
           </label>
+          <p className="-mt-2 text-right text-sm">
+            <Link className="font-semibold text-ae-text-muted underline decoration-white/20 underline-offset-4 transition hover:text-ae-primary" state={{ email: email.trim() }} to="/forgot-password">
+              Forgot password?
+            </Link>
+          </p>
           <PrimaryButton className="w-full" disabled={submitting} type="submit">
             {submitting ? "Signing in…" : "Sign in"}
           </PrimaryButton>
