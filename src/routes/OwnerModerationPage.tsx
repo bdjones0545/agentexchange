@@ -6,7 +6,9 @@ import { GlassCard } from "../components/GlassCard";
 import { PageHeader } from "../components/PageHeader";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SecondaryButton } from "../components/SecondaryButton";
-import { decide, fetchModerationQueue, type QueueItem, type QueueResult } from "../lib/moderation";
+import { decide, fetchModerationQueue, updateDeletion, type DeletionItem, type DisputeItem, type QueueItem, type QueueResult } from "../lib/moderation";
+import { formatCents } from "../lib/money";
+import { supportEmail } from "../content/publicRoutes";
 import { useAuth } from "../state/AuthContext";
 
 function Listing({ item, busy, onDecide }: { item: QueueItem; busy: boolean; onDecide: (decision: "approve" | "reject") => void }) {
@@ -39,6 +41,78 @@ function Listing({ item, busy, onDecide }: { item: QueueItem; busy: boolean; onD
   );
 }
 
+const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+
+function Dispute({ item }: { item: DisputeItem }) {
+  return (
+    <GlassCard className={`space-y-3 p-5 sm:p-6 ${item.dueForReview ? "border-ae-amber/40" : ""}`} data-testid="owner-dispute">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-ae-display text-lg font-semibold tracking-tight text-ae-text">{item.contractTitle}</h3>
+          <p className="mt-1 text-sm text-ae-text-muted">{item.organization} hired {item.agent}{item.amountCents ? ` · ${formatCents(item.amountCents)}` : ""} · payment {item.paymentStatus}</p>
+        </div>
+        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${item.dueForReview ? "border-ae-amber/30 bg-ae-amber/10 text-ae-amber" : "border-white/[0.1] bg-white/[0.04] text-ae-text-muted"}`}>
+          {item.dueForReview ? `Due for review · quiet ${item.quietDays} days` : `Quiet ${item.quietDays} ${item.quietDays === 1 ? "day" : "days"}`}
+        </span>
+      </div>
+      <p className="text-xs text-ae-text-muted">Opened by the {item.openedBy === "unknown" ? "contract party" : item.openedBy} on {when(item.openedAt)} · {item.status} · last activity {when(item.lastActivityAt)}</p>
+      <p className="whitespace-pre-line text-sm leading-6 text-ae-text/85">{item.reason}</p>
+      <p className="text-xs leading-5 text-ae-text-muted">
+        {item.dueForReview
+          ? "Under the 7-day rule, AgentExchange reviews this one and decides. Write to both sides from the support inbox; refunds and releases go through Stripe and the contract's payment panel."
+          : "Only the side that opened it can resolve it. It becomes due for review after 7 quiet days."}
+        {" "}Contract id <span className="font-mono">{item.contractId}</span>
+      </p>
+    </GlassCard>
+  );
+}
+
+function DeletionRequest({ item, onSaved }: { item: DeletionItem; onSaved: (message: string) => void }) {
+  const [status, setStatus] = useState<"processing" | "completed">(item.status === "requested" ? "processing" : "completed");
+  const [response, setResponse] = useState(item.response);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function save() {
+    setBusy(true);
+    setError(null);
+    const r = await updateDeletion(item.id, status, response.trim());
+    setBusy(false);
+    if (r.ok) onSaved(`${item.email ?? "The request"} is now ${status}.`);
+    else setError(r.message);
+  }
+  return (
+    <GlassCard className="space-y-3 p-5 sm:p-6" data-testid="owner-deletion">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="break-all font-ae-display text-lg font-semibold tracking-tight text-ae-text">{item.email ?? "Account without an email"}</h3>
+          <p className="mt-1 text-sm text-ae-text-muted">{item.name ?? "No display name"} · asked {when(item.requestedAt)} · {item.status}</p>
+        </div>
+        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${item.deletableNow ? "border-ae-emerald/25 bg-ae-emerald/10 text-ae-emerald" : "border-white/[0.1] bg-white/[0.04] text-ae-text-muted"}`}>
+          {item.deletableNow === null ? "Records unknown" : item.deletableNow ? "Nothing must be kept now" : "Has records to keep"}
+        </span>
+      </div>
+      <p className="text-xs leading-5 text-ae-text-muted">
+        {item.deletableNow
+          ? "Nothing ties this account to marketplace or payment records any more, so the person can now delete it themselves from Account → Your data, or you can delete the user in Supabase Auth."
+          : "Marketplace or payment records point at this account. Decide what must be kept, settle anything open, then mark it completed with what you did."}
+      </p>
+      <label className="block space-y-2">
+        <span className="ax-label">What they see on their account page</span>
+        <textarea className="ax-input min-h-24 text-sm" maxLength={1000} onChange={(e) => setResponse(e.target.value)} value={response} />
+      </label>
+      <div className="flex flex-wrap items-center gap-3">
+        <select aria-label="Request status" className="ax-input w-auto" onChange={(e) => setStatus(e.target.value as "processing" | "completed")} value={status}>
+          <option value="processing">Processing</option>
+          <option value="completed">Completed</option>
+        </select>
+        <PrimaryButton disabled={busy || response.trim().length < 10} onClick={() => void save()}>{busy ? "Saving…" : "Save update"}</PrimaryButton>
+        <a className="text-sm font-semibold text-ae-primary underline decoration-ae-primary/40 underline-offset-4" href={`mailto:${item.email ?? ""}?subject=${encodeURIComponent("Your AgentExchange account deletion request")}&body=${encodeURIComponent(`Hi,\n\n${response}\n\nAgentExchange Support\n${supportEmail}`)}`}>Email them</a>
+      </div>
+      {error ? <p role="alert" className="text-xs text-ae-error">{error}</p> : null}
+    </GlassCard>
+  );
+}
+
 export function OwnerModerationPage() {
   const { loading: authLoading, session, isSupabaseEnabled } = useAuth();
   const [result, setResult] = useState<QueueResult | null>(null);
@@ -67,8 +141,8 @@ export function OwnerModerationPage() {
     <div className="space-y-10">
       <PageHeader
         eyebrow="Platform owner"
-        title="Listing review"
-        description="New agent listings stay private until you approve them, and a listing goes back here when its seller edits its name, description, price or skills. Approve to publish it on the marketplace; reject to keep it private."
+        title="Review queue"
+        description="Everything waiting on the platform owner: new and edited agent listings (private until you approve them), open disputes (due for your review after 7 quiet days), and account deletion requests that need a person."
       />
       <p className="text-sm">
         <Link className="font-semibold text-ae-primary underline decoration-ae-primary/40 underline-offset-4" to="/owner/revenue">Platform revenue</Link>
@@ -97,6 +171,22 @@ export function OwnerModerationPage() {
               <div className="rounded-2xl border border-dashed border-white/[0.12] px-5 py-10 text-center text-sm leading-6 text-ae-text-muted">Nothing to review. New listings appear here.</div>
             ) : (
               queue.pending.map((item) => <Listing busy={busy === item.id} item={item} key={item.id} onDecide={(d) => void onDecide(item, d)} />)
+            )}
+          </section>
+          <section aria-label="Open disputes" className="space-y-4">
+            <h2 className="font-ae-display text-2xl font-semibold tracking-tight text-ae-text">Open disputes ({queue.disputes.length}{queue.disputes.some((d) => d.dueForReview) ? `, ${queue.disputes.filter((d) => d.dueForReview).length} due for review` : ""})</h2>
+            {queue.disputes.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/[0.12] px-5 py-8 text-center text-sm leading-6 text-ae-text-muted">No open disputes.</div>
+            ) : (
+              queue.disputes.map((item) => <Dispute item={item} key={item.id} />)
+            )}
+          </section>
+          <section aria-label="Deletion requests" className="space-y-4">
+            <h2 className="font-ae-display text-2xl font-semibold tracking-tight text-ae-text">Account deletion requests ({queue.deletionRequests.length})</h2>
+            {queue.deletionRequests.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/[0.12] px-5 py-8 text-center text-sm leading-6 text-ae-text-muted">No deletion requests waiting. Accounts without marketplace records delete themselves instantly.</div>
+            ) : (
+              queue.deletionRequests.map((item) => <DeletionRequest item={item} key={item.id} onSaved={(m) => { setNotice(m); void load(); }} />)
             )}
           </section>
           {queue.rejected.length ? (
