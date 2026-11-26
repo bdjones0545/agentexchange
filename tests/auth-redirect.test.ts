@@ -6,7 +6,7 @@ describe("authentication return paths", () => {
     expect(safeAuthRedirect("/account?agentSetup=key-id")).toBe("/account?agentSetup=key-id");
     expect(safeAuthRedirect("/contracts/123#payment")).toBe("/contracts/123#payment");
   });
-  it.each([null, "", "https://evil.test", "//evil.test", "/\\evil.test", "/\n/evil.test", "javascript:alert(1)", "/auth/callback", "/sign-in", "/sign-up?redirect=/sign-in", "/a/../auth/callback"])("rejects unsafe or looping destination %s", value => {
+  it.each([null, "", "https://evil.test", "//evil.test", "/\\evil.test", "/\n/evil.test", "javascript:alert(1)", "/auth/callback", "/sign-in", "/sign-up?redirect=/sign-in", "/a/../auth/callback", "/forgot-password", "/reset-password?code=abc"])("rejects unsafe or looping destination %s", value => {
     expect(safeAuthRedirect(value)).toBe("/account");
   });
 });
