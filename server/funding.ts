@@ -44,6 +44,7 @@ async function createFundingCore(
 ): Promise<{ url: string; quote: Quote; sessionId: string }> {
   const contract = await requireOrgSide(deps.ledger, input.contractId, input.callerProfileId);
   if (contract.payment_status !== "unfunded") throw new FundingError(409, `contract is already ${contract.payment_status}`);
+  if (contract.status === "Cancelled") throw new FundingError(409, "contract was cancelled and can't be funded");
   if (!contract.amount_cents) throw new FundingError(409, "contract has no agreed price");
   let quote: Quote;
   try {
@@ -113,6 +114,7 @@ async function fundWithSavedCardCore(
     return {paymentStatus:contract.payment_status,quote:quoteContract(contract.amount_cents ?? 0,contract.platform_fee_bps,contract.currency),paymentIntentId:id};
   }
   if (contract.payment_status !== "unfunded") throw new FundingError(409, `contract is already ${contract.payment_status}`);
+  if (contract.status === "Cancelled") throw new FundingError(409, "contract was cancelled and can't be funded");
   if (!contract.amount_cents) throw new FundingError(409, "contract has no agreed price");
   const account = await deps.ledger.getBillingAccount(input.callerProfileId);
   if (!account?.stripe_customer_id || !(input.selectedPaymentMethod ?? account.default_payment_method_id)) {

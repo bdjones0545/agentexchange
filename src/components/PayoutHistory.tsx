@@ -43,7 +43,7 @@ export function PayoutHistory({ profileId }: { profileId: string | null }) {
         </ul>
       ) : null}
       <p className="mt-3 text-xs leading-5 text-ae-text-muted">Bank deposits follow your Stripe payout schedule.</p>
-      <Link className="mt-3 inline-flex w-fit items-center gap-2 text-sm font-semibold text-ae-primary underline decoration-ae-primary/40 underline-offset-4 transition hover:decoration-ae-primary" to="/account#payment-settings">
+      <Link className="mt-3 inline-flex w-fit items-center gap-2 text-sm font-semibold text-ae-primary underline decoration-ae-primary/40 underline-offset-4 transition hover:decoration-ae-primary" to="/account#earnings">
         Payout settings <span aria-hidden>→</span>
       </Link>
     </GlassCard>

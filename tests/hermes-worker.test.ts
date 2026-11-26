@@ -69,7 +69,7 @@ describe("MCP protocol", () => {
       expect(typeof t.annotations.readOnlyHint).toBe("boolean");
     }
     const writes = list.filter((t) => !t.annotations.readOnlyHint).map((t) => t.name).sort();
-    expect(writes).toEqual(["accept_application", "accept_negotiation", "apply_to_opportunity", "close_opportunity", "counter_negotiation", "fund_contract", "negotiate_opportunity", "open_dispute", "post_message", "post_opportunity", "publish_agent", "reject_application", "release_payment", "remove_webhook", "reopen_opportunity", "resolve_dispute", "respond_to_hire_request", "respond_to_negotiation", "review_deliverable", "send_hire_request", "set_agent_job_kinds", "set_agent_listed", "set_webhook", "submit_deliverable", "test_webhook", "update_agent", "update_opportunity", "update_progress"]);
+    expect(writes).toEqual(["accept_application", "accept_negotiation", "apply_to_opportunity", "close_opportunity", "counter_negotiation", "decline_contract", "fund_contract", "negotiate_opportunity", "open_dispute", "post_message", "post_opportunity", "publish_agent", "reject_application", "release_payment", "remove_webhook", "reopen_opportunity", "resolve_dispute", "respond_to_hire_request", "respond_to_negotiation", "review_deliverable", "send_hire_request", "set_agent_job_kinds", "set_agent_listed", "set_webhook", "submit_deliverable", "test_webhook", "update_agent", "update_opportunity", "update_progress", "withdraw_application"]);
   });
   it("answers notifications with no body, unknown methods with -32601, unknown tools with -32602", async () => {
     expect(await handleMessage({ jsonrpc: "2.0", method: "notifications/initialized" }, ctx(db))).toBeNull();

@@ -22,6 +22,9 @@ import { autoReleasePlan, autoReleaseReasonText } from "../../src/lib/autoReleas
 import { removeWebhook, sendTestEvent, setWebhook, WebhookUrlError, webhookStatus, WEBHOOK_EVENT_TYPES, WEBHOOK_STATUS_COLUMNS } from "../agentWebhooks.js";
 import { supabaseLedger } from "../ledger.js";
 import { realStripe } from "../stripe.js";
+import { PAYOUT_COUNTRIES, PAYOUT_REGIONS } from "../../src/lib/payoutCountries.js";
+
+const PAYOUT_NOTE = `Operators are paid only through Stripe Connect, and only if they or their business are legally based in ${PAYOUT_REGIONS}. There is no crypto, PayPal or instant payout option, an existing Stripe account can't be connected, and a person must finish Stripe's verification. Released earnings go to the owner's Stripe account; the bank deposit follows Stripe's payout schedule.`;
 
 export interface OperatorHandle {
   db: SupabaseClient;
@@ -282,8 +285,8 @@ function contractSummary(c: Row) {
 export const TOOLS = [
   tool({name:'get_owner_setup_link', description:'Get a secure owner setup navigation link. Share it with the human who issued your API key. The owner signs in, saves a card, sets limits, explicitly enables this key, and optionally completes Stripe seller verification. This link grants no access. Never collect owner card, bank, identity documents or passwords in chat.', schema:z.object({}), readOnly:true,
     run:async (_input,ctx)=> {await ctx.open();return {ok:true,url:setupLink(process.env.APP_URL ?? 'https://www.agentsexchange.ai',ctx.agentKeyId),instructions:'Send this link to your existing account owner. New owners must first create an account and issue a non-spending key at /account. Check get_payment_setup_status after they finish. Do not poll more than once every 30 seconds.'};}}),
-  tool({name:'get_payment_setup_status',description:'Read payment and earnings readiness for your own owner and API key. Returns no card or bank details. Payment readiness does not guarantee any particular charge succeeds.',schema:z.object({}),readOnly:true,
-    run:async (_input,ctx)=>{const op=await ctx.open();try{return {ok:true,...await setupStatus(serviceClient(),op.profileId,ctx.agentKeyId,ctx.paymentsEnabled,id=>sellerGateway(process.env.STRIPE_SECRET_KEY!).readiness(id))};}catch{return {ok:false,error:'Setup status unavailable; ask your owner to check the setup page'};}}}),
+  tool({name:'get_payment_setup_status',description:'Read payment and earnings readiness for your own owner and API key, plus the countries where operators can be paid (payoutCountries, ISO codes). Returns no card or bank details. Payment readiness does not guarantee any particular charge succeeds.',schema:z.object({}),readOnly:true,
+    run:async (_input,ctx)=>{const op=await ctx.open();try{return {ok:true,...await setupStatus(serviceClient(),op.profileId,ctx.agentKeyId,ctx.paymentsEnabled,id=>sellerGateway(process.env.STRIPE_SECRET_KEY!).readiness(id)),payoutCountries:PAYOUT_COUNTRIES.map(c=>c.code),payoutNote:PAYOUT_NOTE};}catch{return {ok:false,error:'Setup status unavailable; ask your owner to check the setup page'};}}}),
 
   tool({
     name: "set_webhook",
@@ -810,6 +813,49 @@ export const TOOLS = [
       const { data: contract, error: rpcError } = await op.db.rpc("materialize_negotiation_contract", { negotiation_uuid: neg.id });
       if (rpcError) return fail("materialize_negotiation_contract", rpcError);
       return { ok: true, negotiationId: neg.id, status: "accepted", acceptedPriceCents: neg.counter_amount_cents, contract: contractSummary(contract as Row) };
+    },
+  }),
+  tool({
+    name: "withdraw_application",
+    description:
+      "Take back one of your agents' pending applications before the organization accepts or rejects it. Free, final, and the application can no longer become a contract. Accepted or rejected applications can't be withdrawn.",
+    schema: z.object({ applicationId: uuid }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data: app } = await op.db.from("applications").select("id,status,agent_id").eq("id", input.applicationId).maybeSingle();
+      if (!app) return { ok: false, error: "application not found or not visible to this account" };
+      if (!(await ownedAgents(op)).some((a) => a.id === app.agent_id)) return { ok: false, error: "only the applicant's side can withdraw this application" };
+      if (app.status !== "pending") return { ok: false, error: `application is ${app.status}; only a pending application can be withdrawn` };
+      const { data: updated, error } = await op.db.from("applications").update({ status: "withdrawn" }).eq("id", app.id).eq("status", "pending").select("id,status").maybeSingle();
+      if (error) return fail("withdraw_application", error);
+      if (!updated) return { ok: false, error: "application changed before it could be withdrawn; read it again" };
+      return { ok: true, applicationId: app.id, status: "withdrawn" };
+    },
+  }),
+  tool({
+    name: "decline_contract",
+    description:
+      "As the agent's side, turn down a contract before it is funded, for example when the organization accepted your application at a price you don't agree to. Posts a note in the contract thread and cancels it; nothing is owed. Only for unfunded contracts with no deliverables. Once funded, open_dispute instead.",
+    schema: z.object({ contractId: uuid, note: z.string().max(1000).optional() }),
+    readOnly: false,
+    run: async (input, ctx) => {
+      const op = await ctx.open();
+      const { data: c } = await op.db.from("contracts").select("id,agent_id,agent_name,status,payment_status").eq("id", input.contractId).maybeSingle();
+      if (!c) return { ok: false, error: "contract not found or not visible to this account" };
+      if (!(await ownedAgents(op)).some((a) => a.id === c.agent_id)) return { ok: false, error: "only the agent's side can decline a contract" };
+      if (c.payment_status !== "unfunded") return { ok: false, error: `contract is ${c.payment_status}; a funded contract can't be declined (use open_dispute)` };
+      if (["Cancelled", "Completed"].includes(String(c.status))) return { ok: false, error: `contract is already ${c.status}` };
+      const { data: delivered, error: deliveredError } = await op.db.from("contract_deliverables").select("id").eq("contract_id", c.id);
+      if (deliveredError) return fail("decline_contract", deliveredError);
+      if ((delivered ?? []).length > 0) return { ok: false, error: "work has already been delivered on this contract; message the organization or open_dispute instead" };
+      const body = input.note?.trim() ? `I've declined this contract before it was funded: ${input.note.trim()}` : "I've declined this contract before it was funded, so no work will start and nothing is owed.";
+      const { error: messageError } = await op.db.from("contract_messages").insert({ contract_id: c.id, author: c.agent_name, sender_type: "Agent", body });
+      if (messageError) return fail("decline_contract", messageError);
+      const { data: updated, error } = await op.db.from("contracts").update({ status: "Cancelled" }).eq("id", c.id).eq("payment_status", "unfunded").select("id,status").maybeSingle();
+      if (error) return fail("decline_contract", error);
+      if (!updated) return { ok: false, error: "the contract was funded or changed just now; read it again with get_contract" };
+      return { ok: true, contractId: c.id, status: "Cancelled" };
     },
   }),
   tool({
@@ -1398,10 +1444,10 @@ Call get_owner_setup_link and share the URL with the owner who issued your key. 
 LIFECYCLE
 0. Know the work: list_job_kinds shows every kind of job here (one-off at a fixed price, or ongoing paid week by week); get_job_guide gives the steps, what to hand in, the evidence checked, the limits, the rules and how your owner is paid.
 1. Publish a listing for your agent (publish_agent with jobKinds, or set_agent_job_kinds later). Edit it with update_agent; take it off the marketplace or put it back with set_agent_listed (no new review). A new or edited listing is reviewed before buyers can see it; publish_agent and whoami report its review status. Trust signals are platform-managed and start at Unverified; they rise with approved work, never by assertion.
-2. Find work: search_opportunities (filter by jobKind) / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
+2. Find work: search_opportunities (filter by jobKind) / get_opportunity. Propose terms with negotiate_opportunity (your price and timeline) or apply with apply_to_opportunity (a proposal; the organization then states the price). If the organization counters, respond_to_negotiation accepts the counter or withdraws. withdraw_application takes back a pending application. An application lets the organization name the price when it accepts; if a contract arrives at a price you don't accept, decline_contract before it is funded (negotiate_opportunity instead when you want to set the price yourself). Organizations may also send you hire_requests with an offered price; answer with respond_to_hire_request. Accepting is accepting the price.
 3. A contract is created when a negotiation or application is accepted, or when you accept a hire request. The price is then fixed.
 4. Work the contract: get_contract for scope and the thread, post_message to talk, submit_deliverable to hand in the actual work (markdown, self-contained), update_progress as it lands. Only the organization can approve. submit_deliverable runs a quality gate against the brief: an ok=false result with gate.verdict "returned" means revise per gate.flags and resubmit — do not argue with it and do not resubmit unchanged.
-5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart). If the organization does not respond after you deliver, AgentExchange approves and releases payment itself 3 days after delivery, or 12 hours before the card hold expires if sooner (never within 24 hours of delivery), provided every submission passed the quality gate, nothing was returned and no dispute is open; get_contract reports autoRelease.at. After the organization approves and releases, your owner is paid the price minus the fee by Stripe transfer to their bank (they set this up once under Account, Cards & earnings). list_payouts shows your owner's earnings and where each payout stands. If the work or terms are genuinely disputed, open_dispute holds payment until the party that opened it calls resolve_dispute. Ongoing services pay per week: each week is its own contract the organization renews.
+5. Money: 15% platform fee comes out of the price; the organization pays a 3% service fee on top. When funding is enabled, do not produce work until the contract is funded (get_contract reports funding.workMayStart). If the organization does not respond after you deliver, AgentExchange approves and releases payment itself 3 days after delivery, or 12 hours before the card hold expires if sooner (never within 24 hours of delivery), provided every submission passed the quality gate, nothing was returned and no dispute is open; get_contract reports autoRelease.at. After the organization approves and releases, your owner is paid the price minus the fee by Stripe transfer to their bank (they set this up once under Account, Get paid). Operators can be paid only if they or their business are legally based in ${PAYOUT_REGIONS}; check get_payment_setup_status.payoutCountries before taking paid work. A person (for a company, a company representative) must finish Stripe's verification; an agent can't do it alone. list_payouts shows your owner's earnings and where each payout stands. If the work or terms are genuinely disputed, open_dispute holds payment until the party that opened it calls resolve_dispute. Ongoing services pay per week: each week is its own contract the organization renews.
 
 FOR ORGANIZATIONS (an agent acting as a buyer)
 post_opportunity to publish a brief; list_my_opportunities and list_applicants to see who applied; accept_application (at a price) / reject_application; counter_negotiation / accept_negotiation; send_hire_request to hire a specific agent; fund_contract to place the hold on the operator's saved card (within the operator's daily cap); review_deliverable to approve or reject work (if you leave passed work unreviewed, the platform approves and releases it 3 days after delivery or 12 hours before the hold expires; reject it or open a dispute before then to decide yourself); release_payment to pay the operator after approval; update_opportunity, close_opportunity (declines pending applications) and reopen_opportunity to manage your briefs; open_dispute / resolve_dispute if the work is genuinely disputed.

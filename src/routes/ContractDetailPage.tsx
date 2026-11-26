@@ -1,4 +1,6 @@
-import { contractPriceLabel } from "../lib/money";
+import { contractPriceLabel, formatCents } from "../lib/money";
+import { declineUnfundedContract } from "../lib/repositories/contractsRepository";
+import { supportEmail } from "../content/publicRoutes";
 import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { initialsFor } from "../lib/initials";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
@@ -504,6 +506,9 @@ export function ContractDetailPage() {
               openDisputes={activeDisputes.filter((dispute) => dispute.status !== "Resolved").length}
               onChanged={() => void refresh()}
             />
+            {isSharedMode && !isOrganizationSide && ownsAgent(contractAgentId) && (agreedAmountCents ?? 0) > 0 && String(paymentStatus ?? "unfunded") === "unfunded" && !["Cancelled", "Completed"].includes(String(contract.status)) && workspace.deliverables.length === 0 ? (
+              <DeclineUnfundedContract contractId={activeContract.id} agentName={activeContract.agent} amountCents={agreedAmountCents ?? 0} onDeclined={() => void refresh()} />
+            ) : null}
           </div>
         ) : null}
 
@@ -1011,8 +1016,15 @@ export function ContractDetailPage() {
                               Resolve
                             </PrimaryButton>
                           ) : (
-                            <p className="text-xs text-ae-text-muted">
-                              Only the party that opened this dispute can resolve it.
+                            <p className="text-xs leading-5 text-ae-text-muted">
+                              Only the party that opened this dispute can resolve it. Payment can't be released while it's open. If it stalls,{" "}
+                              <a
+                                className="font-semibold text-ae-text underline decoration-ae-primary/50 underline-offset-4 hover:text-ae-primary"
+                                href={`mailto:${supportEmail}?subject=${encodeURIComponent(`Please review a dispute: ${activeContract.title}`)}&body=${encodeURIComponent(`Contract: ${typeof window !== "undefined" ? window.location.origin : "https://www.agentsexchange.ai"}/contracts/${activeContract.id}\n\nWhat's happened so far:\n`)}`}
+                              >
+                                ask AgentExchange to review it
+                              </a>
+                              . A person on our team replies within one business day.
                             </p>
                           )}
                         </div>
@@ -1049,5 +1061,42 @@ export function ContractDetailPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * A contract made by accepting an application carries the price the
+ * organization named. Until it's funded, the agent's owner can say no to it.
+ */
+function DeclineUnfundedContract({ contractId, agentName, amountCents, onDeclined }: { contractId: string; agentName: string; amountCents: number; onDeclined: () => void }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function decline() {
+    setBusy(true);
+    setError(null);
+    try {
+      await declineUnfundedContract(contractId, agentName);
+      onDeclined();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not decline. Please retry.");
+      setBusy(false);
+    }
+  }
+  return (
+    <GlassCard className="mt-4 space-y-3 p-5" data-testid="decline-contract">
+      <p className="text-sm leading-6 text-ae-text-muted">
+        Waiting for the organization to place a card hold for {formatCents(amountCents)}. Don't start work until it shows Funded · held. Not right for you? You can decline while it's unfunded; nothing is owed.
+      </p>
+      {confirming ? (
+        <div className="flex flex-wrap gap-2">
+          <SecondaryButton disabled={busy} onClick={() => setConfirming(false)}>Keep the contract</SecondaryButton>
+          <SecondaryButton disabled={busy} onClick={() => void decline()}>{busy ? "Declining…" : "Yes, decline it"}</SecondaryButton>
+        </div>
+      ) : (
+        <SecondaryButton onClick={() => setConfirming(true)}>Decline this contract</SecondaryButton>
+      )}
+      {error ? <p role="alert" className="text-xs text-ae-error">{error}</p> : null}
+    </GlassCard>
   );
 }
