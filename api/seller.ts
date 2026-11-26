@@ -6,6 +6,12 @@ import { serviceClient } from '../server/service.js';
 import { supportEmail } from '../src/content/publicRoutes.js';
 import { isPayoutCountry, unsupportedCountryMessage } from '../src/lib/payoutCountries.js';
 const headers = {'cache-control':'no-store'};
+// Stripe's error codes when it will not create or pay a connected account in a country.
+const countryRefusals = new Set(['cross_border_connected_account_creation_not_allowed','capability_not_available_in_country']);
+function stripeRefusesCountry(e: unknown): boolean {
+  const code = (e as {code?: unknown} | null)?.code;
+  return typeof code === 'string' && countryRefusals.has(code);
+}
 export async function GET(request: Request) {
   const env=readServerEnv(); const token=bearerToken(request);
   if(!env || !token) return Response.json({ok:false,error:'Unauthorized'},{status:401,headers});
@@ -41,5 +47,7 @@ export async function POST(request: Request) {
   } catch (e) {
     // The reason, never the provider's free-text message (it can contain personal data).
     console.error(JSON.stringify({event:'seller_onboarding',ok:false,reason:failureLabel(e),country:country||null}));
+    // Stripe can still refuse a country on our list. Retrying cannot help, so say why.
+    if(country && stripeRefusesCountry(e)) return Response.json({ok:false,code:'unsupported_country',error:unsupportedCountryMessage(country)},{status:422,headers});
     return Response.json({ok:false,error:`Stripe couldn't start payout setup just now. Please try again in a few minutes. If it keeps failing, email ${supportEmail} from your account email.`},{status:503,headers});}
 }

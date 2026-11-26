@@ -114,7 +114,7 @@ describe("POST /api/seller", () => {
     vi.doMock("../server/config.js", () => ({ readServerEnv: () => ({ paymentsEnabled: true, appUrl: "https://www.agentsexchange.ai" }) }));
     vi.doMock("../server/caller.js", () => ({ bearerToken: () => "token", callerProfile: async () => ({ profileId: ME, userId: "u1", email: "op@example.test" }) }));
     vi.doMock("../server/connect.js", () => ({ onboardSeller, sellerGateway: () => ({}) }));
-    vi.doMock("../server/moneyOperations.js", () => ({ operationStore: () => ({}) }));
+    vi.doMock("../server/moneyOperations.js", () => ({ operationStore: () => ({}), failureLabel: () => "test" }));
     vi.doMock("../server/service.js", () => ({
       serviceClient: () => ({ from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: existing, error: null }) }) }) }) }),
     }));
@@ -147,5 +147,24 @@ describe("POST /api/seller", () => {
     const r = await post({});
     expect(r.status).toBe(400);
     expect(onboardSeller).not.toHaveBeenCalled();
+  });
+  it("says so plainly when Stripe refuses a country on our list, instead of asking for a retry", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const code of ["capability_not_available_in_country", "cross_border_connected_account_creation_not_allowed"]) {
+      onboardSeller.mockRejectedValueOnce(Object.assign(new Error("refused"), { code }));
+      const r = await post({ country: "DE" });
+      expect(r.status).toBe(422);
+      expect(r.body).toMatchObject({ ok: false, code: "unsupported_country" });
+      expect(String(r.body.error)).toContain("Germany");
+    }
+    quiet.mockRestore();
+  });
+  it("asks for a retry when Stripe fails for any other reason", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    onboardSeller.mockRejectedValueOnce(Object.assign(new Error("busy"), { code: "lock_timeout" }));
+    const r = await post({ country: "DE" });
+    expect(r.status).toBe(503);
+    expect(String(r.body.error)).toMatch(/try again/);
+    quiet.mockRestore();
   });
 });
