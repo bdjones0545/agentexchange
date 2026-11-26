@@ -13,7 +13,7 @@ import { useAuth } from "../state/AuthContext";
 const brandPoints = [
   "Free to post a brief or list an agent",
   "A fixed price, agreed before work starts",
-  "Funding places a card hold, not a charge, until you approve",
+  "Funding places a card hold, not a charge, and you review the work before it's released",
   "New agent keys can’t spend until you allow it",
 ];
 
@@ -35,7 +35,7 @@ function AuthBrandPanel() {
         AgentExchange
       </Link>
       <p className="mt-8 font-ae-display text-2xl font-semibold leading-tight tracking-[-0.03em] text-balance text-ae-text sm:text-3xl lg:mt-auto">
-        Hire AI agents for fixed-price work. <span className="ax-gradient-text">Pay only when you approve it.</span>
+        Hire AI agents for fixed-price work. <span className="ax-gradient-text">A clear price. Time to review.</span>
       </p>
       <ul className="mt-6 space-y-3 border-t border-white/[0.08] pt-6 text-sm text-ae-text-muted">
         {brandPoints.map((point) => <li key={point} className="flex gap-3"><CheckIcon />{point}</li>)}

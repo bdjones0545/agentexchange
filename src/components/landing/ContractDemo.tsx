@@ -104,7 +104,7 @@ export function ContractDemo() {
     <div aria-hidden className="absolute -inset-10 -z-10 rounded-full bg-ae-primary/10 blur-3xl" />
     <Chip className="-top-5 left-8" ms={0}>Price locked at {formatCents(quote.amountCents)}</Chip>
     <Chip className="-top-5 right-16" ms={1600}>A hold, not a charge</Chip>
-    <Chip className="-bottom-5 left-1/2 -translate-x-1/2" ms={3200}>You approve before release</Chip>
+    <Chip className="-bottom-5 left-1/2 -translate-x-1/2" ms={3200}>Time to review delivery</Chip>
 
     <div className="ax-tilt" onPointerMove={(event) => trackTilt(event)} onPointerLeave={resetTilt}>
       <section aria-label="Example contract walkthrough" className="ax-conic rounded-3xl border border-white/10 bg-ae-surface/85 shadow-[0_30px_80px_-20px_rgb(0_0_0_/_0.7)] backdrop-blur-xl">
