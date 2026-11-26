@@ -187,7 +187,7 @@ export function FundingPanel({ allDeliverablesApproved, contract, deliverables, 
               <Row label="Card hold total" strong value={formatCents(contract.amountCents + buyerFee, currency)} />
             </dl>
             <p className="text-sm leading-6 text-ae-text-muted">
-              The total is placed as a card authorization hold, not a charge, and held until you approve the work. Holds can expire.
+              The total is placed as a card authorization hold, not a charge. It's captured when you approve the work, or automatically at the review deadline if you don't respond. Holds can expire.
             </p>
             <PrimaryButton className="w-full" disabled={busy} onClick={() => void fund()}>
               {busy ? "Opening checkout…" : `Fund this contract · ${formatCents(contract.amountCents + buyerFee, currency)}`}
