@@ -4,6 +4,7 @@ import { onboardSeller, sellerGateway } from '../server/connect.js';
 import { operationStore } from '../server/moneyOperations.js';
 import { serviceClient } from '../server/service.js';
 import { supportEmail } from '../src/content/publicRoutes.js';
+import { isPayoutCountry, unsupportedCountryMessage } from '../src/lib/payoutCountries.js';
 const headers = {'cache-control':'no-store'};
 export async function GET(request: Request) {
   const env=readServerEnv(); const token=bearerToken(request);
@@ -26,9 +27,16 @@ export async function POST(request: Request) {
   let body: {country?:unknown};
   try {body=await request.json();} catch {return Response.json({ok:false,error:'Invalid request'},{status:400,headers});}
   const country=typeof body.country==='string' ? body.country.trim().toUpperCase() : '';
-  if(!/^[A-Z]{2}$/.test(country)) return Response.json({ok:false,error:'Enter your two-letter country code (for example US)'},{status:400,headers});
+  // An operator who already started setup continues it; the country was fixed then.
+  const {data:existing,error:readError}=await serviceClient().from('seller_accounts').select('stripe_account_id').eq('profile_id',caller.profileId).maybeSingle();
+  if(readError) return Response.json({ok:false,error:'Payout setup is unavailable right now. Please try again in a few minutes.'},{status:503,headers});
+  if(!existing) {
+    if(!/^[A-Z]{2}$/.test(country)) return Response.json({ok:false,error:'Choose the country where you or your business is legally based.'},{status:400,headers});
+    // Refuse before Stripe does, with a reason the operator can act on.
+    if(!isPayoutCountry(country)) return Response.json({ok:false,code:'unsupported_country',error:unsupportedCountryMessage(country)},{status:422,headers});
+  }
   try {
     const result=await onboardSeller(serviceClient(),operationStore(),sellerGateway(process.env.STRIPE_SECRET_KEY!),caller.profileId,env.appUrl,caller.email,country);
     return Response.json({ok:true,...result},{headers});
-  } catch {return Response.json({ok:false,error:`Seller onboarding unavailable; retry or email ${supportEmail}`},{status:503,headers});}
+  } catch {return Response.json({ok:false,error:`Stripe couldn't start payout setup just now. Please try again in a few minutes. If it keeps failing, email ${supportEmail} from your account email.`},{status:503,headers});}
 }

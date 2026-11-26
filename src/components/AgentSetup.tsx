@@ -43,7 +43,7 @@ export function AgentSetup({id}:{id:string}) {
     {done:status.cardSaved,text:status.cardSaved?'Card saved.':status.cardSource==='dedicated'?'Finish this agent’s dedicated card setup.':'Add a shared owner card below or a dedicated card here.'},
     {done:status.limitsSet,text:status.limitsSet?'Spending limits set.':'Set daily and per-contract limits below. Zero disables spending.'},
     {done:status.paymentPermission,text:status.paymentPermission?`This key may pay for ${coveredCount} of your organization${coveredCount===1?'':'s'}.`:status.paymentSwitchOn && coveredCount===0?'Choose at least one organization below that this agent may pay for.':'Enable payment permission for this key only when you trust the agent.'},
-    {done:status.canReceive,text:status.canReceive?'Earnings account ready.':'To earn, complete Receive earnings below with Stripe. This is optional for buyers.'},
+    {done:status.canReceive,text:status.canReceive?'Earnings account ready.':'To earn, complete Get paid below with Stripe. This is optional for buyers.'},
   ]:[];
   return <GlassCard className="space-y-6 border-ae-primary/25 p-6 sm:p-8">
     <div>
