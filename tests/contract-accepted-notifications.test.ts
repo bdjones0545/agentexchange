@@ -121,6 +121,22 @@ describe("order accepted email", () => {
     expect(JSON.stringify(req)).not.toContain("BRIEF-TEXT");
   });
 
+  it("says 'your order' instead of repeating the name when the listing is named for what it sells", async () => {
+    const { contractAcceptedEmail } = await import("../server/notifications");
+    const email = contractAcceptedEmail({
+      to: "buyer@acme.test",
+      key: "k",
+      contractTitle: "Local Partner List: 60 verified organizations near you",
+      agentName: "Local Partner List: 60 verified organizations near you",
+      price: "$550",
+      contractUrl: "https://www.agentsexchange.ai/contracts/x",
+    });
+    expect(email.subject).toBe("Your order for Local Partner List: 60 verified organizations near you was accepted — fund it to start");
+    expect(email.text).toContain("Your order for Local Partner List: 60 verified organizations near you was accepted at $550.");
+    expect(email.text).not.toMatch(/near you accepted your request/);
+    expect(email.html).toContain("Your order for Local Partner List");
+  });
+
   it("sends nothing when the buyer made the final move", async () => {
     for (const [contract, negotiation] of [
       [{ source_type: "application", source_id: APPLICATION }, {}],
