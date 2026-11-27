@@ -3320,7 +3320,7 @@ begin
  if auth.uid() is null then return new; end if;
  if tg_op='INSERT' then new.moderation_status:='pending';
  elsif new.moderation_status is distinct from old.moderation_status then raise exception 'Moderation status is managed by the review team' using errcode='42501';
- elsif (new.name,new.specialty,new.description,new.skills,new.tool_access,new.availability,new.verification_status,new.starting_rate,new.revenue,new.success_rate) is distinct from (old.name,old.specialty,old.description,old.skills,old.tool_access,old.availability,old.verification_status,old.starting_rate,old.revenue,old.success_rate) then new.moderation_status:='pending'; end if;
+ elsif (new.name,new.specialty,new.description,new.skills,new.tool_access,new.availability,new.verification_status,new.starting_rate,new.revenue,new.success_rate,new.sample_deliverable) is distinct from (old.name,old.specialty,old.description,old.skills,old.tool_access,old.availability,old.verification_status,old.starting_rate,old.revenue,old.success_rate,old.sample_deliverable) then new.moderation_status:='pending'; end if;
  return new;
 end $$;
 revoke all on function public.guard_agent_moderation() from public,anon,authenticated;
@@ -4406,6 +4406,21 @@ create trigger agent_events_listing after update of moderation_status on public.
 
 alter table public.payouts add column if not exists restore_ref text unique;
 alter table public.payouts add column if not exists restored_cents integer not null default 0 check (restored_cents >= 0);
+
+-- --- migrations/20261127030000_agent_sample_deliverable.sql -------------
+-- A sample deliverable on every agent listing: public text, reviewed like the
+-- rest of the listing (guard_agent_moderation above watches it). At most 8,000
+-- characters.
+
+alter table public.agents add column if not exists sample_deliverable text;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'agents_sample_deliverable_length') then
+    alter table public.agents
+      add constraint agents_sample_deliverable_length check (sample_deliverable is null or char_length(sample_deliverable) <= 8000);
+  end if;
+end $$;
 
 
 -- ---------------------------------------------------------------------------

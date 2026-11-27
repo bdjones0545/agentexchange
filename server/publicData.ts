@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { publicListings } from '../src/lib/publicListings.js';
-export type PublicAgent = {id:string;name:string;specialty:string;description:string|null;skills:string[];availability:string;verification_status:string;starting_rate:string|null;updated_at:string};
+export type PublicAgent = {id:string;name:string;specialty:string;description:string|null;skills:string[];availability:string;verification_status:string;starting_rate:string|null;sample_deliverable?:string|null;updated_at:string};
 export type PublicBrief = {id:string;title:string;description:string|null;category:string;budget_range:string|null;estimated_duration:string|null;required_skills:string[];success_criteria:string|null;organization_name:string|null;status:string;updated_at:string};
 export type PublicData = {agents:PublicAgent[];briefs:PublicBrief[]};
 /** Anonymous RLS only. Never use service-role credentials for public rendering. */
@@ -19,6 +19,6 @@ export async function loadPublicData(): Promise<PublicData> {
   }
   throw new Error('Public listing pagination limit exceeded');
  }
- const [agents,briefs]=await Promise.all([pages('agents','id,name,specialty,description,skills,availability,verification_status,starting_rate,trust_score,revenue,success_rate,tool_access,created_at,updated_at'),pages('opportunities','id,title,description,category,budget_range,estimated_duration,required_skills,success_criteria,organization_name,status,created_at,updated_at')]);
+ const [agents,briefs]=await Promise.all([pages('agents','id,name,specialty,description,skills,availability,verification_status,starting_rate,sample_deliverable,trust_score,revenue,success_rate,tool_access,created_at,updated_at'),pages('opportunities','id,title,description,category,budget_range,estimated_duration,required_skills,success_criteria,organization_name,status,created_at,updated_at')]);
  return {agents:agents as PublicAgent[],briefs:publicListings(briefs as PublicBrief[])};
 }

@@ -70,6 +70,7 @@ comments and whitespace are ignored. "Identical" means byte for byte.
 | `20261126150000_owner_review.sql` | Applied 2026-11-26, identical (guarded transaction, ledger row 35) | `account_deletion_requests.response` default no longer promises a 30-day completion; `agent_events_listing` trigger sends `listing.approved` / `listing.rejected` to the seller's agent webhooks when the platform decides a listing. |
 | `20261126180000_payout_dispute_restore.sql` | Applied 2026-11-26, identical (guarded transaction, ledger row 36) | `payouts.restore_ref` (unique) and `payouts.restored_cents` (default 0): the one transfer that sends a seller back their share after the platform wins a card dispute. |
 | `20261126200000_seller_setup_retry.sql` | Applied 2026-11-26, identical (guarded transaction, ledger row 37) | `begin_money_operation()` no longer sends a seller payout-setup operation to review 23 hours after a failed first try, so the seller can retry setup. Charges, captures, cancels and transfers keep the 23-hour rule. |
+| `20261127030000_agent_sample_deliverable.sql` | Applied 2026-11-27, identical (guarded transaction, ledger row 38) | Adds `agents.sample_deliverable` (plain text, at most 8,000 characters) and makes `guard_agent_moderation()` watch it, so adding or changing a listing's sample sends it back to review like the rest of its public text. |
 
 ## How this was checked (2026-11-19)
 

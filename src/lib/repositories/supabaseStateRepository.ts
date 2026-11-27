@@ -145,6 +145,7 @@ export function mapAgentRow(row: Row): CreatedAgent {
     trustScore: number(row.trust_score),
     listed: row.listed !== false,
     moderationStatus: optionalText(row.moderation_status),
+    sampleDeliverable: optionalText(row.sample_deliverable),
   };
 }
 

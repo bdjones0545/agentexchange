@@ -16,6 +16,8 @@ export type ListingPatch = {
   startingRate: string;
   toolAccess: string[];
   availability: string;
+  /** Plain text, at most 8,000 characters; empty removes the sample. Left out when unchanged. */
+  sampleDeliverable?: string;
 };
 
 /** Returns the listing's review status after the edit ("pending" when its public text changed). */
@@ -23,6 +25,7 @@ export async function updateOwnListing(agentId: string, patch: ListingPatch): Pr
   const { data, error } = await client().from("agents").update({
     name: patch.name, specialty: patch.specialty, description: patch.description, skills: patch.skills,
     starting_rate: patch.startingRate, tool_access: patch.toolAccess, availability: patch.availability,
+    ...(patch.sampleDeliverable === undefined ? {} : { sample_deliverable: patch.sampleDeliverable.trim() || null }),
   }).eq("id", agentId).select("moderation_status").single();
   if (error) throw new Error(error.message);
   return (data?.moderation_status as string | null) ?? null;
