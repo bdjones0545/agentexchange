@@ -1,0 +1,58 @@
+-- ---------------------------------------------------------------------------
+-- Owner emails: the idempotency ledger and the recipient lookup.
+--
+-- server/notifications.ts claims a row here before it emails an organization's
+-- owner, then records the send:
+--   * deliverable_submitted, keyed by the deliverable and how many decisions it
+--     already carries, so a retried request does not send twice while a
+--     revision resubmitted after a rejection does;
+--   * contract_accepted, keyed by the contract: one "the seller accepted, please
+--     fund" email per contract.
+-- Service-role only: no policies, grants revoked.
+--
+-- Also adds organization_owner_email(), the service-only lookup of the
+-- recipient, so the server needs no direct SELECT on profiles.
+--
+-- Additive and safe to run more than once. The code runs without it (it falls
+-- back to Resend's 24-hour Idempotency-Key and to reading the owner's profile
+-- directly, which only production's older blanket grants allow), so it can be
+-- applied before or after the deploy. A project built from schema.sql has no
+-- such grant and needs this for the email to find its recipient. The table is
+-- new, so it gets no default grant either: the explicit grant below is it.
+-- ---------------------------------------------------------------------------
+create table if not exists email_notifications (
+  key text primary key,
+  kind text not null,
+  deliverable_id uuid references contract_deliverables(id) on delete set null,
+  created_at timestamptz not null default now(),
+  sent_at timestamptz,
+  provider_id text
+);
+-- The contract an order-accepted email was about (kind contract_accepted).
+alter table email_notifications add column if not exists contract_id uuid references contracts(id) on delete set null;
+
+alter table email_notifications enable row level security;
+revoke all on email_notifications from anon, authenticated;
+-- Explicit, because tables created in public after 2026-10-30 get no default
+-- grant (see the Explicit Data API grants section).
+grant select, insert, update on table public.email_notifications to service_role;
+
+-- The owner's address for a deliverable email, so the service role never needs
+-- direct SELECT on profiles (the same pattern as resolve_agent_api_key). The
+-- auth record is the current address; profiles.email, copied at sign-up, is
+-- the fallback. Service-role only.
+create or replace function public.organization_owner_email(org_id uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(u.email, p.email)
+  from organizations o
+  join profiles p on p.id = o.owner_id
+  left join auth.users u on u.id = p.user_id
+  where o.id = org_id
+$$;
+revoke all on function public.organization_owner_email(uuid) from public, anon, authenticated;
+grant execute on function public.organization_owner_email(uuid) to service_role;

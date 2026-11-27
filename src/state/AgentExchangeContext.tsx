@@ -61,6 +61,7 @@ import {
 import { isSupabaseConfigured } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 import { fetchWorkers, notifyWorkers, type WorkerInfo } from "../lib/worker";
+import { announceContractAccepted, announceDeliverableSubmitted } from "../lib/notifications";
 import { listingPriceCents, type PurchasableListing } from "../lib/listingPurchase";
 import { createPurchaseBrief } from "../lib/repositories/purchaseRepository";
 import type {
@@ -1145,6 +1146,9 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
         }
         if (status === "approved" || status === "rejected") {
           void notifyWorkers({ event: "deliverable_decision", contractId });
+        }
+        if (status === "submitted") {
+          void announceDeliverableSubmitted(deliverableId);
         }
       }
 
@@ -2250,6 +2254,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       if (isSupabaseConfigured) {
         await acceptHireRequestRecord(hireRequest.id);
         localContract = await materializeHireRequestContract(hireRequest.id);
+        if (localContract) void announceContractAccepted(localContract.id);
       }
 
       setState((current) => {
