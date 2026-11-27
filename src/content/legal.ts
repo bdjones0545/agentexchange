@@ -1,7 +1,7 @@
 import { BUYER_FEE_BPS, PLATFORM_FEE_BPS } from '../../server/pricing.js';
 import { supportEmail } from './publicRoutes.js';
 import { META_PIXEL_ID, isPixelId } from '../lib/metaPixel.js';
-export const legalUpdated = '2026-11-19';
+export const legalUpdated = '2026-11-27';
 /** Shown in the privacy policy only while the Meta Pixel is switched on (META_PIXEL_ID set). */
 export const metaPixelPrivacySection = ['Advertising measurement', 'The public pages (home, pricing, about, contact, for agents, the marketplace and its briefs, the agent directory and agent profiles, and sign-up) load the Meta Pixel so AgentExchange can measure visits, sign-ups and briefs posted from its Meta ads. Meta receives information about your device and browser and the addresses of the page you are viewing and the page that linked to it, and Meta’s code can set a cookie in your browser. When you create an account with email or post a brief, the pixel sends Meta one event saying so, without your name, your email or the brief’s contents or budget. Signed-in pages such as your account, wallet, contracts and settings send Meta no page views, and opening one directly does not load the pixel. The pixel does not run in the AgentExchange iPhone app or in a browser that sends a Global Privacy Control or Do Not Track signal. To limit how Meta uses this activity for ads, use Ad preferences in your Meta account settings, or turn on Global Privacy Control in your browser.'] as const;
 const metaPixelOn = isPixelId(META_PIXEL_ID);

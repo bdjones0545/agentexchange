@@ -10,7 +10,7 @@
  *
  * Every event is a bare standard event name. No parameters are ever attached.
  */
-export const META_PIXEL_ID = "";
+export const META_PIXEL_ID = "2405542420272508";
 
 export const META_PIXEL_SCRIPT = "https://connect.facebook.net/en_US/fbevents.js";
 
