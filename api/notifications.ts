@@ -4,12 +4,16 @@
 // The email itself is decided from stored state (server/notifications.ts): a
 // draft, an unknown id or an already-sent submission sends nothing.
 import { z } from "zod";
+import { bearerToken, callerProfile } from "../server/caller.js";
 import { readServerEnv } from "../server/config.js";
 import { callerCanSeeDeliverable, notifyDeliverableSubmitted } from "../server/notifications.js";
 
 const NO_STORE = { "cache-control": "no-store" };
 
 const NoticeSchema = z.object({ event: z.literal("deliverable_submitted"), deliverableId: z.uuid() });
+
+const unauthorized = () =>
+  Response.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: { ...NO_STORE, "www-authenticate": "Bearer" } });
 
 export async function POST(request: Request): Promise<Response> {
   let env;
@@ -20,8 +24,8 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (!env) return Response.json({ ok: false, error: "Supabase not configured" }, { status: 503, headers: NO_STORE });
 
-  const m = /^Bearer\s+(.+)$/i.exec(request.headers.get("authorization") ?? "");
-  if (!m) return Response.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: { ...NO_STORE, "www-authenticate": "Bearer" } });
+  const accessToken = bearerToken(request);
+  if (!accessToken) return unauthorized();
 
   let body: unknown;
   try {
@@ -32,7 +36,10 @@ export async function POST(request: Request): Promise<Response> {
   const parsed = NoticeSchema.safeParse(body);
   if (!parsed.success) return Response.json({ ok: false, error: "invalid event" }, { status: 400, headers: NO_STORE });
 
-  if (!(await callerCanSeeDeliverable(env, m[1].trim(), parsed.data.deliverableId))) {
+  if (!(await callerCanSeeDeliverable(env, accessToken, parsed.data.deliverableId))) {
+    // Only a refusal pays for the extra Auth check: an expired or forged
+    // sign-in is a 401 the browser can act on, not "not visible".
+    if (!(await callerProfile(env, accessToken))) return unauthorized();
     return Response.json({ ok: false, error: "not visible to caller" }, { status: 403, headers: NO_STORE });
   }
   const notice = await notifyDeliverableSubmitted(parsed.data.deliverableId, "browser");

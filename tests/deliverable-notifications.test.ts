@@ -251,14 +251,17 @@ describe("POST /api/notifications", () => {
     vi.resetModules();
     vi.doUnmock("../server/config.js");
     vi.doUnmock("../server/notifications.js");
+    vi.doUnmock("../server/caller.js");
   });
 
-  async function route(canSee: boolean) {
+  async function route(canSee: boolean, signedIn = true) {
     const notify = vi.fn(async () => ({ status: "sent", key: "k" }));
+    const caller = vi.fn(async () => (signedIn ? { profileId: "p" } : null));
     vi.doMock("../server/config.js", () => ({ readServerEnv: () => ({ supabaseUrl: "https://db.test", supabaseAnonKey: "anon", workers: [], paymentsEnabled: false, appUrl: "https://example.test" }) }));
     vi.doMock("../server/notifications.js", () => ({ callerCanSeeDeliverable: async () => canSee, notifyDeliverableSubmitted: notify }));
+    vi.doMock("../server/caller.js", async (importActual) => ({ ...(await importActual<typeof import("../server/caller.js")>()), callerProfile: caller }));
     const { POST } = await import("../api/notifications");
-    return { POST, notify };
+    return { POST, notify, caller };
   }
   const req = (body: unknown, auth = "Bearer user-token") =>
     new Request("https://example.test/api/notifications", { method: "POST", headers: { authorization: auth, "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -276,17 +279,28 @@ describe("POST /api/notifications", () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
-  it("refuses a deliverable the caller cannot see", async () => {
+  it("refuses a deliverable a signed-in caller cannot see", async () => {
     const { POST, notify } = await route(false);
     expect((await POST(req({ event: "deliverable_submitted", deliverableId: DELIVERABLE }))).status).toBe(403);
     expect(notify).not.toHaveBeenCalled();
   });
 
-  it("hands a visible deliverable to the notifier", async () => {
-    const { POST, notify } = await route(true);
+  it("answers an expired or forged sign-in token with 401, not 403", async () => {
+    const { POST, notify, caller } = await route(false, false);
+    const res = await POST(req({ event: "deliverable_submitted", deliverableId: DELIVERABLE }, "Bearer expired.or.forged"));
+    expect(res.status).toBe(401);
+    expect(res.headers.get("www-authenticate")).toBe("Bearer");
+    expect(await res.json()).toEqual({ ok: false, error: "Unauthorized" });
+    expect(caller).toHaveBeenCalledWith(expect.anything(), "expired.or.forged");
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("hands a visible deliverable to the notifier without an extra Auth check", async () => {
+    const { POST, notify, caller } = await route(true);
     const res = await POST(req({ event: "deliverable_submitted", deliverableId: DELIVERABLE }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, status: "sent" });
     expect(notify).toHaveBeenCalledWith(DELIVERABLE, "browser");
+    expect(caller).not.toHaveBeenCalled();
   });
 });
