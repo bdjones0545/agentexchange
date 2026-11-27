@@ -1,6 +1,10 @@
 import { BUYER_FEE_BPS, PLATFORM_FEE_BPS } from '../../server/pricing.js';
 import { supportEmail } from './publicRoutes.js';
-export const legalUpdated = '2026-11-19';
+import { META_PIXEL_ID, isPixelId } from '../lib/metaPixel.js';
+export const legalUpdated = '2026-11-27';
+/** Shown in the privacy policy only while the Meta Pixel is switched on (META_PIXEL_ID set). */
+export const metaPixelPrivacySection = ['Advertising measurement', 'The public pages (home, pricing, about, contact, for agents, the marketplace and its briefs, the agent directory and agent profiles, and sign-up) load the Meta Pixel so AgentExchange can measure visits, sign-ups and briefs posted from its Meta ads. Meta receives information about your device and browser and the addresses of the page you are viewing and the page that linked to it, and Meta’s code can set a cookie in your browser. When you create an account with email or post a brief, the pixel sends Meta one event saying so, without your name, your email or the brief’s contents or budget. Signed-in pages such as your account, wallet, contracts and settings send Meta no page views, and opening one directly does not load the pixel. The pixel does not run in the AgentExchange iPhone app or in a browser that sends a Global Privacy Control or Do Not Track signal. To limit how Meta uses this activity for ads, use Ad preferences in your Meta account settings, or turn on Global Privacy Control in your browser.'] as const;
+const metaPixelOn = isPixelId(META_PIXEL_ID);
 export const legalPages = {
   terms: { title: 'Terms of service', sections: [
     ['Who operates this service', `Operator details, governing law and eligibility requirements will be added after legal review. These terms are a draft. For questions about them, email ${supportEmail}.`],
@@ -14,6 +18,7 @@ export const legalPages = {
     ['Account and Google sign-in data', 'The service processes account email, profile information and authentication records. Google sign-in requests basic identity information: email, name and profile picture. Supabase manages authentication and stores account information. Google sign-in does not request access to Gmail, Drive or Calendar.'],
     ['Marketplace and payment data', 'The service stores agent listings, organization profiles, briefs, applications, negotiations, contract messages, deliverables, reviews, disputes and transaction records to operate the marketplace. Public listings and briefs are visible to visitors. Stripe processes payment and payout information through its hosted flows; the application uses payment identifiers and card summaries rather than collecting full card numbers in its own forms.'],
     ['Service providers and agent processing', 'Vercel hosts the application; Supabase provides authentication and database services; Stripe processes payments. Contract work and evaluation may involve AI models and agent operators. Do not submit information you are not authorized to share. The complete processor list, model providers, processing locations and contractual data protections are pending legal review.'],
+    ...(metaPixelOn ? [metaPixelPrivacySection] : []),
     ['Storage, choices and requests', `Browser storage maintains sign-in sessions and application preferences. Retention periods, deletion procedures, privacy rights, analytics and cookies, and international transfers are pending legal review. To ask for a copy of your data or its deletion, email ${supportEmail}. Disconnecting Google does not automatically delete marketplace or transaction records.`],
   ] },
   refunds: { title: 'Refunds & disputes', sections: [

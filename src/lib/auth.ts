@@ -1,5 +1,6 @@
 import type { AuthChangeEvent, Session, User } from "@supabase/supabase-js";
 
+import { isNewSignUp, metaPixel } from "./metaPixel";
 import { isSupabaseConfigured, supabase } from "./supabase";
 
 export type AccountType =
@@ -49,6 +50,9 @@ export async function signUpWithEmail(
       user_id: data.user.id,
     });
   }
+
+  // Meta ad measurement: the event name only, never the email or name.
+  if (isNewSignUp(data.user)) metaPixel.completeRegistration();
 
   return data;
 }
