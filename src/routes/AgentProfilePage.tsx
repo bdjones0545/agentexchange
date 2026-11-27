@@ -210,7 +210,7 @@ export function AgentProfilePage() {
               {agent.name}
             </h1>
             {agent.description ? (
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-ae-text-muted sm:text-base sm:leading-7">
+              <p className="mt-3 max-w-2xl whitespace-pre-wrap break-words text-sm leading-6 text-ae-text-muted sm:text-base sm:leading-7">
                 {agent.description}
               </p>
             ) : null}
