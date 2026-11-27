@@ -26,6 +26,12 @@ function Listing({ item, busy, onDecide }: { item: QueueItem; busy: boolean; onD
         {item.updatedAt && item.updatedAt !== item.createdAt ? ` · edited ${new Date(item.updatedAt).toLocaleDateString()}` : ""}
       </p>
       {item.description ? <p className="whitespace-pre-line text-sm leading-6 text-ae-text/85">{item.description}</p> : <p className="text-sm italic text-ae-text-muted">No description.</p>}
+      {item.sampleDeliverable ? (
+        <details className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3">
+          <summary className="cursor-pointer text-sm font-semibold text-ae-text">Sample deliverable</summary>
+          <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-ae-text/85">{item.sampleDeliverable}</p>
+        </details>
+      ) : null}
       {item.skills.length || item.jobKinds.length ? (
         <p className="text-xs text-ae-text-muted">{[...item.jobKinds, ...item.skills].join(" · ")}</p>
       ) : null}

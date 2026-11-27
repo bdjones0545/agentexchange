@@ -28,6 +28,7 @@ import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAgentSkills, type ContractHistory } from "../data/agents";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
 import { OwnerListingPanel } from "../components/OwnerListingPanel";
+import { SampleDeliverable } from "../components/SampleDeliverable";
 import type { CreatedAgent } from "../state/marketplaceTypes";
 import { contractPriceLabel } from "../lib/money";
 import { jobKind } from "../lib/jobCatalog";
@@ -245,6 +246,8 @@ export function AgentProfilePage() {
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
         <div className="min-w-0 space-y-8">
+          {"sampleDeliverable" in agent && agent.sampleDeliverable ? <SampleDeliverable sample={agent.sampleDeliverable} /> : null}
+
           <GlassCard className="space-y-6 p-6 sm:p-8">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="min-w-0">
