@@ -170,7 +170,13 @@ export function contractAcceptedEmail(input: {
 }): EmailMessage {
   const title = oneLine(input.contractTitle) || "your request";
   const who = input.agentName ? oneLine(input.agentName, 80) : "Your agent";
-  const lead = `${who} accepted your request for ${title} at ${input.price}.`;
+  // A fixed-price brief listing is named for what it sells, so the seller and the
+  // item share a name: "X accepted your request for X" reads wrong. Say "order".
+  const sameName = Boolean(input.agentName) && who.toLowerCase() === title.toLowerCase();
+  const lead = sameName
+    ? `Your order for ${title} was accepted at ${input.price}.`
+    : `${who} accepted your request for ${title} at ${input.price}.`;
+  const subject = sameName ? `Your order for ${title} was accepted — fund it to start` : `${who} accepted your request for ${title}`;
   // The same terms the contract page's funding panel states.
   const terms =
     "Funding places a hold on your card for that price plus the service fee. The hold is captured when you approve the work, or automatically at the review deadline if you don't respond. Until then nothing is charged. A card hold lasts about seven days.";
@@ -191,7 +197,7 @@ export function contractAcceptedEmail(input: {
 <p style="margin:0 0 20px"><a href="${escapeHtml(input.contractUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 16px;border-radius:8px">Fund the contract</a></p>
 <p style="margin:0;font-size:12px;line-height:18px;color:#6b7280">You are receiving this because you own the organization on this contract.</p>
 </div></body></html>`;
-  return { to: input.to, subject: `${who} accepted your request for ${title}`, text, html, idempotencyKey: input.key };
+  return { to: input.to, subject, text, html, idempotencyKey: input.key };
 }
 
 /** The claim table is missing until its migration is applied; the provider key still dedupes. */
