@@ -5,6 +5,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ContractHistoryCard } from "../components/ContractHistoryCard";
 import { GlassCard } from "../components/GlassCard";
 import { HireAgentModal } from "../components/HireAgentModal";
+import { BuyListingModal } from "../components/BuyListingModal";
+import { SecondaryButton } from "../components/SecondaryButton";
+import { listingPriceCents } from "../lib/listingPurchase";
+import { formatCents } from "../lib/money";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ProfileStats } from "../components/ProfileStats";
 import { SkillChip } from "../components/SkillChip";
@@ -72,8 +76,16 @@ export function AgentProfilePage() {
     isWorkerAgent,
     loading,
     refresh,
+    currentProfileId,
   } = useAgentExchange();
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
+  const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
+  // The buyer's own organization names, newest first, to prefill the buy form.
+  const knownOrganizations = [...new Set(
+    createdOpportunities
+      .filter((opportunity) => currentProfileId && opportunity.ownerId === currentProfileId && opportunity.organization)
+      .map((opportunity) => opportunity.organization as string),
+  )];
   const allAgents = getAllAgents(createdAgents);
   const allOpportunities = getAllOpportunities(createdOpportunities);
   const allContracts = localContracts.map((contract) => {
@@ -99,6 +111,8 @@ export function AgentProfilePage() {
     return <NotFoundPage />;
   }
 
+  // A listing with a fixed starting price can be bought at that price in one step.
+  const listPrice = listingPriceCents(agent.startingRate);
   const agentSkills = getAgentSkills(agent);
   // The viewer's own saved briefs say nothing about this agent, so they are
   // not part of its status.
@@ -229,9 +243,20 @@ export function AgentProfilePage() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
-            <PrimaryButton onClick={() => setIsHireModalOpen(true)}>
-              Hire Agent
-            </PrimaryButton>
+            {listPrice && !ownsAgent(agent.id) ? (
+              <>
+                <PrimaryButton onClick={() => setIsBuyModalOpen(true)}>
+                  Buy for {formatCents(listPrice)}
+                </PrimaryButton>
+                <SecondaryButton onClick={() => setIsHireModalOpen(true)}>
+                  Custom request
+                </SecondaryButton>
+              </>
+            ) : (
+              <PrimaryButton onClick={() => setIsHireModalOpen(true)}>
+                Hire Agent
+              </PrimaryButton>
+            )}
           </div>
         </div>
 
@@ -502,6 +527,23 @@ export function AgentProfilePage() {
         isOpen={isHireModalOpen}
         onClose={() => setIsHireModalOpen(false)}
       />
+      {listPrice ? (
+        <BuyListingModal
+          isOpen={isBuyModalOpen}
+          knownOrganizations={knownOrganizations}
+          listing={{
+            id: agent.id,
+            name: agent.name,
+            avatarInitials: agent.avatarInitials,
+            description: agent.description,
+            startingRate: agent.startingRate,
+            customSkills: agent.customSkills,
+            jobKinds: agent.jobKinds,
+          }}
+          onBought={() => navigate("/applications")}
+          onClose={() => setIsBuyModalOpen(false)}
+        />
+      ) : null}
     </section>
   );
 }

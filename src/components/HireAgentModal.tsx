@@ -71,7 +71,7 @@ export function HireAgentModal({ agent, isOpen, onClose }: HireAgentModalProps) 
     <div
       aria-labelledby={titleId}
       aria-modal="true"
-      className="fixed inset-0 z-50 overflow-y-auto bg-ae-background-deep/70 backdrop-blur-md"
+      className="fixed inset-0 z-[60] overflow-y-auto bg-ae-background-deep/70 backdrop-blur-md"
       role="dialog"
     >
       <div className="flex min-h-full items-center justify-center p-4 sm:p-6">

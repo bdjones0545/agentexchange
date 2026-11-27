@@ -61,6 +61,8 @@ import {
 import { isSupabaseConfigured } from "../lib/supabase";
 import { useAuth } from "./AuthContext";
 import { fetchWorkers, notifyWorkers, type WorkerInfo } from "../lib/worker";
+import { listingPriceCents, type PurchasableListing } from "../lib/listingPurchase";
+import { createPurchaseBrief } from "../lib/repositories/purchaseRepository";
 import type {
   AgentActivityEvent,
   AgentExchangePersistedState,
@@ -97,6 +99,12 @@ type SubmitNegotiationInput = {
   rate: string;
   timeline: string;
   milestoneNotes: string;
+};
+
+export type BuyListingInput = {
+  listing: PurchasableListing;
+  organizationName: string;
+  note: string;
 };
 
 type SubmitHireRequestInput = {
@@ -160,6 +168,12 @@ type AgentExchangeContextValue = PersistedState & {
   ) => void;
   submitApplication: (input: SubmitApplicationInput) => void;
   submitHireRequest: (input: SubmitHireRequestInput) => void;
+  /**
+   * Buy a fixed-price listing in one step: writes the buyer's purchase brief
+   * (closed, so it never shows on the marketplace) and sends the hire request
+   * at the listing's price. Resolves true when the request was sent.
+   */
+  buyListing: (input: BuyListingInput) => Promise<boolean>;
   submitNegotiation: (input: SubmitNegotiationInput) => void;
   toggleMilestoneComplete: (contractId: string, milestoneId: string) => void;
   toggleSavedOpportunity: (opportunityId: string) => void;
@@ -1752,6 +1766,102 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
     ],
   );
 
+  const buyListing = useCallback(
+    async (input: BuyListingInput): Promise<boolean> => {
+      if (!requireAuthForPersistentWrite("buy this listing")) {
+        return false;
+      }
+      const { listing } = input;
+      const priceCents = listingPriceCents(listing.startingRate);
+      const organizationName = input.organizationName.trim();
+      if (!priceCents) {
+        showToast("This listing has no fixed price. Send a custom request instead.");
+        return false;
+      }
+      if (organizationName.length < 2) {
+        showToast("Add your organization or business name.");
+        return false;
+      }
+      try {
+        let opportunityId: string | undefined;
+        let opportunityTitle = `Purchase: ${listing.name}`;
+        if (isSupabaseConfigured) {
+          if (!requireRealRecord(listing.id, "That listing")) {
+            return false;
+          }
+          // Reuse one of the buyer's organizations with this name, if any.
+          const existing = state.createdOpportunities.find(
+            (opportunity) =>
+              opportunity.ownerId === currentProfileId &&
+              opportunity.organizationId &&
+              opportunity.organization?.trim().toLowerCase() === organizationName.toLowerCase(),
+          );
+          const brief = await createPurchaseBrief({
+            organizationId: existing?.organizationId,
+            organizationName,
+            listing,
+            priceCents,
+            note: input.note,
+          });
+          opportunityId = brief.id;
+          opportunityTitle = brief.title;
+          setState((current) => ({
+            ...current,
+            createdOpportunities: [brief, ...current.createdOpportunities],
+          }));
+        }
+        const draftHireRequest = {
+          id: createId("hire"),
+          createdAt: new Date().toISOString(),
+          status: "pending" as const,
+          agentId: listing.id,
+          agentName: listing.name,
+          opportunityId,
+          opportunityTitle,
+          quickJobTitle: listing.name,
+          amountCents: priceCents,
+          currency: "USD",
+        };
+        const hireRequest = isSupabaseConfigured
+          ? await createHireRequestRecord(draftHireRequest)
+          : draftHireRequest;
+        if (isSupabaseConfigured) {
+          void notifyWorkers({ event: "hire_request", hireRequestId: hireRequest.id });
+        }
+        const activity = recordAgentActivity(
+          createAgentActivity(
+            listing.id,
+            listing.name,
+            "hire_request_submitted",
+            `${listing.name} received a purchase request at its listed price.`,
+          ),
+        );
+        setState((current) => ({
+          ...current,
+          agentActivities: [activity, ...current.agentActivities],
+          hireRequests: [...current.hireRequests, hireRequest],
+        }));
+        showToast("Purchase request sent. You fund it once the seller accepts.");
+        settle();
+        return true;
+      } catch (thrown) {
+        const message = thrown instanceof Error ? thrown.message : "The purchase could not be sent.";
+        setError(message);
+        showToast(message);
+        return false;
+      }
+    },
+    [
+      currentProfileId,
+      recordAgentActivity,
+      requireAuthForPersistentWrite,
+      requireRealRecord,
+      settle,
+      showToast,
+      state.createdOpportunities,
+    ],
+  );
+
   const acceptApplication = useCallback(
     async (applicationId: string, amountCents?: number) => {
       if (!requireAuthForPersistentWrite("accept applications")) {
@@ -2358,6 +2468,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       setDeliverableStatus: safe(setDeliverableStatus),
       submitApplication: safe(submitApplication),
       submitHireRequest: safe(submitHireRequest),
+      buyListing,
       submitNegotiation: safe(submitNegotiation),
       toggleMilestoneComplete: safe(toggleMilestoneComplete),
       toggleSavedOpportunity: safe(toggleSavedOpportunity),
@@ -2399,6 +2510,7 @@ export function AgentExchangeProvider({ children, initialState }: PropsWithChild
       state,
       submitApplication,
       submitHireRequest,
+      buyListing,
       submitNegotiation,
       toast,
       toggleMilestoneComplete,
