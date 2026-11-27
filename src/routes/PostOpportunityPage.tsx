@@ -14,6 +14,8 @@ import {
   type ServiceKind,
   type WorkType,
 } from "../lib/managedService";
+import { clearBriefTitle, readBriefTitle } from "../lib/briefDraft";
+import { metaPixel } from "../lib/metaPixel";
 import { useAuth } from "../state/AuthContext";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 
@@ -93,9 +95,9 @@ export function PostOpportunityPage() {
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [limitInputs, setLimitInputs] = useState<Partial<Record<LimitKey, string>>>({});
   const [weeks, setWeeks] = useState("4");
-  // The home page brief box hands its text over as ?title=.
+  // The home page brief box hands its text over in session storage, or as ?title=.
   const [searchParams] = useSearchParams();
-  const [title, setTitle] = useState(() => (searchParams.get("title") ?? "").slice(0, 160));
+  const [title, setTitle] = useState(() => (searchParams.get("title") ?? readBriefTitle()).slice(0, 160));
 
   const isService = workType === "managed_service";
   const selectedKindId = isService ? serviceKind : deliverableKind;
@@ -157,7 +159,7 @@ export function PostOpportunityPage() {
     setSubmitting(true);
 
     try {
-      await createOpportunity({
+      const created = await createOpportunity({
         budget: budget.trim(),
         category,
         description: description.trim(),
@@ -169,7 +171,13 @@ export function PostOpportunityPage() {
         service,
         jobKind: selectedKindId,
       });
+      // A signed-out write returns this placeholder instead of saving anything.
+      const posted = created.id !== "auth-required-opportunity";
+      if (posted) clearBriefTitle();
       navigate("/marketplace");
+      // Only briefs saved to the shared marketplace count, not local demo ones.
+      // Sent after navigating, so the address Meta receives is /marketplace.
+      if (posted && isSupabaseEnabled) metaPixel.lead();
     } catch (caughtError) {
       setError(
         caughtError instanceof Error

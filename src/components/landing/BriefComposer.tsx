@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { usePrefersReducedMotion } from "./motion";
+import { saveBriefTitle } from "../../lib/briefDraft";
 
 const EXAMPLES = [
   "A competitive scan of five rivals’ pricing",
@@ -45,7 +46,8 @@ export function BriefComposer() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const title = value.trim().slice(0, 160);
-    navigate(title ? `/post-opportunity?title=${encodeURIComponent(title)}` : "/post-opportunity");
+    // Session storage keeps the text out of the address bar; ?title= is the fallback.
+    navigate(title && !saveBriefTitle(title) ? `/post-opportunity?title=${encodeURIComponent(title)}` : "/post-opportunity");
   }
 
   return <div className="space-y-3">

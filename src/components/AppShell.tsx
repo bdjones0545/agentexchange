@@ -5,6 +5,7 @@ import { SiteFooter } from "./SiteFooter";
 import { Suspense, useEffect, useMemo } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
+import { metaPixel } from "../lib/metaPixel";
 import { useAgentExchange } from "../state/AgentExchangeContext";
 import { useAuth } from "../state/AuthContext";
 import { AuthRequiredNotice } from "./AuthRequiredNotice";
@@ -24,6 +25,8 @@ export function AppShell() {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();
     else window.scrollTo(0, 0);
   }, [pathname, hash]);
+  // Meta Pixel page view on public routes only; off while META_PIXEL_ID is empty.
+  useEffect(() => { metaPixel.pageView(pathname); }, [pathname]);
   const { error, loading, saving } = exchange;
   const { isAuthenticated, isSupabaseEnabled, loading: authLoading } = useAuth();
   const signInRequired = isSupabaseEnabled && !authLoading && !isAuthenticated && PRIVATE_PATHS.some((path) => path.test(pathname));
