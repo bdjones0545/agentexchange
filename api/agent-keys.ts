@@ -5,7 +5,7 @@
 //   PATCH  /api/agent-keys {id, canSpend?, organizationIds?}
 //                                     owner grants or removes payment authority
 // Everything runs under the caller's own session; RLS owns the rows.
-import { createClient } from "@supabase/supabase-js";
+// A missing, expired or forged sign-in token is 401 on every method.
 import { KeyGrantError, parseGrantRequest, updateKeyAuthority } from "../server/agentAuthority.js";
 import { mintKey } from "../server/agentKeys.js";
 import { bearerToken, callerProfile } from "../server/caller.js";
@@ -17,21 +17,22 @@ function unauthorized() {
   return Response.json({ ok: false, error: "Unauthorized" }, { status: 401, headers: { ...NO_STORE, "www-authenticate": "Bearer" } });
 }
 
-function userClient(request: Request) {
+/**
+ * The signed-in caller, with a client on their own session. The token is
+ * checked with Supabase Auth first: handed straight to the database, a bad
+ * token used to surface as a 400 "JWT cryptographic operation failed".
+ */
+async function signedIn(request: Request) {
   const env = readServerEnv();
-  if (!env) return null;
   const token = bearerToken(request);
-  if (!token) return null;
-  return createClient(env.supabaseUrl, env.supabaseAnonKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
+  if (!env || !token) return null;
+  return callerProfile(env, token);
 }
 
 export async function GET(request: Request): Promise<Response> {
-  const client = userClient(request);
-  if (!client) return unauthorized();
-  const { data, error } = await client
+  const caller = await signedIn(request);
+  if (!caller) return unauthorized();
+  const { data, error } = await caller.client
     .from("agent_api_keys")
     .select("id,name,key_prefix,created_at,last_used_at,revoked_at,can_spend,allowed_actions,organization_ids,paused_at")
     .order("created_at", { ascending: false });
@@ -40,8 +41,8 @@ export async function GET(request: Request): Promise<Response> {
 }
 
 export async function POST(request: Request): Promise<Response> {
-  const client = userClient(request);
-  if (!client) return unauthorized();
+  const caller = await signedIn(request);
+  if (!caller) return unauthorized();
   let body: { name?: unknown; canSpend?: unknown };
   try {
     body = (await request.json()) as { name?: unknown; canSpend?: unknown };
@@ -53,7 +54,7 @@ export async function POST(request: Request): Promise<Response> {
   const key = mintKey();
   // Minted without payments; a payment-enabled key is granted below through the
   // same path as the Account page switch, so it covers the owner's organizations.
-  const { data, error } = await client
+  const { data, error } = await caller.client
     .from("agent_api_keys")
     .insert({ name, can_spend: false, key_hash: key.hash, key_prefix: key.prefix })
     .select("id,name,key_prefix,created_at")
@@ -61,10 +62,7 @@ export async function POST(request: Request): Promise<Response> {
   if (error) return Response.json({ ok: false, error: error.message }, { status: 400, headers: NO_STORE });
   let canSpend = false;
   if (body.canSpend === true) {
-    const env = readServerEnv();
-    const caller = env ? await callerProfile(env, bearerToken(request)!) : null;
     try {
-      if (!caller) throw new KeyGrantError(401, "Unauthorized");
       canSpend = (await updateKeyAuthority(caller.client, caller.profileId, { id: data.id as string, canSpend: true })).can_spend === true;
     } catch {
       canSpend = false;
@@ -74,8 +72,8 @@ export async function POST(request: Request): Promise<Response> {
 }
 
 export async function DELETE(request: Request): Promise<Response> {
-  const client = userClient(request);
-  if (!client) return unauthorized();
+  const caller = await signedIn(request);
+  if (!caller) return unauthorized();
   let body: { id?: unknown };
   try {
     body = (await request.json()) as { id?: unknown };
@@ -83,7 +81,7 @@ export async function DELETE(request: Request): Promise<Response> {
     return Response.json({ ok: false, error: "invalid JSON" }, { status: 400, headers: NO_STORE });
   }
   if (typeof body.id !== "string") return Response.json({ ok: false, error: "id required" }, { status: 400, headers: NO_STORE });
-  const { data, error } = await client
+  const { data, error } = await caller.client
     .from("agent_api_keys")
     .update({ revoked_at: new Date().toISOString() })
     .eq("id", body.id)
