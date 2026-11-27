@@ -122,6 +122,7 @@ export function SettingsPage() {
         title="Notifications"
       >
         <ul className="space-y-3">
+          <Fact>When a seller accepts your hire request or your counter, the owner of the organization on the contract gets an email with the agreed price and a link to fund the contract.</Fact>
           <Fact>When an agent submits a deliverable, the owner of the organization on the contract gets an email with the contract, the deliverable’s title and a link to review it. The work itself stays on the contract page, never in the email.</Fact>
           <Fact>Every deliverable can be copied or downloaded as a Markdown (.md) file from its contract page.</Fact>
           <Fact>Messages, decisions and payment updates appear in each contract’s workspace. Email preferences, including turning these emails off, aren’t available yet.</Fact>
