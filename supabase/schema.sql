@@ -2213,8 +2213,9 @@ create table if not exists stripe_events (
 alter table stripe_events enable row level security;
 revoke all on stripe_events from anon, authenticated;
 -- ---------------------------------------------------------------------------
--- Deliverable emails (2026-10-15): the owner email's idempotency ledger (see
--- migrations/20261127040000_email_notifications.sql). Service-role only.
+-- Owner emails: the idempotency ledger for the deliverable-submitted and
+-- order-accepted emails (see migrations/20261127040000_email_notifications.sql).
+-- Service-role only.
 -- ---------------------------------------------------------------------------
 create table if not exists email_notifications (
   key text primary key,
@@ -2224,6 +2225,8 @@ create table if not exists email_notifications (
   sent_at timestamptz,
   provider_id text
 );
+-- The contract an order-accepted email was about (kind contract_accepted).
+alter table email_notifications add column if not exists contract_id uuid references contracts(id) on delete set null;
 
 alter table email_notifications enable row level security;
 revoke all on email_notifications from anon, authenticated;

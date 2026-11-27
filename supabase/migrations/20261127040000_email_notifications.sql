@@ -1,11 +1,14 @@
 -- ---------------------------------------------------------------------------
--- Deliverable emails (2026-10-15): the owner email's idempotency ledger.
+-- Owner emails: the idempotency ledger and the recipient lookup.
 --
--- server/notifications.ts claims a row here before it emails the organization's
--- owner about a submitted deliverable, keyed by the deliverable and how many
--- decisions it already carries, so a retried request does not send twice while
--- a revision resubmitted after a rejection does. Service-role only: no
--- policies, grants revoked.
+-- server/notifications.ts claims a row here before it emails an organization's
+-- owner, then records the send:
+--   * deliverable_submitted, keyed by the deliverable and how many decisions it
+--     already carries, so a retried request does not send twice while a
+--     revision resubmitted after a rejection does;
+--   * contract_accepted, keyed by the contract: one "the seller accepted, please
+--     fund" email per contract.
+-- Service-role only: no policies, grants revoked.
 --
 -- Also adds organization_owner_email(), the service-only lookup of the
 -- recipient, so the server needs no direct SELECT on profiles.
@@ -25,6 +28,8 @@ create table if not exists email_notifications (
   sent_at timestamptz,
   provider_id text
 );
+-- The contract an order-accepted email was about (kind contract_accepted).
+alter table email_notifications add column if not exists contract_id uuid references contracts(id) on delete set null;
 
 alter table email_notifications enable row level security;
 revoke all on email_notifications from anon, authenticated;

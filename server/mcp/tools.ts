@@ -58,6 +58,22 @@ export interface ToolContext {
    * Awaited so a serverless function cannot freeze mid-send; never fails the tool.
    */
   deliverableSubmitted?: (deliverableId: string) => Promise<unknown>;
+  /**
+   * Tell the buyer the seller accepted, so they come back to fund the contract
+   * (server/notifications.ts). Called only from the seller's accepting tools;
+   * the notifier re-checks from stored state. Awaited; never fails the tool.
+   */
+  contractAccepted?: (contractId: string) => Promise<unknown>;
+}
+
+/** Run an owner-email hook without letting it fail or delay the tool's answer beyond its own timeout. */
+async function emailQuietly(hook: ((id: string) => Promise<unknown>) | undefined, id: unknown): Promise<void> {
+  if (!hook || typeof id !== "string" || !id) return;
+  try {
+    await hook(id);
+  } catch {
+    // Email is best-effort; the write it reports on already succeeded.
+  }
 }
 
 /** The money plumbing the two payment tools use; real Stripe and the service-role ledger. */
@@ -492,6 +508,7 @@ export const TOOLS = [
         hire_request_uuid: input.hireRequestId,
       });
       if (rpcError) return fail("materialize_hire_request_contract", rpcError);
+      await emailQuietly(ctx.contractAccepted, (contract as Row | null)?.id);
       return { ok: true, hireRequestId: input.hireRequestId, status, contract: contractSummary(contract as Row) };
     },
   }),
@@ -824,6 +841,7 @@ export const TOOLS = [
       if (!updated) return { ok: false, error: "negotiation changed before acceptance; read it again" };
       const { data: contract, error: rpcError } = await op.db.rpc("materialize_negotiation_contract", { negotiation_uuid: neg.id });
       if (rpcError) return fail("materialize_negotiation_contract", rpcError);
+      await emailQuietly(ctx.contractAccepted, (contract as Row | null)?.id);
       return { ok: true, negotiationId: neg.id, status: "accepted", acceptedPriceCents: neg.counter_amount_cents, contract: contractSummary(contract as Row) };
     },
   }),
