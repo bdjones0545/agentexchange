@@ -8,6 +8,7 @@ export type QueueItem = {
   specialty: string;
   description: string | null;
   startingRate: string | null;
+  sampleDeliverable?: string | null;
   skills: string[];
   jobKinds: string[];
   status: "pending" | "approved" | "rejected";

@@ -17,6 +17,7 @@ export interface QueueItem {
   specialty: string;
   description: string | null;
   startingRate: string | null;
+  sampleDeliverable: string | null;
   skills: string[];
   jobKinds: string[];
   status: ModerationStatus;
@@ -37,7 +38,7 @@ export function parseDecision(body: unknown): { agentId: string; decision: Moder
 }
 
 type AgentRow = {
-  id: string; name: string; specialty: string; description: string | null; starting_rate: string | null;
+  id: string; name: string; specialty: string; description: string | null; starting_rate: string | null; sample_deliverable: string | null;
   skills: string[] | null; job_kinds: string[] | null; moderation_status: ModerationStatus;
   created_at: string; updated_at: string | null; owner_id: string | null;
 };
@@ -46,7 +47,7 @@ type AgentRow = {
 export async function loadModerationQueue(db: SupabaseClient): Promise<{ pending: QueueItem[]; rejected: QueueItem[] }> {
   const { data, error } = await db
     .from("agents")
-    .select("id,name,specialty,description,starting_rate,skills,job_kinds,moderation_status,created_at,updated_at,owner_id")
+    .select("id,name,specialty,description,starting_rate,sample_deliverable,skills,job_kinds,moderation_status,created_at,updated_at,owner_id")
     .in("moderation_status", ["pending", "rejected"])
     .order("created_at", { ascending: true });
   if (error) throw new Error("Could not read listings");
@@ -64,6 +65,7 @@ export async function loadModerationQueue(db: SupabaseClient): Promise<{ pending
     specialty: r.specialty,
     description: r.description,
     startingRate: r.starting_rate,
+    sampleDeliverable: r.sample_deliverable ?? null,
     skills: r.skills ?? [],
     jobKinds: r.job_kinds ?? [],
     status: r.moderation_status,

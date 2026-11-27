@@ -23,6 +23,7 @@ export function OwnerListingPanel({ agent, onChanged }: { agent: CreatedAgent; o
   const [form, setForm] = useState({
     name: agent.name, specialty: agent.specialty, description: agent.description, skills: (agent.customSkills ?? []).join(", "),
     startingRate: agent.startingRate, toolAccess: (agent.toolAccess ?? []).join(", "), availability: agent.availability ?? "Available",
+    sampleDeliverable: agent.sampleDeliverable ?? "",
   });
   const set = (key: keyof typeof form) => (value: string) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -34,6 +35,7 @@ export function OwnerListingPanel({ agent, onChanged }: { agent: CreatedAgent; o
       const review = await updateOwnListing(agent.id, {
         name: form.name.trim(), specialty: form.specialty.trim(), description: form.description.trim(), skills: list(form.skills),
         startingRate: form.startingRate.trim(), toolAccess: list(form.toolAccess), availability: form.availability,
+        ...(form.sampleDeliverable.trim() === (agent.sampleDeliverable ?? "").trim() ? {} : { sampleDeliverable: form.sampleDeliverable }),
       });
       setEditing(false);
       setNote({ tone: "ok", text: review === "pending" ? "Saved. The listing went back for review and is hidden until approved." : "Saved." });
@@ -80,6 +82,7 @@ export function OwnerListingPanel({ agent, onChanged }: { agent: CreatedAgent; o
           <select aria-label="Availability" className={field} value={form.availability} onChange={(e) => set("availability")(e.target.value)}>
             <option>Available</option><option>Limited</option><option>Unavailable</option>
           </select>
+          <textarea aria-label="Sample deliverable" className={`${field} min-h-40`} maxLength={8000} value={form.sampleDeliverable} onChange={(e) => set("sampleDeliverable")(e.target.value)} placeholder="Sample deliverable: a real, scaled-down example of the work, in plain text (optional)" />
           <p className="text-xs leading-5 text-ae-text-muted">Changing what buyers read sends the listing back for review; it is hidden until approved.</p>
           <div className="flex gap-3">
             <PrimaryButton className="px-4 py-2" disabled={busy || form.name.trim().length < 2 || form.specialty.trim().length < 2} type="submit">Save</PrimaryButton>

@@ -5,6 +5,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ContractHistoryCard } from "../components/ContractHistoryCard";
 import { GlassCard } from "../components/GlassCard";
 import { HireAgentModal } from "../components/HireAgentModal";
+import { BuyListingModal } from "../components/BuyListingModal";
+import { SecondaryButton } from "../components/SecondaryButton";
+import { listingPriceCents } from "../lib/listingPurchase";
+import { formatCents } from "../lib/money";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ProfileStats } from "../components/ProfileStats";
 import { SkillChip } from "../components/SkillChip";
@@ -28,6 +32,7 @@ import { applyWorkspaceToContract } from "../data/contractWorkspace";
 import { getAgentSkills, type ContractHistory } from "../data/agents";
 import { getAllAgents, getAllOpportunities } from "../data/localSelectors";
 import { OwnerListingPanel } from "../components/OwnerListingPanel";
+import { SampleDeliverable } from "../components/SampleDeliverable";
 import type { CreatedAgent } from "../state/marketplaceTypes";
 import { contractPriceLabel } from "../lib/money";
 import { jobKind } from "../lib/jobCatalog";
@@ -71,8 +76,16 @@ export function AgentProfilePage() {
     isWorkerAgent,
     loading,
     refresh,
+    currentProfileId,
   } = useAgentExchange();
   const [isHireModalOpen, setIsHireModalOpen] = useState(false);
+  const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
+  // The buyer's own organization names, newest first, to prefill the buy form.
+  const knownOrganizations = [...new Set(
+    createdOpportunities
+      .filter((opportunity) => currentProfileId && opportunity.ownerId === currentProfileId && opportunity.organization)
+      .map((opportunity) => opportunity.organization as string),
+  )];
   const allAgents = getAllAgents(createdAgents);
   const allOpportunities = getAllOpportunities(createdOpportunities);
   const allContracts = localContracts.map((contract) => {
@@ -98,6 +111,8 @@ export function AgentProfilePage() {
     return <NotFoundPage />;
   }
 
+  // A listing with a fixed starting price can be bought at that price in one step.
+  const listPrice = listingPriceCents(agent.startingRate);
   const agentSkills = getAgentSkills(agent);
   // The viewer's own saved briefs say nothing about this agent, so they are
   // not part of its status.
@@ -210,7 +225,7 @@ export function AgentProfilePage() {
               {agent.name}
             </h1>
             {agent.description ? (
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-ae-text-muted sm:text-base sm:leading-7">
+              <p className="mt-3 max-w-2xl whitespace-pre-wrap break-words text-sm leading-6 text-ae-text-muted sm:text-base sm:leading-7">
                 {agent.description}
               </p>
             ) : null}
@@ -228,9 +243,20 @@ export function AgentProfilePage() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
-            <PrimaryButton onClick={() => setIsHireModalOpen(true)}>
-              Hire Agent
-            </PrimaryButton>
+            {listPrice && !ownsAgent(agent.id) ? (
+              <>
+                <PrimaryButton onClick={() => setIsBuyModalOpen(true)}>
+                  Buy for {formatCents(listPrice)}
+                </PrimaryButton>
+                <SecondaryButton onClick={() => setIsHireModalOpen(true)}>
+                  Custom request
+                </SecondaryButton>
+              </>
+            ) : (
+              <PrimaryButton onClick={() => setIsHireModalOpen(true)}>
+                Hire Agent
+              </PrimaryButton>
+            )}
           </div>
         </div>
 
@@ -245,6 +271,8 @@ export function AgentProfilePage() {
 
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
         <div className="min-w-0 space-y-8">
+          {"sampleDeliverable" in agent && agent.sampleDeliverable ? <SampleDeliverable sample={agent.sampleDeliverable} /> : null}
+
           <GlassCard className="space-y-6 p-6 sm:p-8">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div className="min-w-0">
@@ -499,6 +527,23 @@ export function AgentProfilePage() {
         isOpen={isHireModalOpen}
         onClose={() => setIsHireModalOpen(false)}
       />
+      {listPrice ? (
+        <BuyListingModal
+          isOpen={isBuyModalOpen}
+          knownOrganizations={knownOrganizations}
+          listing={{
+            id: agent.id,
+            name: agent.name,
+            avatarInitials: agent.avatarInitials,
+            description: agent.description,
+            startingRate: agent.startingRate,
+            customSkills: agent.customSkills,
+            jobKinds: agent.jobKinds,
+          }}
+          onBought={() => navigate("/applications")}
+          onClose={() => setIsBuyModalOpen(false)}
+        />
+      ) : null}
     </section>
   );
 }

@@ -389,6 +389,7 @@ export const TOOLS = [
       availability: z.enum(["Available", "Limited", "Unavailable"]).default("Available"),
       toolAccess: z.array(z.string().min(1).max(60)).max(20).default([]),
       jobKinds: z.array(z.string().regex(JOB_KIND_PATTERN)).max(24).default([]).describe("Job kinds this agent takes (ids from list_job_kinds)"),
+      sampleDeliverable: z.string().max(8000).optional().describe("A real, scaled-down example of this agent's work, in plain text (no markdown is rendered). Shown on the listing page after review. Never invent results or clients; an empty string removes it"),
     }),
     readOnly: false,
     run: async (input, ctx) => {
@@ -410,6 +411,7 @@ export const TOOLS = [
           availability: input.availability,
           tool_access: input.toolAccess,
           job_kinds: jobKinds,
+          ...(input.sampleDeliverable?.trim() ? { sample_deliverable: input.sampleDeliverable.trim() } : {}),
         })
         .select("id,name,specialty,skills,availability,verification_status,trust_score,job_kinds,moderation_status")
         .single();
@@ -950,7 +952,7 @@ export const TOOLS = [
   tool({
     name: "update_agent",
     description:
-      "Edit one of your agent listings: pass only the fields to change. Changing what buyers read (name, specialty, description, skills, starting rate, tools, availability) sends the listing back for the platform's review, and it is hidden from buyers until approved; the result says so. Job kinds are set with set_agent_job_kinds and never need review.",
+      "Edit one of your agent listings: pass only the fields to change. Changing what buyers read (name, specialty, description, skills, starting rate, tools, availability, sample deliverable) sends the listing back for the platform's review, and it is hidden from buyers until approved; the result says so. Job kinds are set with set_agent_job_kinds and never need review.",
     schema: z.object({
       agentId: uuid,
       name: z.string().min(2).max(80).optional(),
@@ -960,6 +962,7 @@ export const TOOLS = [
       startingRate: z.string().max(60).optional(),
       availability: z.enum(["Available", "Limited", "Unavailable"]).optional(),
       toolAccess: z.array(z.string().min(1).max(60)).max(20).optional(),
+      sampleDeliverable: z.string().max(8000).optional().describe("A real, scaled-down example of this agent's work, in plain text (no markdown is rendered). Shown on the listing page after review. Never invent results or clients; an empty string removes it"),
     }),
     readOnly: false,
     run: async (input, ctx) => {
@@ -973,6 +976,7 @@ export const TOOLS = [
       if (input.startingRate !== undefined) patch.starting_rate = input.startingRate;
       if (input.availability !== undefined) patch.availability = input.availability;
       if (input.toolAccess !== undefined) patch.tool_access = input.toolAccess;
+      if (input.sampleDeliverable !== undefined) patch.sample_deliverable = input.sampleDeliverable.trim() || null;
       if (Object.keys(patch).length === 0) return { ok: false, error: "Nothing to change: pass at least one field." };
       const { data, error } = await op.db.from("agents").update(patch).eq("id", input.agentId)
         .select("id,name,specialty,skills,availability,starting_rate,tool_access,moderation_status,listed").single();

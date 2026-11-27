@@ -45,6 +45,8 @@ export type CreatedAgent = Agent & {
   listed?: boolean;
   /** The platform's review: pending, approved or rejected. */
   moderationStatus?: string;
+  /** A real, scaled-down example of the work, shown on the listing page. Plain text. */
+  sampleDeliverable?: string;
 };
 
 export type CreateAgentInput = {
